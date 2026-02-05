@@ -1,5 +1,6 @@
 import express from "express";
 import cors from "cors";
+import path from "path";
 import { env } from "./config.js";
 import { healthRouter } from "./routes/health.js";
 import { authRouter } from "./routes/auth.js";
@@ -21,6 +22,7 @@ import { supportRouter } from "./routes/support.js";
 import { errorHandler } from "./middleware/error.js";
 
 export const app = express();
+const isProduction = process.env.NODE_ENV === "production";
 
 const allowedOrigins = env.CORS_ORIGIN
   ? env.CORS_ORIGIN.split(",").map((origin) => origin.trim())
@@ -54,8 +56,20 @@ app.use("/api/payouts", payoutsRouter);
 app.use("/api/webhooks", webhooksRouter);
 app.use("/api/support", supportRouter);
 
-app.use((_req, res) => {
+app.use("/api", (_req, res) => {
   res.status(404).json({ error: "Not found" });
 });
+
+if (isProduction) {
+  const distPath = path.resolve(process.cwd(), "dist");
+  app.use(express.static(distPath));
+  app.get("*", (_req, res) => {
+    res.sendFile(path.join(distPath, "index.html"));
+  });
+} else {
+  app.use((_req, res) => {
+    res.status(404).json({ error: "Not found" });
+  });
+}
 
 app.use(errorHandler);

@@ -1,7 +1,8 @@
 import type { UserRole } from "@/lib/roles";
 
 export const API_BASE_URL =
-  import.meta.env.VITE_API_BASE ?? "http://localhost:4000";
+  import.meta.env.VITE_API_BASE ??
+  (import.meta.env.PROD ? "" : "http://localhost:4000");
 
 type ApiError = {
   error: string;
