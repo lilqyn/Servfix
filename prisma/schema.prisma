@@ -1,0 +1,920 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  buyer
+  provider
+  super_admin
+  admin
+  moderator
+  support_agent
+  dispute_manager
+  operations_manager
+  finance_manager
+  marketing_manager
+  data_analyst
+  technical_admin
+}
+
+enum UserStatus {
+  active
+  suspended
+  deleted
+}
+
+enum ProviderVerificationStatus {
+  unverified
+  pending
+  verified
+  rejected
+}
+
+enum ServiceStatus {
+  draft
+  published
+  suspended
+}
+
+enum TierName {
+  basic
+  standard
+  premium
+}
+
+enum PricingType {
+  flat
+  per_unit
+}
+
+enum OrderStatus {
+  created
+  paid_to_escrow
+  accepted
+  in_progress
+  delivered
+  approved
+  released
+  cancelled
+  expired
+  disputed
+  refund_pending
+  refunded
+  chargeback
+}
+
+enum OrderEventType {
+  created
+  paid
+  accepted
+  started
+  delivered
+  approved
+  released
+  cancelled
+  expired
+  dispute_opened
+  dispute_resolved
+  refund_initiated
+  refunded
+  chargeback
+  admin_action
+}
+
+enum ReportTargetType {
+  user
+  service
+  community_post
+  community_comment
+  review
+  order
+}
+
+enum ReportStatus {
+  open
+  resolved
+  dismissed
+}
+
+enum SupportTicketStatus {
+  open
+  in_progress
+  resolved
+  closed
+}
+
+enum LedgerEntryType {
+  escrow_credit // buyer payment received into escrow
+  escrow_debit // escrow released out
+  platform_fee // commission to platform
+  tax // VAT/levies on platform fee (store separately)
+  provider_earnings // net credited to provider wallet
+  refund // refunds to buyer
+  chargeback // chargeback events
+  adjustment // admin/manual correction
+  payout // payout to provider momo/bank
+}
+
+enum LedgerDirection {
+  credit
+  debit
+}
+
+enum CurrencyCode {
+  GHS
+  USD
+  EUR
+}
+
+enum PaymentProvider {
+  paystack
+  flutterwave
+  stripe
+  other
+}
+
+enum PaymentIntentStatus {
+  created
+  pending
+  succeeded
+  failed
+  cancelled
+}
+
+enum PaymentEventStatus {
+  received
+  processed
+  ignored
+  failed
+}
+
+enum SubscriptionStatus {
+  active
+  past_due
+  cancelled
+  expired
+}
+
+enum BoostType {
+  featured
+  feed_boost
+  category_top
+}
+
+enum BoostStatus {
+  scheduled
+  active
+  ended
+  cancelled
+}
+
+enum DisputeStatus {
+  open
+  investigating
+  resolved
+  cancelled
+}
+
+enum DisputeResolution {
+  refund
+  release
+  partial_refund
+  deny
+}
+
+enum ThreadStatus {
+  active
+  archived
+}
+
+model User {
+  id     String     @id @default(uuid())
+  role   UserRole
+  status UserStatus @default(active)
+
+  phone        String? @unique
+  email        String? @unique
+  username     String? @unique
+  // If you do password auth. If OTP-only, this can remain null.
+  passwordHash String?
+  avatarKey    String?
+  bannerKey    String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  providerProfile ProviderProfile?
+  providerWallet  ProviderWallet?
+
+  services         Service[] @relation("ProviderServices")
+  ordersAsBuyer    Order[]   @relation("BuyerOrders")
+  ordersAsProvider Order[]   @relation("ProviderOrders")
+
+  threadsAsBuyer    Thread[]  @relation("BuyerThreads")
+  threadsAsProvider Thread[]  @relation("ProviderThreads")
+  messages          Message[]
+  reviewsAuthored   Review[] @relation("ReviewAuthor")
+  reviewsReceived   Review[] @relation("ReviewProvider")
+
+  communityPosts         CommunityPost[]
+  communityPostLikes     CommunityPostLike[]
+  communityPostSaves     CommunityPostSave[]
+  communityPostComments  CommunityPostComment[]
+
+  following UserFollow[] @relation("UserFollowing")
+  followers UserFollow[] @relation("UserFollowers")
+
+  notifications     Notification[] @relation("NotificationRecipient")
+  notificationsSent Notification[] @relation("NotificationActor")
+
+  boostPurchases BoostPurchase[]
+  disputesOpened Dispute[]
+  auditLogs      AuditLog[]
+  payoutRequests PayoutRequest[]
+  ledgerEntries  LedgerEntry[]
+  subscriptions  ProviderSubscription[]
+  reportsFiled    Report[] @relation("ReportReporter")
+  reportsResolved Report[] @relation("ReportResolvedBy")
+  supportTickets SupportTicket[]
+  supportTicketMessages SupportTicketMessage[]
+
+  @@index([role])
+  @@index([status])
+}
+
+model Notification {
+  id      String           @id @default(uuid())
+  userId  String
+  user    User             @relation("NotificationRecipient", fields: [userId], references: [id], onDelete: Cascade)
+  actorId String?
+  actor   User?            @relation("NotificationActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  type  NotificationType
+  title String
+  body  String?
+  data  Json?
+
+  isRead   Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([actorId])
+  @@index([createdAt])
+  @@index([isRead])
+}
+
+model SupportTicket {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  subject  String
+  category String?
+  status   SupportTicketStatus @default(open)
+
+  lastMessageAt DateTime @default(now())
+
+  messages SupportTicketMessage[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([lastMessageAt])
+}
+
+model SupportTicketMessage {
+  id       String   @id @default(uuid())
+  ticketId String
+  ticket   SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  senderId String
+  sender   User     @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  senderRole UserRole
+  body     String
+  createdAt DateTime @default(now())
+
+  @@index([ticketId])
+  @@index([senderId])
+  @@index([createdAt])
+}
+
+enum NotificationType {
+  message_received
+  order_created
+  order_status
+  review_received
+  review_reply
+  follow_received
+  community_post_liked
+  community_post_commented
+  community_new_post
+  payout_update
+}
+
+enum MomoNetwork {
+  mtn
+  vodafone
+  airteltigo
+}
+
+model ProviderProfile {
+  userId String @id
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  displayName String
+  bio         String?
+  location    String?
+  categories  String[] // simple array to start; normalize later if needed
+
+  momoNumber         String?
+  momoNetwork        MomoNetwork?
+  verificationStatus ProviderVerificationStatus @default(unverified)
+
+  ratingAvg   Decimal @default(0.0) @db.Decimal(4, 2)
+  ratingCount Int     @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([verificationStatus])
+}
+
+model Service {
+  id         String @id @default(uuid())
+  providerId String
+  provider   User   @relation("ProviderServices", fields: [providerId], references: [id], onDelete: Cascade)
+
+  title       String
+  description String
+  category    String
+  tags        String[]
+
+  status ServiceStatus @default(draft)
+
+  locationCity  String?
+  locationAreas String[] @default([])
+  isRemote      Boolean  @default(false)
+
+  availabilityDays      String[] @default([])
+  availabilityStartTime String?
+  availabilityEndTime   String?
+  advanceBookingDays    Int?
+  maxBookingsPerDay     Int?
+
+  coverMediaId String?       @unique
+  coverMedia   ServiceMedia? @relation("CoverMedia", fields: [coverMediaId], references: [id])
+
+  tiers          ServiceTier[]
+  media          ServiceMedia[]
+  orders         Order[]
+  boostPurchases BoostPurchase[]
+  threads        Thread[]
+  reviews        Review[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([providerId])
+  @@index([status])
+  @@index([category])
+}
+
+model ServiceTier {
+  id        String  @id @default(uuid())
+  serviceId String
+  service   Service @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  orders    Order[]
+
+  name     TierName
+  price    Decimal      @db.Decimal(12, 2)
+  currency CurrencyCode @default(GHS)
+  pricingType PricingType @default(flat)
+  unitLabel   String?
+
+  deliveryDays  Int
+  revisionCount Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([serviceId, name])
+  @@index([serviceId])
+}
+
+model ServiceMedia {
+  id        String  @id @default(uuid())
+  serviceId String
+  service   Service @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  url       String
+  type      String // "image" | "video" | etc. (enum later)
+  sortOrder Int    @default(0)
+
+  createdAt DateTime @default(now())
+
+  // back relation for cover
+  coverFor Service? @relation("CoverMedia")
+
+  @@index([serviceId])
+}
+
+model Order {
+  id         String @id @default(uuid())
+  buyerId    String
+  providerId String
+  serviceId  String
+  tierId     String
+
+  buyer    User        @relation("BuyerOrders", fields: [buyerId], references: [id], onDelete: Restrict)
+  provider User        @relation("ProviderOrders", fields: [providerId], references: [id], onDelete: Restrict)
+  service  Service     @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+  tier     ServiceTier @relation(fields: [tierId], references: [id], onDelete: Restrict)
+
+  status OrderStatus @default(created)
+
+  quantity          Int          @default(1)
+  amountGross       Decimal      @db.Decimal(12, 2)
+  platformFee       Decimal      @db.Decimal(12, 2)
+  taxAmount         Decimal      @db.Decimal(12, 2)
+  amountNetProvider Decimal      @db.Decimal(12, 2)
+  currency          CurrencyCode @default(GHS)
+
+  acceptedAt  DateTime?
+  deliveredAt DateTime?
+  approvedAt  DateTime?
+  releasedAt  DateTime?
+  cancelledAt DateTime?
+  refundReference String?
+  refundProvider  PaymentProvider?
+  refundRequestedAt DateTime?
+  refundCompletedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  events         OrderEvent[]
+  ledgerEntries  LedgerEntry[]
+  paymentIntentId String?
+  paymentIntent   PaymentIntent? @relation("PaymentIntentOrders", fields: [paymentIntentId], references: [id], onDelete: SetNull)
+  disputes       Dispute[]
+  threads        Thread[]
+
+  @@index([buyerId])
+  @@index([providerId])
+  @@index([serviceId])
+  @@index([status])
+  @@index([refundReference])
+  @@index([paymentIntentId])
+  @@index([createdAt])
+}
+
+model OrderEvent {
+  id      String @id @default(uuid())
+  orderId String
+  order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  type      OrderEventType
+  payload   Json?
+  createdAt DateTime       @default(now())
+
+  @@index([orderId])
+  @@index([type])
+  @@index([createdAt])
+}
+
+model PaymentIntent {
+  id      String @id @default(uuid())
+  orders Order[] @relation("PaymentIntentOrders")
+
+  provider PaymentProvider
+  status   PaymentIntentStatus @default(created)
+
+  amount   Decimal      @db.Decimal(12, 2)
+  currency CurrencyCode @default(GHS)
+
+  providerRef String? @unique
+  metadata    Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  events PaymentEvent[]
+
+  @@index([provider])
+  @@index([status])
+}
+
+model PaymentEvent {
+  id              String        @id @default(uuid())
+  paymentIntentId String
+  paymentIntent   PaymentIntent @relation(fields: [paymentIntentId], references: [id], onDelete: Cascade)
+
+  providerEventId String
+  status          PaymentEventStatus @default(received)
+
+  payload     Json?
+  receivedAt  DateTime  @default(now())
+  processedAt DateTime?
+
+  @@unique([providerEventId, paymentIntentId])
+  @@index([status])
+  @@index([receivedAt])
+}
+
+model ProviderWallet {
+  providerId String @id
+  provider   User   @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  availableBalance Decimal      @default(0.0) @db.Decimal(12, 2)
+  pendingBalance   Decimal      @default(0.0) @db.Decimal(12, 2)
+  currency         CurrencyCode @default(GHS)
+
+  updatedAt DateTime @updatedAt
+}
+
+model LedgerEntry {
+  id String @id @default(uuid())
+
+  orderId String?
+  order   Order?  @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  type      LedgerEntryType
+  direction LedgerDirection
+
+  amount   Decimal      @db.Decimal(12, 2)
+  currency CurrencyCode @default(GHS)
+
+  reference String?
+  metadata  Json?
+
+  createdAt DateTime @default(now())
+
+  @@index([orderId])
+  @@index([userId])
+  @@index([type])
+  @@index([createdAt])
+}
+
+model PayoutRequest {
+  id         String @id @default(uuid())
+  providerId String
+  provider   User   @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  amount   Decimal      @db.Decimal(12, 2)
+  currency CurrencyCode @default(GHS)
+
+  destinationMomo String
+  momoNetwork     MomoNetwork?
+  reference       String?
+  status          String // requested|processing|paid|failed (enum later)
+  metadata        Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([providerId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model Plan {
+  id           String       @id @default(uuid())
+  name         String
+  monthlyPrice Decimal      @db.Decimal(12, 2)
+  currency     CurrencyCode @default(GHS)
+
+  benefits Json
+
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  subscriptions ProviderSubscription[]
+}
+
+model ProviderSubscription {
+  id         String @id @default(uuid())
+  providerId String
+  provider   User   @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  planId String
+  plan   Plan   @relation(fields: [planId], references: [id], onDelete: Restrict)
+
+  status SubscriptionStatus @default(active)
+
+  renewsAt DateTime?
+  endsAt   DateTime?
+
+  providerRef String? @unique
+  metadata    Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([providerId])
+  @@index([status])
+  @@index([renewsAt])
+}
+
+model BoostPurchase {
+  id         String @id @default(uuid())
+  providerId String
+  provider   User   @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  serviceId String?
+  service   Service? @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+
+  type   BoostType
+  status BoostStatus @default(scheduled)
+
+  startsAt DateTime
+  endsAt   DateTime
+
+  price    Decimal      @db.Decimal(12, 2)
+  currency CurrencyCode @default(GHS)
+  metadata Json?
+
+  createdAt DateTime @default(now())
+
+  @@index([providerId])
+  @@index([serviceId])
+  @@index([type])
+  @@index([status])
+  @@index([startsAt])
+}
+
+model Thread {
+  id         String  @id @default(uuid())
+  buyerId    String
+  providerId String
+  orderId    String?
+  serviceId  String?
+
+  buyer    User   @relation("BuyerThreads", fields: [buyerId], references: [id], onDelete: Cascade)
+  provider User   @relation("ProviderThreads", fields: [providerId], references: [id], onDelete: Cascade)
+  order    Order? @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  service  Service? @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+
+  status ThreadStatus @default(active)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  messages Message[]
+
+  @@index([buyerId])
+  @@index([providerId])
+  @@index([orderId])
+  @@index([serviceId])
+}
+
+model Message {
+  id       String @id @default(uuid())
+  threadId String
+  thread   Thread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+
+  senderId String
+  sender   User   @relation(fields: [senderId], references: [id], onDelete: Cascade)
+
+  body      String
+  createdAt DateTime  @default(now())
+  readAt    DateTime?
+
+  @@index([threadId])
+  @@index([senderId])
+  @@index([createdAt])
+}
+
+model Review {
+  id        String  @id @default(uuid())
+  serviceId String
+  providerId String
+  authorId  String
+
+  service  Service @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  provider User    @relation("ReviewProvider", fields: [providerId], references: [id], onDelete: Cascade)
+  author   User    @relation("ReviewAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+
+  rating  Int
+  comment String
+  images  String[] @default([])
+  helpfulCount Int @default(0)
+  providerReply String?
+  providerReplyAt DateTime?
+  providerReplyUpdatedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([serviceId, authorId])
+  @@index([serviceId])
+  @@index([providerId])
+  @@index([authorId])
+  @@index([createdAt])
+}
+
+model Dispute {
+  id      String @id @default(uuid())
+  orderId String
+  order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  openedById String
+  openedBy   User   @relation(fields: [openedById], references: [id], onDelete: Restrict)
+
+  reason     String
+  details    String?
+  status     DisputeStatus      @default(open)
+  resolution DisputeResolution?
+
+  createdAt  DateTime  @default(now())
+  resolvedAt DateTime?
+
+  @@index([orderId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model AuditLog {
+  id String @id @default(uuid())
+
+  actorId String?
+  actor   User?   @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  action     String
+  entityType String
+  entityId   String
+  payload    Json?
+
+  createdAt DateTime @default(now())
+
+  @@index([actorId])
+  @@index([entityType])
+  @@index([entityId])
+  @@index([createdAt])
+}
+
+model Report {
+  id String @id @default(uuid())
+
+  targetType ReportTargetType
+  targetId   String
+
+  reason  String
+  details String?
+
+  reporterId String?
+  reporter   User?   @relation("ReportReporter", fields: [reporterId], references: [id], onDelete: SetNull)
+
+  status     ReportStatus @default(open)
+  resolvedAt DateTime?
+  resolvedById String?
+  resolvedBy   User?   @relation("ReportResolvedBy", fields: [resolvedById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([targetType])
+  @@index([targetId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model CommunityPost {
+  id       String @id @default(uuid())
+  authorId String
+  author   User   @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  content    String
+  shareCount Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  media    CommunityPostMedia[]
+  likes    CommunityPostLike[]
+  saves    CommunityPostSave[]
+  comments CommunityPostComment[]
+
+  @@index([authorId])
+  @@index([createdAt])
+}
+
+model CommunityPostMedia {
+  id     String @id @default(uuid())
+  postId String
+  post   CommunityPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  url       String
+  type      String
+  sortOrder Int @default(0)
+
+  createdAt DateTime @default(now())
+
+  @@index([postId])
+}
+
+model CommunityPostLike {
+  id     String @id @default(uuid())
+  postId String
+  post   CommunityPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  userId String
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([postId, userId])
+  @@index([postId])
+  @@index([userId])
+}
+
+model CommunityPostSave {
+  id     String @id @default(uuid())
+  postId String
+  post   CommunityPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  userId String
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([postId, userId])
+  @@index([postId])
+  @@index([userId])
+}
+
+model CommunityPostComment {
+  id       String @id @default(uuid())
+  postId   String
+  post     CommunityPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  authorId String
+  author   User @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  content   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([postId])
+  @@index([authorId])
+  @@index([createdAt])
+}
+
+model UserFollow {
+  id           String @id @default(uuid())
+  followerId   String
+  followingId  String
+
+  follower  User @relation("UserFollowing", fields: [followerId], references: [id], onDelete: Cascade)
+  following User @relation("UserFollowers", fields: [followingId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([followerId, followingId])
+  @@index([followerId])
+  @@index([followingId])
+}
+
+model HomeContent {
+  id  String @id @default(uuid())
+  key String @unique
+
+  hero       Json
+  categories Json
+  howItWorks Json
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model PlatformSettings {
+  key String @id
+  platformFeeBps Int?
+  taxBps         Int?
+  businessFunctions Json
+  payoutRules Json?
+  disputePolicy Json?
+  orderRules Json?
+  providerVerification Json?
+  reviewModeration Json?
+  communityModeration Json?
+  notificationTemplates Json?
+  featureFlags Json?
+  securityControls Json?
+  adminAccess Json?
+  integrations Json?
+  localization Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
