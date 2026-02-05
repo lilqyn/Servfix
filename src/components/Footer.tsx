@@ -6,6 +6,9 @@ import { usePublicSettings } from "@/hooks/usePublicSettings";
 const Footer = () => {
   const { data: publicSettings } = usePublicSettings();
   const communityEnabled = publicSettings?.featureFlags.community ?? true;
+  const baseUrl = import.meta.env.BASE_URL;
+  const logoUrl = `${baseUrl}servfix-logo.png`;
+  const iconUrl = `${baseUrl}servfix-icon.png`;
 
   return (
     <footer className="bg-foreground text-background">
@@ -44,12 +47,12 @@ const Footer = () => {
           <div className="lg:col-span-2">
             <Link to="/" className="flex items-center gap-3 mb-4" aria-label="SERVFIX home">
               <img
-                src="/servfix-icon.png"
+                src={iconUrl}
                 alt="SERVFIX icon"
                 className="h-12 w-12 rounded-2xl shadow-md"
               />
               <img
-                src="/servfix-logo.png"
+                src={logoUrl}
                 alt="SERVFIX"
                 className="h-8 w-auto"
               />

@@ -32,6 +32,9 @@ const Header = () => {
   const { unreadCount: unreadNotifications } = useNotifications();
   const { user, isAuthenticated, signOut } = useAuth();
   const { data: publicSettings } = usePublicSettings();
+  const baseUrl = import.meta.env.BASE_URL;
+  const logoUrl = `${baseUrl}servfix-logo.png`;
+  const iconUrl = `${baseUrl}servfix-icon.png`;
   const isProvider = isProviderRole(user?.role);
   const isAdmin = isAdminRole(user?.role);
   const communityEnabled = publicSettings?.featureFlags.community ?? true;
@@ -128,12 +131,12 @@ const Header = () => {
           {/* Logo */}
           <Link to="/" className="flex items-center gap-3" aria-label="SERVFIX home">
             <img
-              src="/servfix-icon.png"
+              src={iconUrl}
               alt="SERVFIX icon"
               className="h-11 w-11 md:h-12 md:w-12 rounded-2xl shadow-md"
             />
             <img
-              src="/servfix-logo.png"
+              src={logoUrl}
               alt="SERVFIX"
               className="h-8 md:h-10 w-auto"
             />
