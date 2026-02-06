@@ -43,6 +43,7 @@ import SignUp from "./pages/SignUp";
 import NotFound from "./pages/NotFound";
 import PaymentVerify from "./pages/PaymentVerify";
 import { ADMIN_ROLES } from "@/lib/roles";
+import ScrollToTop from "@/components/ScrollToTop";
 
 const queryClient = new QueryClient();
 
@@ -57,6 +58,7 @@ const App = () => (
                 <Toaster />
                 <Sonner />
                 <HashRouter>
+                  <ScrollToTop />
                   <Routes>
                     <Route path="/" element={<Index />} />
                     <Route path="/browse" element={<Browse />} />
