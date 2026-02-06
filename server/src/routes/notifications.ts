@@ -169,6 +169,14 @@ type NotificationRecord = Prisma.NotificationGetPayload<{
   };
 }>;
 
+type NotificationAccessRecord = Prisma.NotificationGetPayload<{
+  select: {
+    id: true;
+    type: true;
+    data: true;
+  };
+}>;
+
 const fetchAccessibleNotifications = async (params: {
   userId: string;
   role: UserRole;
@@ -182,7 +190,7 @@ const fetchAccessibleNotifications = async (params: {
   let hasMore = true;
 
   while (collected.length < limit && hasMore) {
-    const batch = await prisma.notification.findMany({
+    const batch: NotificationRecord[] = await prisma.notification.findMany({
       where: { userId },
       take: pageSize,
       ...(nextCursor
@@ -245,7 +253,7 @@ const countAccessibleUnreadNotifications = async (params: {
   let count = 0;
 
   while (hasMore) {
-    const batch = await prisma.notification.findMany({
+    const batch: NotificationAccessRecord[] = await prisma.notification.findMany({
       where: { userId, isRead: false },
       take: pageSize,
       ...(nextCursor

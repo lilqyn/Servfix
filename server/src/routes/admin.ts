@@ -1377,7 +1377,11 @@ adminRouter.patch(
     if (data.department !== undefined) updates.department = data.department;
     if (data.priority !== undefined) updates.priority = data.priority;
     if (data.assignedRole !== undefined) updates.assignedRole = data.assignedRole;
-    if (data.assignedUserId !== undefined) updates.assignedUserId = data.assignedUserId;
+    if (data.assignedUserId !== undefined) {
+      updates.assignedUser = data.assignedUserId
+        ? { connect: { id: data.assignedUserId } }
+        : { disconnect: true };
+    }
 
     const ticket = await prisma.supportTicket.update({
       where: { id: params.id },
