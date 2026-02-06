@@ -78,11 +78,30 @@ const ServiceBasicInfo = ({ form }: ServiceBasicInfoProps) => {
     return Array.from(normalized.values());
   }, [watchedCity]);
 
-  const handleCityOpenChange = (open: boolean) => {
-    setCityOpen(open);
-    if (!open) {
-      setCityQuery("");
+  const closeCityPopover = (options?: { commitQuery?: boolean }) => {
+    const shouldCommit = options?.commitQuery !== false;
+    if (shouldCommit) {
+      const trimmed = cityQuery.trim();
+      if (trimmed) {
+        const current = form.getValues("location.city")?.trim() ?? "";
+        if (trimmed !== current) {
+          form.setValue("location.city", trimmed, {
+            shouldDirty: true,
+            shouldValidate: true,
+          });
+        }
+      }
     }
+    setCityQuery("");
+    setCityOpen(false);
+  };
+
+  const handleCityOpenChange = (open: boolean) => {
+    if (!open) {
+      closeCityPopover();
+      return;
+    }
+    setCityOpen(true);
   };
 
   const handleAddTag = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -257,6 +276,14 @@ const ServiceBasicInfo = ({ form }: ServiceBasicInfoProps) => {
                         placeholder="Search cities..."
                         value={cityQuery}
                         onValueChange={setCityQuery}
+                        onKeyDown={(event) => {
+                          if (event.key !== "Enter") return;
+                          const trimmed = cityQuery.trim();
+                          if (!trimmed) return;
+                          event.preventDefault();
+                          field.onChange(trimmed);
+                          closeCityPopover({ commitQuery: false });
+                        }}
                       />
                       <CommandList>
                         <CommandEmpty>No cities found.</CommandEmpty>
@@ -267,7 +294,7 @@ const ServiceBasicInfo = ({ form }: ServiceBasicInfoProps) => {
                               value={city}
                               onSelect={(value) => {
                                 field.onChange(value);
-                                handleCityOpenChange(false);
+                                closeCityPopover({ commitQuery: false });
                               }}
                             >
                               <Check
@@ -293,7 +320,7 @@ const ServiceBasicInfo = ({ form }: ServiceBasicInfoProps) => {
                                   value={cityQuery.trim()}
                                   onSelect={(value) => {
                                     field.onChange(value);
-                                    handleCityOpenChange(false);
+                                    closeCityPopover({ commitQuery: false });
                                   }}
                                 >
                                   <Check
