@@ -42,6 +42,9 @@ import SignIn from "./pages/SignIn";
 import SignUp from "./pages/SignUp";
 import NotFound from "./pages/NotFound";
 import PaymentVerify from "./pages/PaymentVerify";
+import Cookies from "./pages/Cookies";
+import Privacy from "./pages/Privacy";
+import Terms from "./pages/Terms";
 import { ADMIN_ROLES } from "@/lib/roles";
 import ScrollToTop from "@/components/ScrollToTop";
 
@@ -175,6 +178,9 @@ const App = () => (
                     <Route path="/sign-in" element={<SignIn />} />
                     <Route path="/sign-up" element={<SignUp />} />
                     <Route path="/payment/verify" element={<PaymentVerify />} />
+                    <Route path="/cookies" element={<Cookies />} />
+                    <Route path="/privacy" element={<Privacy />} />
+                    <Route path="/terms" element={<Terms />} />
                     {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
                     <Route path="*" element={<NotFound />} />
                   </Routes>
