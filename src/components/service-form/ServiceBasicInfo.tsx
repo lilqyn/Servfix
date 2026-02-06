@@ -6,10 +6,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { X } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import type { ServiceFormData } from "@/pages/ServiceForm";
+import { useHomeContent } from "@/hooks/useHomeContent";
 
-const categories = [
+const BASE_CATEGORIES = [
   { value: "catering", label: "Catering & Food" },
   { value: "photography", label: "Photography & Video" },
   { value: "decorations", label: "Decorations & Styling" },
@@ -20,12 +21,36 @@ const categories = [
   { value: "rentals", label: "Equipment Rentals" },
 ];
 
+const normalizeCategoryValue = (value: string) =>
+  value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "");
+
 interface ServiceBasicInfoProps {
   form: UseFormReturn<ServiceFormData>;
 }
 
 const ServiceBasicInfo = ({ form }: ServiceBasicInfoProps) => {
   const [tagInput, setTagInput] = useState("");
+  const { data: homeContent } = useHomeContent();
+
+  const categories = useMemo(() => {
+    const normalized = new Set<string>();
+    BASE_CATEGORIES.forEach((category) => {
+      normalized.add(normalizeCategoryValue(category.value));
+      normalized.add(normalizeCategoryValue(category.label));
+    });
+
+    const dynamicCategories = (homeContent?.categories?.items ?? [])
+      .map((item) => item.name?.trim())
+      .filter((name): name is string => Boolean(name))
+      .filter((name) => !normalized.has(normalizeCategoryValue(name)))
+      .map((name) => ({ value: name, label: name }));
+
+    return [...BASE_CATEGORIES, ...dynamicCategories];
+  }, [homeContent]);
 
   const handleAddTag = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter" && tagInput.trim()) {
