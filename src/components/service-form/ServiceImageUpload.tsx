@@ -160,8 +160,8 @@ const ServiceImageUpload = ({ form }: ServiceImageUploadProps) => {
                     {isUploading ? "Uploading images..." : "Drop images here or click to upload"}
                   </p>
                   <p className="text-sm text-muted-foreground">
-                    JPG, PNG, WebP, or HEIC/HEIF. Converted to WebP on upload (<=3MB). Max 10MB per
-                    image. Up to 5 images.
+                    JPG, PNG, WebP, or HEIC/HEIF. Converted to WebP on upload ({"<=3MB"}). Max 10MB
+                    per image. Up to 5 images.
                   </p>
                 </div>
 
