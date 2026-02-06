@@ -190,6 +190,9 @@ const Support = () => {
                           {STATUS_LABELS[ticket.status]}
                         </span>
                       </div>
+                      <div className="text-xs text-muted-foreground">
+                        Ticket {ticket.ticketNumber}
+                      </div>
                       {ticket.lastMessage?.body ? (
                         <div className="text-xs text-muted-foreground line-clamp-1">
                           {ticket.lastMessage.body}
@@ -221,6 +224,9 @@ const Support = () => {
                       {selectedTicket.subject}
                     </h3>
                     <p className="text-xs text-muted-foreground">
+                      Ticket {selectedTicket.ticketNumber}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
                       Status: {STATUS_LABELS[selectedTicket.status]} · Updated{" "}
                       {formatDate(selectedTicket.lastMessageAt)}
                     </p>
@@ -239,6 +245,41 @@ const Support = () => {
                       <div className="text-foreground whitespace-pre-line">{message.body}</div>
                     </div>
                   ))}
+                </div>
+
+                <div className="space-y-3 rounded-lg border border-border/60 bg-card/60 p-3">
+                  <div className="text-sm font-semibold text-foreground">Meetings</div>
+                  {selectedTicket.meetings && selectedTicket.meetings.length > 0 ? (
+                    <div className="space-y-2">
+                      {selectedTicket.meetings.map((meeting) => (
+                        <div key={meeting.id} className="rounded-md border border-border/60 p-2">
+                          <div className="text-xs text-muted-foreground">
+                            {formatDate(meeting.scheduledAt)}
+                            {meeting.durationMinutes
+                              ? ` - ${meeting.durationMinutes} mins`
+                              : ""}
+                          </div>
+                          {meeting.meetingUrl ? (
+                            <a
+                              href={meeting.meetingUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-xs text-primary underline"
+                            >
+                              Join meeting
+                            </a>
+                          ) : null}
+                          {meeting.notes ? (
+                            <div className="text-xs text-muted-foreground mt-1">
+                              {meeting.notes}
+                            </div>
+                          ) : null}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-xs text-muted-foreground">No meetings scheduled.</div>
+                  )}
                 </div>
 
                 <div className="space-y-2">

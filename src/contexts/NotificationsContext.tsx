@@ -15,6 +15,12 @@ import {
   type ApiNotification,
 } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
+import {
+  canAccessNotification,
+  countUnreadNotifications,
+  filterNotificationsForRole,
+  shouldUseServerUnreadCount,
+} from "@/lib/notifications";
 
 type NotificationsContextType = {
   notifications: ApiNotification[];
@@ -39,7 +45,7 @@ const buildWebSocketUrl = (baseUrl: string, token: string) => {
 };
 
 export const NotificationsProvider = ({ children }: { children: ReactNode }) => {
-  const { isAuthenticated, isHydrated, token } = useAuth();
+  const { isAuthenticated, isHydrated, token, user } = useAuth();
   const [notifications, setNotifications] = useState<ApiNotification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
@@ -69,8 +75,13 @@ export const NotificationsProvider = ({ children }: { children: ReactNode }) => 
     setIsLoading(true);
     try {
       const response = await fetchNotifications({ limit: PAGE_SIZE });
-      setNotifications(response.notifications);
-      setUnreadCount(response.unreadCount);
+      const filtered = filterNotificationsForRole(response.notifications, user?.role);
+      setNotifications(filtered);
+      if (shouldUseServerUnreadCount(user?.role)) {
+        setUnreadCount(response.unreadCount);
+      } else {
+        setUnreadCount(countUnreadNotifications(filtered));
+      }
       setNextCursor(response.nextCursor ?? null);
       setHasLoaded(true);
     } catch (error) {
@@ -89,12 +100,17 @@ export const NotificationsProvider = ({ children }: { children: ReactNode }) => 
     setIsLoadingMore(true);
     try {
       const response = await fetchNotifications({ limit: PAGE_SIZE, cursor: nextCursor });
+      const filtered = filterNotificationsForRole(response.notifications, user?.role);
       setNotifications((prev) => {
         const existingIds = new Set(prev.map((item) => item.id));
-        const merged = response.notifications.filter((item) => !existingIds.has(item.id));
+        const merged = filtered.filter((item) => !existingIds.has(item.id));
         return [...prev, ...merged];
       });
-      setUnreadCount(response.unreadCount);
+      if (shouldUseServerUnreadCount(user?.role)) {
+        setUnreadCount(response.unreadCount);
+      } else {
+        setUnreadCount((prev) => prev + countUnreadNotifications(filtered));
+      }
       setNextCursor(response.nextCursor ?? null);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unable to load more notifications.";
@@ -206,6 +222,9 @@ export const NotificationsProvider = ({ children }: { children: ReactNode }) => 
           };
 
           if (payload?.type === "notification" && payload.notification) {
+            if (!canAccessNotification(payload.notification, user?.role)) {
+              return;
+            }
             setNotifications((prev) => {
               const existingIndex = prev.findIndex((item) => item.id === payload.notification!.id);
               if (existingIndex >= 0) {
@@ -255,7 +274,7 @@ export const NotificationsProvider = ({ children }: { children: ReactNode }) => 
         reconnectTimeoutRef.current = null;
       }
     };
-  }, [isAuthenticated, isHydrated, token]);
+  }, [isAuthenticated, isHydrated, token, user?.role]);
 
   const value = useMemo(
     () => ({

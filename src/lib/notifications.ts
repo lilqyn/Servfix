@@ -1,5 +1,6 @@
 import type { ApiNotification } from "@/lib/api";
 import type { AuthUser } from "@/lib/auth";
+import type { UserRole } from "@/lib/roles";
 
 export type NotificationDestination = {
   href: string;
@@ -57,3 +58,40 @@ export const getNotificationDestination = (
       return { href: "/notifications" };
   }
 };
+
+const ROUTE_ACCESS_RULES: Array<{ match: RegExp; roles: UserRole[] }> = [
+  { match: /^\/messages\b/, roles: ["buyer", "provider", "admin"] },
+  { match: /^\/cart\b/, roles: ["buyer", "admin"] },
+  { match: /^\/dashboard\b/, roles: ["provider", "admin"] },
+  { match: /^\/account\b/, roles: ["buyer", "provider", "admin"] },
+  { match: /^\/support\b/, roles: ["buyer", "provider", "admin"] },
+];
+
+const canAccessRoute = (href: string, role?: UserRole | null) => {
+  const rule = ROUTE_ACCESS_RULES.find((entry) => entry.match.test(href));
+  if (!rule) {
+    return true;
+  }
+  if (!role) {
+    return false;
+  }
+  return rule.roles.includes(role);
+};
+
+export const shouldUseServerUnreadCount = (role?: UserRole | null) => Boolean(role);
+
+export const canAccessNotification = (
+  notification: ApiNotification,
+  role?: UserRole | null,
+) => {
+  const destination = getNotificationDestination(notification, role ?? undefined);
+  return canAccessRoute(destination.href, role ?? undefined);
+};
+
+export const filterNotificationsForRole = (
+  notifications: ApiNotification[],
+  role?: UserRole | null,
+) => notifications.filter((notification) => canAccessNotification(notification, role));
+
+export const countUnreadNotifications = (notifications: ApiNotification[]) =>
+  notifications.reduce((count, item) => count + (item.isRead ? 0 : 1), 0);

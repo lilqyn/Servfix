@@ -83,7 +83,7 @@ const App = () => (
                     <Route
                       path="/notifications"
                       element={
-                        <RequireAuth roles={["buyer", "provider", "admin"]}>
+                        <RequireAuth roles={["buyer", "provider", ...ADMIN_ROLES]}>
                           <Notifications />
                         </RequireAuth>
                       }

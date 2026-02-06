@@ -13,8 +13,24 @@ interface ServiceImageUploadProps {
 }
 
 const MAX_IMAGES = 5;
-const MAX_UPLOAD_BYTES = 3 * 1024 * 1024;
-const SUPPORTED_TYPES = ["image/jpeg", "image/png", "image/webp"];
+const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
+const SUPPORTED_TYPES = [
+  "image/jpeg",
+  "image/jpg",
+  "image/png",
+  "image/webp",
+  "image/heic",
+  "image/heif",
+];
+const SUPPORTED_EXTENSIONS = [".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif"];
+
+const isSupportedImage = (file: File) => {
+  if (SUPPORTED_TYPES.includes(file.type)) {
+    return true;
+  }
+  const name = file.name.toLowerCase();
+  return SUPPORTED_EXTENSIONS.some((extension) => name.endsWith(extension));
+};
 
 const ServiceImageUpload = ({ form }: ServiceImageUploadProps) => {
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
@@ -40,13 +56,13 @@ const ServiceImageUpload = ({ form }: ServiceImageUploadProps) => {
       const uploadedUrls: string[] = [];
 
       for (const file of fileList) {
-        if (!SUPPORTED_TYPES.includes(file.type)) {
-          toast("Only JPG, PNG, or WebP images are supported.");
+        if (!isSupportedImage(file)) {
+          toast("Only JPG, PNG, WebP, or HEIC/HEIF images are supported.");
           continue;
         }
 
         if (file.size > MAX_UPLOAD_BYTES) {
-          toast("Image must be 3MB or less.");
+          toast("Image must be 10MB or less.");
           continue;
         }
 
@@ -130,7 +146,7 @@ const ServiceImageUpload = ({ form }: ServiceImageUploadProps) => {
                     ref={fileInputRef}
                     type="file"
                     multiple
-                    accept="image/png,image/jpeg,image/webp"
+                    accept="image/png,image/jpeg,image/jpg,image/webp,image/heic,image/heif"
                     onChange={handleFileSelect}
                     className="hidden"
                     disabled={isUploading}
@@ -144,7 +160,8 @@ const ServiceImageUpload = ({ form }: ServiceImageUploadProps) => {
                     {isUploading ? "Uploading images..." : "Drop images here or click to upload"}
                   </p>
                   <p className="text-sm text-muted-foreground">
-                    JPG, PNG, or WebP. Converted to WebP on upload. Max 3MB per image. Up to 5 images.
+                    JPG, PNG, WebP, or HEIC/HEIF. Converted to WebP on upload (<=3MB). Max 10MB per
+                    image. Up to 5 images.
                   </p>
                 </div>
 

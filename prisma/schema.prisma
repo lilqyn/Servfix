@@ -108,6 +108,34 @@ enum SupportTicketStatus {
   closed
 }
 
+enum SupportDepartment {
+  general
+  customer_service
+  finance
+  accounting
+  operations
+  disputes
+  technical
+}
+
+enum SupportTicketPriority {
+  low
+  medium
+  high
+  urgent
+}
+
+enum SupportTicketEventType {
+  created
+  status_changed
+  assigned
+  forwarded
+  note_added
+  meeting_scheduled
+  meeting_updated
+  meeting_cancelled
+}
+
 enum LedgerEntryType {
   escrow_credit // buyer payment received into escrow
   escrow_debit // escrow released out
@@ -240,8 +268,11 @@ model User {
   subscriptions  ProviderSubscription[]
   reportsFiled    Report[] @relation("ReportReporter")
   reportsResolved Report[] @relation("ReportResolvedBy")
-  supportTickets SupportTicket[]
+  supportTickets SupportTicket[] @relation("SupportTicketRequester")
+  assignedSupportTickets SupportTicket[] @relation("SupportTicketAssignee")
   supportTicketMessages SupportTicketMessage[]
+  supportTicketEvents SupportTicketEvent[]
+  supportTicketMeetings SupportTicketMeeting[] @relation("SupportTicketMeetingCreator")
 
   @@index([role])
   @@index([status])
@@ -270,8 +301,14 @@ model Notification {
 
 model SupportTicket {
   id     String @id @default(uuid())
+  ticketNumber Int @unique @default(autoincrement())
   userId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user   User   @relation("SupportTicketRequester", fields: [userId], references: [id], onDelete: Cascade)
+  assignedUserId String?
+  assignedUser User? @relation("SupportTicketAssignee", fields: [assignedUserId], references: [id], onDelete: SetNull)
+  assignedRole UserRole?
+  department SupportDepartment @default(general)
+  priority SupportTicketPriority @default(medium)
 
   subject  String
   category String?
@@ -280,12 +317,18 @@ model SupportTicket {
   lastMessageAt DateTime @default(now())
 
   messages SupportTicketMessage[]
+  meetings SupportTicketMeeting[]
+  events SupportTicketEvent[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([userId])
+  @@index([assignedUserId])
+  @@index([assignedRole])
+  @@index([department])
   @@index([status])
+  @@index([priority])
   @@index([createdAt])
   @@index([lastMessageAt])
 }
@@ -298,10 +341,42 @@ model SupportTicketMessage {
   sender   User     @relation(fields: [senderId], references: [id], onDelete: Cascade)
   senderRole UserRole
   body     String
+  isInternal Boolean @default(false)
   createdAt DateTime @default(now())
 
   @@index([ticketId])
   @@index([senderId])
+  @@index([createdAt])
+}
+
+model SupportTicketMeeting {
+  id            String   @id @default(uuid())
+  ticketId      String
+  ticket        SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  scheduledAt   DateTime
+  durationMinutes Int?
+  meetingUrl    String?
+  notes         String?
+  createdById   String?
+  createdBy     User?    @relation("SupportTicketMeetingCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt     DateTime @default(now())
+
+  @@index([ticketId])
+  @@index([scheduledAt])
+}
+
+model SupportTicketEvent {
+  id        String   @id @default(uuid())
+  ticketId  String
+  ticket    SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  actorId   String?
+  actor     User?    @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  type      SupportTicketEventType
+  data      Json?
+  createdAt DateTime @default(now())
+
+  @@index([ticketId])
+  @@index([actorId])
   @@index([createdAt])
 }
 

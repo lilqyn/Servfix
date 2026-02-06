@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "../db.js";
 import { asyncHandler } from "../utils/async-handler.js";
 import { authRequired } from "../middleware/auth.js";
+import { createSupportTicketEvent, formatTicketNumber } from "../utils/tickets.js";
 
 export const supportRouter = Router();
 
@@ -35,6 +36,7 @@ supportRouter.get(
       orderBy: [{ lastMessageAt: "desc" }, { createdAt: "desc" }],
       include: {
         messages: {
+          where: { isInternal: false },
           orderBy: { createdAt: "desc" },
           take: 1,
           select: { id: true, body: true, senderRole: true, createdAt: true },
@@ -49,9 +51,13 @@ supportRouter.get(
     res.json({
       tickets: trimmed.map((ticket) => ({
         id: ticket.id,
+        ticketNumber: formatTicketNumber(ticket.ticketNumber, ticket.id),
         subject: ticket.subject,
         category: ticket.category,
         status: ticket.status,
+        department: ticket.department,
+        priority: ticket.priority,
+        assignedRole: ticket.assignedRole,
         createdAt: ticket.createdAt,
         updatedAt: ticket.updatedAt,
         lastMessageAt: ticket.lastMessageAt,
@@ -81,20 +87,39 @@ supportRouter.post(
             senderId: req.user!.id,
             senderRole: req.user!.role,
             body: data.message,
+            isInternal: false,
           },
         },
       },
       select: {
         id: true,
+        ticketNumber: true,
         subject: true,
         category: true,
         status: true,
+        department: true,
+        priority: true,
+        assignedRole: true,
         createdAt: true,
         lastMessageAt: true,
       },
     });
 
-    res.status(201).json({ ticket });
+    await createSupportTicketEvent({
+      ticketId: ticket.id,
+      actorId: req.user!.id,
+      type: "created",
+      data: {
+        subject: ticket.subject,
+        category: ticket.category,
+        department: ticket.department,
+        priority: ticket.priority,
+      },
+    });
+
+    res.status(201).json({
+      ticket: { ...ticket, ticketNumber: formatTicketNumber(ticket.ticketNumber, ticket.id) },
+    });
   }),
 );
 
@@ -108,8 +133,26 @@ supportRouter.get(
       where: { id: params.id },
       include: {
         messages: {
+          where: { isInternal: false },
           orderBy: { createdAt: "asc" },
-          select: { id: true, body: true, senderId: true, senderRole: true, createdAt: true },
+          select: {
+            id: true,
+            body: true,
+            senderId: true,
+            senderRole: true,
+            createdAt: true,
+          },
+        },
+        meetings: {
+          orderBy: { scheduledAt: "desc" },
+          select: {
+            id: true,
+            scheduledAt: true,
+            durationMinutes: true,
+            meetingUrl: true,
+            notes: true,
+            createdAt: true,
+          },
         },
       },
     });
@@ -120,13 +163,18 @@ supportRouter.get(
 
     res.json({
       id: ticket.id,
+      ticketNumber: formatTicketNumber(ticket.ticketNumber, ticket.id),
       subject: ticket.subject,
       category: ticket.category,
       status: ticket.status,
+      department: ticket.department,
+      priority: ticket.priority,
+      assignedRole: ticket.assignedRole,
       createdAt: ticket.createdAt,
       updatedAt: ticket.updatedAt,
       lastMessageAt: ticket.lastMessageAt,
       messages: ticket.messages,
+      meetings: ticket.meetings,
     });
   }),
 );
@@ -161,6 +209,7 @@ supportRouter.post(
           senderId: req.user!.id,
           senderRole: req.user!.role,
           body: data.message,
+          isInternal: false,
         },
         select: { id: true, body: true, senderRole: true, createdAt: true },
       }),

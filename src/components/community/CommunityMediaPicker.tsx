@@ -5,10 +5,35 @@ import { Loader2, Image as ImageIcon, Video, X } from "lucide-react";
 import { uploadCommunityImage, uploadCommunityVideo } from "@/lib/api";
 
 export const MAX_COMMUNITY_MEDIA = 6;
-const MAX_IMAGE_BYTES = 3 * 1024 * 1024;
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 const MAX_VIDEO_BYTES = 25 * 1024 * 1024;
-const SUPPORTED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
+const SUPPORTED_IMAGE_TYPES = [
+  "image/jpeg",
+  "image/jpg",
+  "image/png",
+  "image/webp",
+  "image/heic",
+  "image/heif",
+];
 const SUPPORTED_VIDEO_TYPES = ["video/mp4", "video/webm", "video/quicktime"];
+const SUPPORTED_IMAGE_EXTENSIONS = [".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif"];
+const SUPPORTED_VIDEO_EXTENSIONS = [".mp4", ".webm", ".mov"];
+
+const isSupportedImage = (file: File) => {
+  if (SUPPORTED_IMAGE_TYPES.includes(file.type)) {
+    return true;
+  }
+  const name = file.name.toLowerCase();
+  return SUPPORTED_IMAGE_EXTENSIONS.some((extension) => name.endsWith(extension));
+};
+
+const isSupportedVideo = (file: File) => {
+  if (SUPPORTED_VIDEO_TYPES.includes(file.type)) {
+    return true;
+  }
+  const name = file.name.toLowerCase();
+  return SUPPORTED_VIDEO_EXTENSIONS.some((extension) => name.endsWith(extension));
+};
 
 export type CommunityMediaDraft = {
   key: string;
@@ -42,9 +67,9 @@ const CommunityMediaPicker = ({ media, onChange, disabled }: CommunityMediaPicke
     try {
       const uploaded: CommunityMediaDraft[] = [];
       for (const file of fileList) {
-        if (SUPPORTED_IMAGE_TYPES.includes(file.type)) {
+        if (isSupportedImage(file)) {
           if (file.size > MAX_IMAGE_BYTES) {
-            toast({ title: "Image must be 3MB or less." });
+            toast({ title: "Image must be 10MB or less." });
             continue;
           }
 
@@ -63,7 +88,7 @@ const CommunityMediaPicker = ({ media, onChange, disabled }: CommunityMediaPicke
           continue;
         }
 
-        if (SUPPORTED_VIDEO_TYPES.includes(file.type)) {
+        if (isSupportedVideo(file)) {
           if (file.size > MAX_VIDEO_BYTES) {
             toast({ title: "Video must be 25MB or less." });
             continue;
@@ -84,7 +109,10 @@ const CommunityMediaPicker = ({ media, onChange, disabled }: CommunityMediaPicke
           continue;
         }
 
-        toast({ title: "Only JPG, PNG, WebP images or MP4, WebM, MOV videos are supported." });
+        toast({
+          title:
+            "Only JPG, PNG, WebP, HEIC/HEIF images or MP4, WebM, MOV videos are supported.",
+        });
       }
 
       if (uploaded.length > 0) {
@@ -102,7 +130,7 @@ const CommunityMediaPicker = ({ media, onChange, disabled }: CommunityMediaPicke
         <input
           ref={fileInputRef}
           type="file"
-          accept="image/png,image/jpeg,image/webp,video/mp4,video/webm,video/quicktime"
+          accept="image/png,image/jpeg,image/jpg,image/webp,image/heic,image/heif,video/mp4,video/webm,video/quicktime"
           multiple
           onChange={handleFileSelect}
           className="hidden"
@@ -130,7 +158,7 @@ const CommunityMediaPicker = ({ media, onChange, disabled }: CommunityMediaPicke
           Upload media
         </Button>
         <span className="text-xs text-muted-foreground">
-          Images up to 3MB, videos up to 25MB. Max 6 items.
+          Images up to 10MB, videos up to 25MB. Max 6 items.
         </span>
       </div>
 

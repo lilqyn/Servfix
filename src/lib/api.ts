@@ -896,10 +896,22 @@ export type NotificationTemplates = Record<NotificationType, NotificationTemplat
 
 export type SupportTicketStatus = "open" | "in_progress" | "resolved" | "closed";
 
+export type SupportDepartment =
+  | "general"
+  | "customer_service"
+  | "finance"
+  | "accounting"
+  | "operations"
+  | "disputes"
+  | "technical";
+
+export type SupportTicketPriority = "low" | "medium" | "high" | "urgent";
+
 export type SupportTicketMessageSummary = {
   id: string;
   body: string;
   senderRole: UserRole;
+  isInternal?: boolean;
   createdAt: string;
 };
 
@@ -909,17 +921,59 @@ export type SupportTicketMessage = SupportTicketMessageSummary & {
 
 export type SupportTicketSummary = {
   id: string;
+  ticketNumber: string;
   subject: string;
   category?: string | null;
   status: SupportTicketStatus;
+  department: SupportDepartment;
+  priority: SupportTicketPriority;
+  assignedRole?: UserRole | null;
+  assignedUser?: {
+    id: string;
+    email?: string | null;
+    phone?: string | null;
+    username?: string | null;
+    role?: UserRole | null;
+  } | null;
   createdAt: string;
   updatedAt?: string;
   lastMessageAt: string;
   lastMessage?: SupportTicketMessageSummary | null;
 };
 
+export type SupportTicketMeeting = {
+  id: string;
+  scheduledAt: string;
+  durationMinutes?: number | null;
+  meetingUrl?: string | null;
+  notes?: string | null;
+  createdAt: string;
+};
+
+export type SupportTicketEvent = {
+  id: string;
+  type:
+    | "created"
+    | "status_changed"
+    | "assigned"
+    | "forwarded"
+    | "note_added"
+    | "meeting_scheduled"
+    | "meeting_updated"
+    | "meeting_cancelled";
+  data?: Record<string, unknown> | null;
+  createdAt: string;
+  actor?: {
+    id: string;
+    email?: string | null;
+    phone?: string | null;
+    username?: string | null;
+  } | null;
+};
+
 export type SupportTicketDetail = SupportTicketSummary & {
   messages: SupportTicketMessage[];
+  meetings?: SupportTicketMeeting[];
 };
 
 export type AdminSupportTicket = SupportTicketSummary & {
@@ -942,6 +996,30 @@ export type AdminSupportTicketMessage = SupportTicketMessageSummary & {
 
 export type AdminSupportTicketDetail = AdminSupportTicket & {
   messages: AdminSupportTicketMessage[];
+  meetings?: SupportTicketMeeting[];
+  events?: SupportTicketEvent[];
+};
+
+export type AdminSupportAgent = {
+  id: string;
+  role: UserRole;
+  email?: string | null;
+  phone?: string | null;
+  username?: string | null;
+};
+
+export type SupportTicketRoutingUpdate = {
+  department?: SupportDepartment;
+  priority?: SupportTicketPriority;
+  assignedRole?: UserRole | null;
+  assignedUserId?: string | null;
+};
+
+export type SupportTicketMeetingInput = {
+  scheduledAt: string;
+  durationMinutes?: number;
+  meetingUrl?: string;
+  notes?: string;
 };
 
 export type FeatureFlags = {
@@ -1548,12 +1626,20 @@ export async function updateAdminReportStatus(
 
 export async function fetchAdminSupportTickets(params?: {
   status?: SupportTicketStatus;
+  department?: SupportDepartment;
+  priority?: SupportTicketPriority;
+  assignedRole?: UserRole;
+  assignedUserId?: string;
   search?: string;
   cursor?: string;
   limit?: number;
 }): Promise<{ tickets: AdminSupportTicket[]; nextCursor?: string | null }> {
   const searchParams = new URLSearchParams();
   if (params?.status) searchParams.set("status", params.status);
+  if (params?.department) searchParams.set("department", params.department);
+  if (params?.priority) searchParams.set("priority", params.priority);
+  if (params?.assignedRole) searchParams.set("assignedRole", params.assignedRole);
+  if (params?.assignedUserId) searchParams.set("assignedUserId", params.assignedUserId);
   if (params?.search) searchParams.set("search", params.search);
   if (params?.cursor) searchParams.set("cursor", params.cursor);
   if (params?.limit) searchParams.set("limit", String(params.limit));
@@ -1563,6 +1649,20 @@ export async function fetchAdminSupportTickets(params?: {
 
 export async function fetchAdminSupportTicket(id: string): Promise<AdminSupportTicketDetail> {
   return apiFetch(`/api/admin/support/tickets/${id}`);
+}
+
+export async function fetchSupportAgents(): Promise<{ agents: AdminSupportAgent[] }> {
+  return apiFetch("/api/admin/support/agents");
+}
+
+export async function updateAdminSupportTicketAssignment(
+  id: string,
+  payload: SupportTicketRoutingUpdate,
+): Promise<void> {
+  await apiFetch(`/api/admin/support/tickets/${id}/assignment`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
 }
 
 export async function updateAdminSupportTicketStatus(
@@ -1575,6 +1675,13 @@ export async function updateAdminSupportTicketStatus(
   });
 }
 
+export async function addAdminSupportTicketNote(id: string, message: string): Promise<void> {
+  await apiFetch(`/api/admin/support/tickets/${id}/notes`, {
+    method: "POST",
+    body: JSON.stringify({ message }),
+  });
+}
+
 export async function addAdminSupportTicketMessage(
   id: string,
   message: string,
@@ -1582,6 +1689,16 @@ export async function addAdminSupportTicketMessage(
   await apiFetch(`/api/admin/support/tickets/${id}/messages`, {
     method: "POST",
     body: JSON.stringify({ message }),
+  });
+}
+
+export async function createAdminSupportTicketMeeting(
+  id: string,
+  payload: SupportTicketMeetingInput,
+): Promise<void> {
+  await apiFetch(`/api/admin/support/tickets/${id}/meetings`, {
+    method: "POST",
+    body: JSON.stringify(payload),
   });
 }
 

@@ -12,7 +12,12 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useNotifications } from "@/contexts/NotificationsContext";
 import { useAuth } from "@/contexts/AuthContext";
-import { getNotificationDestination } from "@/lib/notifications";
+import {
+  countUnreadNotifications,
+  filterNotificationsForRole,
+  getNotificationDestination,
+  shouldUseServerUnreadCount,
+} from "@/lib/notifications";
 import NotificationItem from "@/components/notifications/NotificationItem";
 
 const NotificationsMenu = () => {
@@ -41,13 +46,25 @@ const NotificationsMenu = () => {
     }
   }, [open, hasFetchedOnOpen, notifications.length, isLoading, refresh]);
 
+  const filteredNotifications = useMemo(
+    () => filterNotificationsForRole(notifications, user?.role),
+    [notifications, user?.role],
+  );
+
+  const displayUnreadCount = useMemo(() => {
+    if (shouldUseServerUnreadCount(user?.role)) {
+      return unreadCount;
+    }
+    return countUnreadNotifications(filteredNotifications);
+  }, [filteredNotifications, unreadCount, user?.role]);
+
   const visibleNotifications = useMemo(
-    () => notifications.slice(0, 6),
-    [notifications],
+    () => filteredNotifications.slice(0, 6),
+    [filteredNotifications],
   );
 
   const handleNavigate = async (notificationId: string) => {
-    const notification = notifications.find((item) => item.id === notificationId);
+    const notification = filteredNotifications.find((item) => item.id === notificationId);
     if (!notification) {
       return;
     }
@@ -64,9 +81,9 @@ const NotificationsMenu = () => {
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" size="icon" className="relative">
           <Bell className="w-5 h-5" />
-          {unreadCount > 0 && (
+          {displayUnreadCount > 0 && (
             <span className="absolute -top-1 -right-1 w-5 h-5 bg-primary text-primary-foreground text-xs rounded-full flex items-center justify-center font-semibold">
-              {unreadCount}
+              {displayUnreadCount}
             </span>
           )}
         </Button>
@@ -76,7 +93,7 @@ const NotificationsMenu = () => {
           <DropdownMenuLabel className="p-0 text-sm font-semibold text-foreground">
             Notifications
           </DropdownMenuLabel>
-          {unreadCount > 0 && (
+          {displayUnreadCount > 0 && (
             <Button
               variant="ghost"
               size="sm"

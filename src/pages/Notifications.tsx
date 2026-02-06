@@ -6,7 +6,12 @@ import Footer from "@/components/Footer";
 import { Button } from "@/components/ui/button";
 import { useNotifications } from "@/contexts/NotificationsContext";
 import { useAuth } from "@/contexts/AuthContext";
-import { getNotificationDestination } from "@/lib/notifications";
+import {
+  countUnreadNotifications,
+  filterNotificationsForRole,
+  getNotificationDestination,
+  shouldUseServerUnreadCount,
+} from "@/lib/notifications";
 import NotificationItem from "@/components/notifications/NotificationItem";
 
 const Notifications = () => {
@@ -23,11 +28,23 @@ const Notifications = () => {
     markRead,
   } = useNotifications();
 
+  const filteredNotifications = useMemo(
+    () => filterNotificationsForRole(notifications, user?.role),
+    [notifications, user?.role],
+  );
+
+  const displayUnreadCount = useMemo(() => {
+    if (shouldUseServerUnreadCount(user?.role)) {
+      return unreadCount;
+    }
+    return countUnreadNotifications(filteredNotifications);
+  }, [filteredNotifications, unreadCount, user?.role]);
+
   const emptyState = useMemo(() => {
     if (isLoading) {
       return null;
     }
-    if (notifications.length > 0) {
+    if (filteredNotifications.length > 0) {
       return null;
     }
     return (
@@ -35,10 +52,10 @@ const Notifications = () => {
         You are all caught up. No new notifications yet.
       </div>
     );
-  }, [notifications.length, isLoading]);
+  }, [filteredNotifications.length, isLoading]);
 
   const handleNotificationClick = async (notificationId: string) => {
-    const notification = notifications.find((item) => item.id === notificationId);
+    const notification = filteredNotifications.find((item) => item.id === notificationId);
     if (!notification) {
       return;
     }
@@ -62,7 +79,7 @@ const Notifications = () => {
               Stay updated on messages, orders, reviews, and community activity.
             </p>
           </div>
-          {unreadCount > 0 && (
+          {displayUnreadCount > 0 && (
             <Button variant="outline" onClick={() => void markAllRead()}>
               Mark all as read
             </Button>
@@ -76,9 +93,9 @@ const Notifications = () => {
           </div>
         ) : (
           <>
-            {notifications.length > 0 && (
+            {filteredNotifications.length > 0 && (
               <div className="space-y-3">
-                {notifications.map((notification) => (
+                {filteredNotifications.map((notification) => (
                   <NotificationItem
                     key={notification.id}
                     notification={notification}

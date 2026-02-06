@@ -8,6 +8,11 @@ import { Bell } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useNotifications } from "@/contexts/NotificationsContext";
 import { getRoleLabel } from "@/lib/roles";
+import {
+  countUnreadNotifications,
+  filterNotificationsForRole,
+  shouldUseServerUnreadCount,
+} from "@/lib/notifications";
 import { hasPermission, type Permission } from "@/lib/permissions";
 import {
   fetchAdminNavigation,
@@ -121,7 +126,7 @@ const AdminLayout = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { user } = useAuth();
-  const { unreadCount } = useNotifications();
+  const { notifications, unreadCount } = useNotifications();
 
   const { data: navigationData, isLoading: isNavLoading } = useQuery({
     queryKey: ["admin-navigation"],
@@ -200,9 +205,9 @@ const AdminLayout = () => {
                 onClick={() => navigate("/notifications")}
               >
                 <Bell className="h-5 w-5" />
-                {unreadCount > 0 && (
+                {displayUnreadCount > 0 && (
                   <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-primary text-[10px] font-bold text-primary-foreground flex items-center justify-center">
-                    {unreadCount}
+                    {displayUnreadCount}
                   </span>
                 )}
               </Button>
@@ -236,3 +241,14 @@ const AdminLayout = () => {
 };
 
 export default AdminLayout;
+  const filteredNotifications = useMemo(
+    () => filterNotificationsForRole(notifications, role),
+    [notifications, role],
+  );
+
+  const displayUnreadCount = useMemo(() => {
+    if (shouldUseServerUnreadCount(role)) {
+      return unreadCount;
+    }
+    return countUnreadNotifications(filteredNotifications);
+  }, [filteredNotifications, unreadCount, role]);

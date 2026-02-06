@@ -1,12 +1,14 @@
 import { Router } from "express";
 import { z } from "zod";
-import { Prisma, UserRole } from "@prisma/client";
+import { Prisma, SupportDepartment, SupportTicketPriority, UserRole } from "@prisma/client";
 import { prisma } from "../db.js";
 import { asyncHandler } from "../utils/async-handler.js";
 import { authRequired } from "../middleware/auth.js";
 import { requirePermission } from "../middleware/permissions.js";
+import { ADMIN_ROLES } from "../utils/permissions.js";
 import { env } from "../config.js";
 import { createNotification } from "../utils/notifications.js";
+import { createSupportTicketEvent, formatTicketNumber } from "../utils/tickets.js";
 import { defaultHomeContent, HOME_CONTENT_KEY } from "../utils/home-content.js";
 import {
   getPlatformSettings,
@@ -78,6 +80,10 @@ const disputesQuerySchema = paginationSchema.extend({
 const supportTicketsQuerySchema = paginationSchema.extend({
   status: z.enum(["open", "in_progress", "resolved", "closed"]).optional(),
   search: z.string().trim().min(1).optional(),
+  department: z.nativeEnum(SupportDepartment).optional(),
+  priority: z.nativeEnum(SupportTicketPriority).optional(),
+  assignedRole: z.nativeEnum(UserRole).optional(),
+  assignedUserId: z.string().uuid().optional(),
 });
 
 const analyticsQuerySchema = z.object({
@@ -245,8 +251,26 @@ const updateSupportTicketStatusSchema = z.object({
   status: z.enum(["open", "in_progress", "resolved", "closed"]),
 });
 
+const updateSupportTicketRoutingSchema = z.object({
+  department: z.nativeEnum(SupportDepartment).optional(),
+  priority: z.nativeEnum(SupportTicketPriority).optional(),
+  assignedRole: z.nativeEnum(UserRole).nullable().optional(),
+  assignedUserId: z.string().uuid().nullable().optional(),
+});
+
 const supportTicketMessageSchema = z.object({
   message: z.string().trim().min(2).max(2000),
+});
+
+const supportTicketNoteSchema = z.object({
+  message: z.string().trim().min(2).max(2000),
+});
+
+const supportTicketMeetingSchema = z.object({
+  scheduledAt: z.string().trim().min(1),
+  durationMinutes: z.coerce.number().int().min(5).max(480).optional(),
+  meetingUrl: z.string().trim().url().optional(),
+  notes: z.string().trim().max(1000).optional(),
 });
 
 const buildAdminTrend = async (months: number, locale: string, timeZone: string) => {
@@ -1097,7 +1121,22 @@ adminRouter.get(
     if (query.status) {
       where.status = query.status;
     }
+    if (query.department) {
+      where.department = query.department;
+    }
+    if (query.priority) {
+      where.priority = query.priority;
+    }
+    if (query.assignedRole) {
+      where.assignedRole = query.assignedRole;
+    }
+    if (query.assignedUserId) {
+      where.assignedUserId = query.assignedUserId;
+    }
     if (query.search) {
+      const normalizedSearch = query.search.trim();
+      const digits = normalizedSearch.replace(/\D/g, "");
+      const ticketNumber = digits ? Number(digits) : null;
       where.OR = [
         { subject: { contains: query.search, mode: "insensitive" } },
         { category: { contains: query.search, mode: "insensitive" } },
@@ -1122,6 +1161,7 @@ adminRouter.get(
             },
           },
         },
+        ...(ticketNumber ? [{ ticketNumber }] : []),
       ];
     }
 
@@ -1132,6 +1172,7 @@ adminRouter.get(
       orderBy: [{ lastMessageAt: "desc" }, { createdAt: "desc" }],
       include: {
         user: { select: { id: true, email: true, phone: true, username: true } },
+        assignedUser: { select: { id: true, email: true, phone: true, username: true, role: true } },
         messages: {
           orderBy: { createdAt: "desc" },
           take: 1,
@@ -1144,20 +1185,42 @@ adminRouter.get(
     const trimmed = hasNext ? tickets.slice(0, limit) : tickets;
     const nextCursor = hasNext ? trimmed[trimmed.length - 1]?.id ?? null : null;
 
-    res.json({
-      tickets: trimmed.map((ticket) => ({
-        id: ticket.id,
-        subject: ticket.subject,
-        category: ticket.category,
-        status: ticket.status,
-        createdAt: ticket.createdAt,
-        updatedAt: ticket.updatedAt,
-        lastMessageAt: ticket.lastMessageAt,
-        requester: ticket.user,
-        lastMessage: ticket.messages[0] ?? null,
+      res.json({
+        tickets: trimmed.map((ticket) => ({
+          id: ticket.id,
+          ticketNumber: formatTicketNumber(ticket.ticketNumber, ticket.id),
+          subject: ticket.subject,
+          category: ticket.category,
+          status: ticket.status,
+          department: ticket.department,
+          priority: ticket.priority,
+          assignedRole: ticket.assignedRole,
+          assignedUser: ticket.assignedUser,
+          createdAt: ticket.createdAt,
+          updatedAt: ticket.updatedAt,
+          lastMessageAt: ticket.lastMessageAt,
+          requester: ticket.user,
+          lastMessage: ticket.messages[0] ?? null,
       })),
       nextCursor,
     });
+  }),
+);
+
+adminRouter.get(
+  "/support/agents",
+  authRequired,
+  requirePermission("support.read"),
+  requireAdminPageAccess("support"),
+  requireBusinessFunctionAccess("customer_service"),
+  asyncHandler(async (_req, res) => {
+    const agents = await prisma.user.findMany({
+      where: { role: { in: ADMIN_ROLES } },
+      select: { id: true, role: true, email: true, phone: true, username: true },
+      orderBy: { createdAt: "asc" },
+    });
+
+    res.json({ agents });
   }),
 );
 
@@ -1170,23 +1233,47 @@ adminRouter.get(
   asyncHandler(async (req, res) => {
     const params = z.object({ id: z.string().uuid() }).parse(req.params);
 
-    const ticket = await prisma.supportTicket.findUnique({
-      where: { id: params.id },
-      include: {
-        user: { select: { id: true, email: true, phone: true, username: true } },
-        messages: {
-          orderBy: { createdAt: "asc" },
-          select: {
-            id: true,
-            body: true,
-            senderId: true,
-            senderRole: true,
-            createdAt: true,
-            sender: { select: { id: true, email: true, phone: true, username: true } },
+      const ticket = await prisma.supportTicket.findUnique({
+        where: { id: params.id },
+        include: {
+          user: { select: { id: true, email: true, phone: true, username: true } },
+          assignedUser: { select: { id: true, email: true, phone: true, username: true, role: true } },
+          messages: {
+            orderBy: { createdAt: "asc" },
+            select: {
+              id: true,
+              body: true,
+              senderId: true,
+              senderRole: true,
+              isInternal: true,
+              createdAt: true,
+              sender: { select: { id: true, email: true, phone: true, username: true } },
+            },
+          },
+          meetings: {
+            orderBy: { scheduledAt: "desc" },
+            select: {
+              id: true,
+              scheduledAt: true,
+              durationMinutes: true,
+              meetingUrl: true,
+              notes: true,
+              createdAt: true,
+              createdBy: { select: { id: true, email: true, phone: true, username: true } },
+            },
+          },
+          events: {
+            orderBy: { createdAt: "desc" },
+            select: {
+              id: true,
+              type: true,
+              data: true,
+              createdAt: true,
+              actor: { select: { id: true, email: true, phone: true, username: true } },
+            },
           },
         },
-      },
-    });
+      });
 
     if (!ticket) {
       return res.status(404).json({ error: "Support ticket not found." });
@@ -1194,14 +1281,21 @@ adminRouter.get(
 
     res.json({
       id: ticket.id,
+      ticketNumber: formatTicketNumber(ticket.ticketNumber, ticket.id),
       subject: ticket.subject,
       category: ticket.category,
       status: ticket.status,
+      department: ticket.department,
+      priority: ticket.priority,
+      assignedRole: ticket.assignedRole,
+      assignedUser: ticket.assignedUser,
       createdAt: ticket.createdAt,
       updatedAt: ticket.updatedAt,
       lastMessageAt: ticket.lastMessageAt,
       requester: ticket.user,
       messages: ticket.messages,
+      meetings: ticket.meetings,
+      events: ticket.events,
     });
   }),
 );
@@ -1216,13 +1310,210 @@ adminRouter.patch(
     const params = z.object({ id: z.string().uuid() }).parse(req.params);
     const data = updateSupportTicketStatusSchema.parse(req.body);
 
+    const existing = await prisma.supportTicket.findUnique({
+      where: { id: params.id },
+      select: { id: true, status: true },
+    });
+
+    if (!existing) {
+      return res.status(404).json({ error: "Support ticket not found." });
+    }
+
     const ticket = await prisma.supportTicket.update({
       where: { id: params.id },
       data: { status: data.status },
       select: { id: true, status: true, updatedAt: true },
     });
 
+    if (existing.status !== data.status) {
+      await createSupportTicketEvent({
+        ticketId: ticket.id,
+        actorId: req.user!.id,
+        type: "status_changed",
+        data: { from: existing.status, to: data.status },
+      });
+    }
+
     res.json({ ticket });
+  }),
+);
+
+adminRouter.patch(
+  "/support/tickets/:id/assignment",
+  authRequired,
+  requirePermission("support.update"),
+  requireAdminPageAccess("support"),
+  requireBusinessFunctionAccess("customer_service"),
+  asyncHandler(async (req, res) => {
+    const params = z.object({ id: z.string().uuid() }).parse(req.params);
+    const data = updateSupportTicketRoutingSchema.parse(req.body);
+
+    const existing = await prisma.supportTicket.findUnique({
+      where: { id: params.id },
+      select: {
+        id: true,
+        department: true,
+        priority: true,
+        assignedRole: true,
+        assignedUserId: true,
+      },
+    });
+
+    if (!existing) {
+      return res.status(404).json({ error: "Support ticket not found." });
+    }
+
+    if (data.assignedUserId) {
+      const assignee = await prisma.user.findUnique({
+        where: { id: data.assignedUserId },
+        select: { id: true, role: true },
+      });
+      if (!assignee || !ADMIN_ROLES.includes(assignee.role)) {
+        return res.status(400).json({ error: "Assigned user must be an admin role." });
+      }
+    }
+
+    const updates: Prisma.SupportTicketUpdateInput = {};
+    if (data.department !== undefined) updates.department = data.department;
+    if (data.priority !== undefined) updates.priority = data.priority;
+    if (data.assignedRole !== undefined) updates.assignedRole = data.assignedRole;
+    if (data.assignedUserId !== undefined) updates.assignedUserId = data.assignedUserId;
+
+    const ticket = await prisma.supportTicket.update({
+      where: { id: params.id },
+      data: updates,
+      select: {
+        id: true,
+        department: true,
+        priority: true,
+        assignedRole: true,
+        assignedUserId: true,
+        updatedAt: true,
+      },
+    });
+
+    if (data.department && data.department !== existing.department) {
+      await createSupportTicketEvent({
+        ticketId: ticket.id,
+        actorId: req.user!.id,
+        type: "forwarded",
+        data: { from: existing.department, to: data.department },
+      });
+    }
+
+    if (
+      data.assignedRole !== undefined ||
+      data.assignedUserId !== undefined ||
+      data.priority !== undefined
+    ) {
+      await createSupportTicketEvent({
+        ticketId: ticket.id,
+        actorId: req.user!.id,
+        type: "assigned",
+        data: {
+          assignedRole: ticket.assignedRole,
+          assignedUserId: ticket.assignedUserId,
+          priority: ticket.priority,
+        },
+      });
+    }
+
+    res.json({ ticket });
+  }),
+);
+
+adminRouter.post(
+  "/support/tickets/:id/notes",
+  authRequired,
+  requirePermission("support.update"),
+  requireAdminPageAccess("support"),
+  requireBusinessFunctionAccess("customer_service"),
+  asyncHandler(async (req, res) => {
+    const params = z.object({ id: z.string().uuid() }).parse(req.params);
+    const data = supportTicketNoteSchema.parse(req.body);
+
+    const ticket = await prisma.supportTicket.findUnique({
+      where: { id: params.id },
+      select: { id: true },
+    });
+
+    if (!ticket) {
+      return res.status(404).json({ error: "Support ticket not found." });
+    }
+
+    const message = await prisma.supportTicketMessage.create({
+      data: {
+        ticketId: ticket.id,
+        senderId: req.user!.id,
+        senderRole: req.user!.role,
+        body: data.message,
+        isInternal: true,
+      },
+      select: { id: true, body: true, senderRole: true, createdAt: true, isInternal: true },
+    });
+
+    await createSupportTicketEvent({
+      ticketId: ticket.id,
+      actorId: req.user!.id,
+      type: "note_added",
+      data: { internal: true },
+    });
+
+    res.status(201).json({ message });
+  }),
+);
+
+adminRouter.post(
+  "/support/tickets/:id/meetings",
+  authRequired,
+  requirePermission("support.update"),
+  requireAdminPageAccess("support"),
+  requireBusinessFunctionAccess("customer_service"),
+  asyncHandler(async (req, res) => {
+    const params = z.object({ id: z.string().uuid() }).parse(req.params);
+    const data = supportTicketMeetingSchema.parse(req.body);
+
+    const ticket = await prisma.supportTicket.findUnique({
+      where: { id: params.id },
+      select: { id: true },
+    });
+
+    if (!ticket) {
+      return res.status(404).json({ error: "Support ticket not found." });
+    }
+
+    const scheduledAt = new Date(data.scheduledAt);
+    if (Number.isNaN(scheduledAt.getTime())) {
+      return res.status(400).json({ error: "Invalid meeting time." });
+    }
+
+    const meeting = await prisma.supportTicketMeeting.create({
+      data: {
+        ticketId: ticket.id,
+        scheduledAt,
+        durationMinutes: data.durationMinutes ?? null,
+        meetingUrl: data.meetingUrl ?? null,
+        notes: data.notes ?? null,
+        createdById: req.user!.id,
+      },
+      select: {
+        id: true,
+        scheduledAt: true,
+        durationMinutes: true,
+        meetingUrl: true,
+        notes: true,
+        createdAt: true,
+      },
+    });
+
+    await createSupportTicketEvent({
+      ticketId: ticket.id,
+      actorId: req.user!.id,
+      type: "meeting_scheduled",
+      data: { meetingId: meeting.id, scheduledAt: meeting.scheduledAt.toISOString() },
+    });
+
+    res.status(201).json({ meeting });
   }),
 );
 
@@ -1259,6 +1550,7 @@ adminRouter.post(
           senderId: req.user!.id,
           senderRole: req.user!.role,
           body: data.message,
+          isInternal: false,
         },
         select: { id: true, body: true, senderRole: true, createdAt: true },
       }),

@@ -19,6 +19,11 @@ import SearchAutocomplete from "@/components/header/SearchAutocomplete";
 import { useAuth } from "@/contexts/AuthContext";
 import NotificationsMenu from "@/components/notifications/NotificationsMenu";
 import { isAdminRole, isProviderRole, getRoleLabel } from "@/lib/roles";
+import {
+  countUnreadNotifications,
+  filterNotificationsForRole,
+  shouldUseServerUnreadCount,
+} from "@/lib/notifications";
 import { usePublicSettings } from "@/hooks/usePublicSettings";
 
 const Header = () => {
@@ -29,13 +34,23 @@ const Header = () => {
   const { cart } = useCart();
   const { getUnreadCount } = useMessages();
   const unreadMessages = getUnreadCount();
-  const { unreadCount: unreadNotifications } = useNotifications();
+  const { notifications, unreadCount: unreadNotifications } = useNotifications();
   const { user, isAuthenticated, signOut } = useAuth();
   const { data: publicSettings } = usePublicSettings();
   const baseUrl = import.meta.env.BASE_URL;
   const logoUrl = `${baseUrl}servfix-logo.png`;
   const iconUrl = `${baseUrl}servfix-icon.png`;
   const isProvider = isProviderRole(user?.role);
+  const filteredNotifications = useMemo(
+    () => filterNotificationsForRole(notifications, user?.role),
+    [notifications, user?.role],
+  );
+  const displayUnreadNotifications = useMemo(() => {
+    if (shouldUseServerUnreadCount(user?.role)) {
+      return unreadNotifications;
+    }
+    return countUnreadNotifications(filteredNotifications);
+  }, [filteredNotifications, unreadNotifications, user?.role]);
   const isAdmin = isAdminRole(user?.role);
   const communityEnabled = publicSettings?.featureFlags.community ?? true;
 
@@ -359,9 +374,9 @@ const Header = () => {
               {isAuthenticated && (
                 <Link to="/notifications" className="px-4 py-3 text-sm font-medium text-muted-foreground hover:bg-muted rounded-lg transition-colors flex items-center justify-between">
                   Notifications
-                  {unreadNotifications > 0 && (
+                  {displayUnreadNotifications > 0 && (
                     <span className="w-5 h-5 bg-primary text-primary-foreground text-xs rounded-full flex items-center justify-center font-semibold">
-                      {unreadNotifications}
+                      {displayUnreadNotifications}
                     </span>
                   )}
                 </Link>

@@ -442,7 +442,7 @@ const AccountSettingsContent = ({ showHeader = true }: AccountSettingsContentPro
                         disabled={isUploadingAvatar}
                       />
                       <p className="text-xs text-muted-foreground">
-                        Square image recommended. JPG, PNG, or WebP up to 3MB.
+                        Square image recommended. JPG, PNG, WebP, or HEIC/HEIF up to 10MB.
                       </p>
                     </div>
                     <div className="flex items-center gap-2">

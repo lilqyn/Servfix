@@ -8,18 +8,36 @@ import { isS3Configured, signS3Key, uploadToS3 } from "../utils/s3.js";
 
 export const uploadsRouter = Router();
 
-const MAX_UPLOAD_BYTES = 3 * 1024 * 1024;
+const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
+const MAX_OUTPUT_BYTES = 3 * 1024 * 1024;
 const MAX_VIDEO_BYTES = 25 * 1024 * 1024;
 
-const SUPPORTED_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
+const SUPPORTED_TYPES = new Set([
+  "image/jpeg",
+  "image/jpg",
+  "image/png",
+  "image/webp",
+  "image/heic",
+  "image/heif",
+]);
 const SUPPORTED_VIDEO_TYPES = new Set(["video/mp4", "video/webm", "video/quicktime"]);
+const SUPPORTED_EXTENSIONS = [".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif"];
+
+const isSupportedImage = (file: Express.Multer.File) => {
+  const mimetype = file.mimetype?.toLowerCase();
+  if (mimetype && SUPPORTED_TYPES.has(mimetype)) {
+    return true;
+  }
+  const name = file.originalname?.toLowerCase() ?? "";
+  return SUPPORTED_EXTENSIONS.some((extension) => name.endsWith(extension));
+};
 
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: MAX_UPLOAD_BYTES },
   fileFilter: (_req, file, cb) => {
-    if (!SUPPORTED_TYPES.has(file.mimetype)) {
-      cb(new Error("Only JPG, PNG, or WebP images are supported."));
+    if (!isSupportedImage(file)) {
+      cb(new Error("Only JPG, PNG, WebP, or HEIC/HEIF images are supported."));
       return;
     }
     cb(null, true);
@@ -47,7 +65,7 @@ const handleUpload = (req: Request, res: Response, next: NextFunction) => {
 
     if (err instanceof multer.MulterError) {
       if (err.code === "LIMIT_FILE_SIZE") {
-        res.status(400).json({ error: "Image must be 3MB or less." });
+        res.status(400).json({ error: "Image must be 10MB or less." });
         return;
       }
       res.status(400).json({ error: "Unable to upload image." });
@@ -89,20 +107,20 @@ const handleVideoUpload = (req: Request, res: Response, next: NextFunction) => {
 };
 
 const convertToWebp = async (buffer: Buffer) => {
-  const qualitySteps = [80, 70, 60, 50];
+  const qualitySteps = [82, 72, 60, 50, 40];
+  const pipeline = sharp(buffer)
+    .rotate()
+    .resize({ width: 2048, height: 2048, fit: "inside", withoutEnlargement: true });
 
   for (const quality of qualitySteps) {
-    const output = await sharp(buffer)
-      .rotate()
-      .webp({ quality })
-      .toBuffer();
+    const output = await pipeline.clone().webp({ quality }).toBuffer();
 
-    if (output.length <= MAX_UPLOAD_BYTES) {
+    if (output.length <= MAX_OUTPUT_BYTES) {
       return output;
     }
   }
 
-  throw new Error("Image is larger than 3MB after compression.");
+  throw new Error("Image is too large after compression. Try a smaller image.");
 };
 
 const createUploadHandler =
@@ -118,7 +136,13 @@ const createUploadHandler =
       return res.status(400).json({ error: "Image file is required." });
     }
 
-    const webpBuffer = await convertToWebp(req.file.buffer);
+    let webpBuffer: Buffer;
+    try {
+      webpBuffer = await convertToWebp(req.file.buffer);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to upload image.";
+      return res.status(400).json({ error: message });
+    }
     const key = `${prefix}/${req.user!.id}/${Date.now()}-${randomUUID()}.webp`;
 
     await uploadToS3({
