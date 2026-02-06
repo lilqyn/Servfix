@@ -209,12 +209,13 @@ const mapLocationToCity = (location?: string | null) => {
     return "";
   }
 
-  const base = location.split(",")[0]?.trim().toLowerCase();
-  if (!base) {
+  const raw = location.split(",")[0]?.trim();
+  if (!raw) {
     return "";
   }
 
-  return CITY_VALUE_BY_LABEL[base] ?? "";
+  const normalized = raw.toLowerCase();
+  return CITY_LABELS[normalized] ?? CITY_VALUE_BY_LABEL[normalized] ?? raw;
 };
 
 const buildPricingTiers = (tiers: ApiService["tiers"]): ServiceFormData["pricingTiers"] => {

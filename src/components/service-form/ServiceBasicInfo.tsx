@@ -21,6 +21,8 @@ const BASE_CATEGORIES = [
   { value: "rentals", label: "Equipment Rentals" },
 ];
 
+const CITY_SUGGESTIONS = ["Accra", "Kumasi", "Tamale", "Cape Coast", "Takoradi"];
+
 const normalizeCategoryValue = (value: string) =>
   value
     .trim()
@@ -198,20 +200,21 @@ const ServiceBasicInfo = ({ form }: ServiceBasicInfoProps) => {
             render={({ field }) => (
               <FormItem>
                 <FormLabel>City</FormLabel>
-                <Select onValueChange={field.onChange} defaultValue={field.value}>
-                  <FormControl>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select your city" />
-                    </SelectTrigger>
-                  </FormControl>
-                  <SelectContent>
-                    <SelectItem value="accra">Accra</SelectItem>
-                    <SelectItem value="kumasi">Kumasi</SelectItem>
-                    <SelectItem value="tamale">Tamale</SelectItem>
-                    <SelectItem value="cape-coast">Cape Coast</SelectItem>
-                    <SelectItem value="takoradi">Takoradi</SelectItem>
-                  </SelectContent>
-                </Select>
+                <FormControl>
+                  <Input
+                    {...field}
+                    list="city-suggestions"
+                    placeholder="Enter your city"
+                  />
+                </FormControl>
+                <datalist id="city-suggestions">
+                  {CITY_SUGGESTIONS.map((city) => (
+                    <option key={city} value={city} />
+                  ))}
+                </datalist>
+                <FormDescription>
+                  Choose a city or type a new one.
+                </FormDescription>
                 <FormMessage />
               </FormItem>
             )}
