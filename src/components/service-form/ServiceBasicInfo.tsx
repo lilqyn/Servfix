@@ -5,7 +5,19 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { X } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+  CommandSeparator,
+} from "@/components/ui/command";
+import { cn } from "@/lib/utils";
+import { Check, ChevronsUpDown, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { ServiceFormData } from "@/pages/ServiceForm";
 import { useHomeContent } from "@/hooks/useHomeContent";
@@ -36,7 +48,10 @@ interface ServiceBasicInfoProps {
 
 const ServiceBasicInfo = ({ form }: ServiceBasicInfoProps) => {
   const [tagInput, setTagInput] = useState("");
+  const [cityOpen, setCityOpen] = useState(false);
+  const [cityQuery, setCityQuery] = useState("");
   const { data: homeContent } = useHomeContent();
+  const watchedCity = form.watch("location.city");
 
   const categories = useMemo(() => {
     const normalized = new Set<string>();
@@ -53,6 +68,22 @@ const ServiceBasicInfo = ({ form }: ServiceBasicInfoProps) => {
 
     return [...BASE_CATEGORIES, ...dynamicCategories];
   }, [homeContent]);
+
+  const cityOptions = useMemo(() => {
+    const normalized = new Map<string, string>();
+    CITY_SUGGESTIONS.forEach((city) => normalized.set(city.toLowerCase(), city));
+    if (watchedCity?.trim()) {
+      normalized.set(watchedCity.trim().toLowerCase(), watchedCity.trim());
+    }
+    return Array.from(normalized.values());
+  }, [watchedCity]);
+
+  const handleCityOpenChange = (open: boolean) => {
+    setCityOpen(open);
+    if (!open) {
+      setCityQuery("");
+    }
+  };
 
   const handleAddTag = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter" && tagInput.trim()) {
@@ -200,21 +231,90 @@ const ServiceBasicInfo = ({ form }: ServiceBasicInfoProps) => {
             render={({ field }) => (
               <FormItem>
                 <FormLabel>City</FormLabel>
-                <FormControl>
-                  <Input
-                    {...field}
-                    list="city-suggestions"
-                    placeholder="Enter your city"
-                  />
-                </FormControl>
-                <datalist id="city-suggestions">
-                  {CITY_SUGGESTIONS.map((city) => (
-                    <option key={city} value={city} />
-                  ))}
-                </datalist>
-                <FormDescription>
-                  Choose a city or type a new one.
-                </FormDescription>
+                <Popover open={cityOpen} onOpenChange={handleCityOpenChange}>
+                  <PopoverTrigger asChild>
+                    <FormControl>
+                      <Button
+                        variant="outline"
+                        role="combobox"
+                        aria-expanded={cityOpen}
+                        className={cn(
+                          "w-full justify-between",
+                          !field.value && "text-muted-foreground",
+                        )}
+                      >
+                        {field.value?.trim() ? field.value : "Select or type a city"}
+                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                      </Button>
+                    </FormControl>
+                  </PopoverTrigger>
+                  <PopoverContent
+                    className="w-[--radix-popover-trigger-width] p-0"
+                    align="start"
+                  >
+                    <Command>
+                      <CommandInput
+                        placeholder="Search cities..."
+                        value={cityQuery}
+                        onValueChange={setCityQuery}
+                      />
+                      <CommandList>
+                        <CommandEmpty>No cities found.</CommandEmpty>
+                        <CommandGroup>
+                          {cityOptions.map((city) => (
+                            <CommandItem
+                              key={city}
+                              value={city}
+                              onSelect={(value) => {
+                                field.onChange(value);
+                                handleCityOpenChange(false);
+                              }}
+                            >
+                              <Check
+                                className={cn(
+                                  "mr-2 h-4 w-4",
+                                  field.value?.toLowerCase() === city.toLowerCase()
+                                    ? "opacity-100"
+                                    : "opacity-0",
+                                )}
+                              />
+                              {city}
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                        {cityQuery.trim() &&
+                          !cityOptions.some(
+                            (city) => city.toLowerCase() === cityQuery.trim().toLowerCase(),
+                          ) && (
+                            <>
+                              <CommandSeparator />
+                              <CommandGroup>
+                                <CommandItem
+                                  value={cityQuery.trim()}
+                                  onSelect={(value) => {
+                                    field.onChange(value);
+                                    handleCityOpenChange(false);
+                                  }}
+                                >
+                                  <Check
+                                    className={cn(
+                                      "mr-2 h-4 w-4",
+                                      field.value?.toLowerCase() ===
+                                        cityQuery.trim().toLowerCase()
+                                        ? "opacity-100"
+                                        : "opacity-0",
+                                    )}
+                                  />
+                                  {`Use "${cityQuery.trim()}"`}
+                                </CommandItem>
+                              </CommandGroup>
+                            </>
+                          )}
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
+                <FormDescription>Choose a city or type a new one.</FormDescription>
                 <FormMessage />
               </FormItem>
             )}
