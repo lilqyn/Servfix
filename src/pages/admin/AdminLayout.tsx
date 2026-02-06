@@ -153,6 +153,17 @@ const AdminLayout = () => {
   const businessFunctions = navigationData?.businessFunctions;
   const featureFlags = navigationData?.featureFlags;
   const adminAccess = navigationData?.adminAccess;
+  const filteredNotifications = useMemo(
+    () => filterNotificationsForRole(notifications, role),
+    [notifications, role],
+  );
+
+  const displayUnreadCount = useMemo(() => {
+    if (shouldUseServerUnreadCount(role)) {
+      return unreadCount;
+    }
+    return countUnreadNotifications(filteredNotifications);
+  }, [filteredNotifications, unreadCount, role]);
 
   const canAccessPage = (key: AdminPageKey) => {
     if (!role) return false;
@@ -241,14 +252,3 @@ const AdminLayout = () => {
 };
 
 export default AdminLayout;
-  const filteredNotifications = useMemo(
-    () => filterNotificationsForRole(notifications, role),
-    [notifications, role],
-  );
-
-  const displayUnreadCount = useMemo(() => {
-    if (shouldUseServerUnreadCount(role)) {
-      return unreadCount;
-    }
-    return countUnreadNotifications(filteredNotifications);
-  }, [filteredNotifications, unreadCount, role]);
