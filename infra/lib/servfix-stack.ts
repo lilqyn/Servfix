@@ -95,7 +95,7 @@ export class ServfixStack extends Stack {
 
     const db = new rds.DatabaseInstance(this, "Database", {
       engine: rds.DatabaseInstanceEngine.postgres({
-        version: rds.PostgresEngineVersion.VER_15_5,
+        version: rds.PostgresEngineVersion.VER_15_8,
       }),
       vpc,
       vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_ISOLATED },

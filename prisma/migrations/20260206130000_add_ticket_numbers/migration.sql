@@ -14,8 +14,12 @@ SET "ticketNumber" = ordered.rn
 FROM ordered
 WHERE "SupportTicket".id = ordered.id;
 
--- Set sequence to max ticketNumber (or 0 if none)
-SELECT setval('"SupportTicket_ticketNumber_seq"', COALESCE((SELECT MAX("ticketNumber") FROM "SupportTicket"), 0));
+-- Set sequence to max ticketNumber (or 1 if none)
+SELECT setval(
+  '"SupportTicket_ticketNumber_seq"',
+  COALESCE((SELECT MAX("ticketNumber") FROM "SupportTicket"), 1),
+  (SELECT MAX("ticketNumber") FROM "SupportTicket") IS NOT NULL
+);
 
 -- Set default + not null and ownership
 ALTER TABLE "SupportTicket"
