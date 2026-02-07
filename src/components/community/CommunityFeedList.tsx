@@ -23,6 +23,7 @@ import CommunityMediaPicker, {
 } from "@/components/community/CommunityMediaPicker";
 import { toast } from "@/components/ui/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
+import { ensureGuestId } from "@/lib/guest";
 import {
   ApiCommunityPost,
   deleteCommunityPost,
@@ -208,9 +209,12 @@ const CommunityFeedList = ({
 
   const toggleLike = async (postId: string) => {
     if (!isAuthenticated) {
-      toast({ title: "Please sign in to like posts." });
-      navigate("/sign-in?next=/community");
-      return;
+      const guestId = ensureGuestId();
+      if (!guestId) {
+        toast({ title: "Please sign in to like posts." });
+        navigate("/sign-in?next=/community");
+        return;
+      }
     }
     const current = feedPosts.find((post) => post.id === postId);
     if (!current) {
@@ -304,6 +308,9 @@ const CommunityFeedList = ({
   };
 
   const handleShare = async (postId: string) => {
+    if (!isAuthenticated) {
+      ensureGuestId();
+    }
     const url = getShareUrl(postId);
     setFeedPosts((prev) =>
       prev.map((post) =>

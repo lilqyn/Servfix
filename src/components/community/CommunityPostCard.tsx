@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { toast } from "@/components/ui/use-toast";
 import { cn } from "@/lib/utils";
+import { ensureGuestId } from "@/lib/guest";
 import CommunityMediaPicker, {
   CommunityMediaDraft,
 } from "@/components/community/CommunityMediaPicker";
@@ -123,9 +124,15 @@ const CommunityPostCard = ({ post, onRefresh, showFollow = true }: CommunityPost
     staleTime: 15_000,
   });
 
-  const requireAuth = () => {
+  const ensureIdentity = (allowGuest = false) => {
     if (isAuthenticated) {
       return true;
+    }
+    if (allowGuest) {
+      const guestId = ensureGuestId();
+      if (guestId) {
+        return true;
+      }
     }
     toast("Please sign in to continue.");
     navigate("/sign-in");
@@ -133,7 +140,7 @@ const CommunityPostCard = ({ post, onRefresh, showFollow = true }: CommunityPost
   };
 
   const handleLike = async () => {
-    if (!requireAuth() || isLiking) {
+    if (!ensureIdentity(true) || isLiking) {
       return;
     }
     setIsLiking(true);
@@ -152,7 +159,7 @@ const CommunityPostCard = ({ post, onRefresh, showFollow = true }: CommunityPost
   };
 
   const handleSave = async () => {
-    if (!requireAuth() || isSaving) {
+    if (!ensureIdentity() || isSaving) {
       return;
     }
     setIsSaving(true);
@@ -174,6 +181,9 @@ const CommunityPostCard = ({ post, onRefresh, showFollow = true }: CommunityPost
     if (isSharing) {
       return;
     }
+    if (!ensureIdentity(true)) {
+      return;
+    }
     setIsSharing(true);
     try {
       await shareCommunityPost(post.id);
@@ -186,7 +196,7 @@ const CommunityPostCard = ({ post, onRefresh, showFollow = true }: CommunityPost
   };
 
   const handleFollow = async () => {
-    if (!requireAuth() || isFollowing || isOwnPost) {
+    if (!ensureIdentity() || isFollowing || isOwnPost) {
       return;
     }
     setIsFollowing(true);
@@ -205,7 +215,7 @@ const CommunityPostCard = ({ post, onRefresh, showFollow = true }: CommunityPost
   };
 
   const handleCommentSubmit = async () => {
-    if (!requireAuth() || isCommenting) {
+    if (!ensureIdentity(true) || isCommenting) {
       return;
     }
     const content = commentDraft.trim();
@@ -243,7 +253,7 @@ const CommunityPostCard = ({ post, onRefresh, showFollow = true }: CommunityPost
   };
 
   const handleUpdate = async () => {
-    if (!requireAuth() || isUpdating) {
+    if (!ensureIdentity() || isUpdating) {
       return;
     }
 
@@ -271,7 +281,7 @@ const CommunityPostCard = ({ post, onRefresh, showFollow = true }: CommunityPost
   };
 
   const handleDelete = async () => {
-    if (!requireAuth() || isDeleting) {
+    if (!ensureIdentity() || isDeleting) {
       return;
     }
 
@@ -506,37 +516,34 @@ const CommunityPostCard = ({ post, onRefresh, showFollow = true }: CommunityPost
                   <div className="text-sm text-muted-foreground">No comments yet.</div>
                 )}
 
-                {isAuthenticated ? (
-                  <div className="space-y-2">
-                    <Textarea
-                      value={commentDraft}
-                      onChange={(event) => setCommentDraft(event.target.value)}
-                      placeholder="Write a comment..."
-                      rows={2}
-                    />
-                    <div className="flex justify-end">
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        onClick={handleCommentSubmit}
-                        disabled={isCommenting}
-                      >
-                        {isCommenting ? (
-                          <>
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                            Posting...
-                          </>
-                        ) : (
-                          "Post comment"
-                        )}
-                      </Button>
-                    </div>
+                <div className="space-y-2">
+                  {!isAuthenticated ? (
+                    <p className="text-xs text-muted-foreground">Posting as guest.</p>
+                  ) : null}
+                  <Textarea
+                    value={commentDraft}
+                    onChange={(event) => setCommentDraft(event.target.value)}
+                    placeholder="Write a comment..."
+                    rows={2}
+                  />
+                  <div className="flex justify-end">
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={handleCommentSubmit}
+                      disabled={isCommenting}
+                    >
+                      {isCommenting ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Posting...
+                        </>
+                      ) : (
+                        "Post comment"
+                      )}
+                    </Button>
                   </div>
-                ) : (
-                  <p className="text-xs text-muted-foreground">
-                    Sign in to join the conversation.
-                  </p>
-                )}
+                </div>
               </div>
             )}
           </>

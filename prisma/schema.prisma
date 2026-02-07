@@ -903,14 +903,17 @@ model CommunityPostLike {
   postId String
   post   CommunityPost @relation(fields: [postId], references: [id], onDelete: Cascade)
 
-  userId String
-  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String?
+  user   User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+  guestId String?
 
   createdAt DateTime @default(now())
 
   @@unique([postId, userId])
+  @@unique([postId, guestId])
   @@index([postId])
   @@index([userId])
+  @@index([guestId])
 }
 
 model CommunityPostSave {
@@ -918,14 +921,17 @@ model CommunityPostSave {
   postId String
   post   CommunityPost @relation(fields: [postId], references: [id], onDelete: Cascade)
 
-  userId String
-  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String?
+  user   User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+  guestId String?
 
   createdAt DateTime @default(now())
 
   @@unique([postId, userId])
+  @@unique([postId, guestId])
   @@index([postId])
   @@index([userId])
+  @@index([guestId])
 }
 
 model CommunityPostComment {
@@ -933,8 +939,9 @@ model CommunityPostComment {
   postId   String
   post     CommunityPost @relation(fields: [postId], references: [id], onDelete: Cascade)
 
-  authorId String
-  author   User @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  authorId String?
+  author   User? @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  guestId  String?
 
   content   String
   createdAt DateTime @default(now())
@@ -942,6 +949,7 @@ model CommunityPostComment {
 
   @@index([postId])
   @@index([authorId])
+  @@index([guestId])
   @@index([createdAt])
 }
 

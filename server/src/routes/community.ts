@@ -20,6 +20,39 @@ const getClientSettings = async (req: CommunityRequest) => {
   return settings;
 };
 
+const guestIdSchema = z.string().uuid();
+
+const getGuestId = (req: Request) => {
+  const header = req.headers["x-guest-id"];
+  const value = Array.isArray(header) ? header[0] : header;
+  if (typeof value !== "string") {
+    return null;
+  }
+  const parsed = guestIdSchema.safeParse(value.trim());
+  return parsed.success ? parsed.data : null;
+};
+
+const getRequestIdentity = (req: Request) => {
+  if (req.user?.id) {
+    return { userId: req.user.id, guestId: null };
+  }
+  const guestId = getGuestId(req);
+  return guestId ? { userId: null, guestId } : null;
+};
+
+const buildGuestAuthor = (guestId: string) => {
+  const suffix = guestId.slice(0, 6);
+  return {
+    id: `guest-${guestId}`,
+    role: "buyer",
+    email: null,
+    phone: null,
+    username: `guest-${suffix}`,
+    avatarUrl: null,
+    providerProfile: null,
+  };
+};
+
 const containsBlockedKeyword = (value: string, keywords: string[]) => {
   if (!value || keywords.length === 0) return false;
   const normalized = value.toLowerCase();
@@ -136,7 +169,9 @@ communityRouter.get(
   asyncHandler(async (req, res) => {
     const query = feedQuerySchema.parse(req.query);
     const limit = query.limit ?? 10;
-    const viewerId = req.user?.id ?? null;
+    const identity = getRequestIdentity(req);
+    const viewerId = identity?.userId ?? null;
+    const viewerGuestId = identity?.guestId ?? null;
     const scope = query.scope ?? "all";
 
     if (scope === "following" && !viewerId) {
@@ -180,15 +215,19 @@ communityRouter.get(
       },
     };
 
-    if (viewerId) {
+    if (viewerId || viewerGuestId) {
+      const likeWhere = viewerId ? { userId: viewerId } : { guestId: viewerGuestId };
+      const saveWhere = viewerId ? { userId: viewerId } : { guestId: viewerGuestId };
       include.likes = {
-        where: { userId: viewerId },
+        where: likeWhere,
         select: { id: true },
       };
       include.saves = {
-        where: { userId: viewerId },
+        where: saveWhere,
         select: { id: true },
       };
+    }
+    if (viewerId) {
       include.author = {
         select: {
           id: true,
@@ -267,11 +306,11 @@ communityRouter.get(
           comments: post._count.comments,
           saves: post._count.saves,
         },
-        viewer: viewerId
+        viewer: viewerId || viewerGuestId
           ? {
               liked,
               saved,
-              following,
+              following: viewerId ? following : false,
             }
           : null,
       };
@@ -471,26 +510,46 @@ communityRouter.delete(
 
 communityRouter.post(
   "/posts/:id/like",
-  authRequired,
+  optionalAuth,
   asyncHandler(async (req, res) => {
     const params = postIdSchema.parse(req.params);
+    const identity = getRequestIdentity(req);
 
-    const existing = await prisma.communityPostLike.findUnique({
-      where: {
-        postId_userId: {
-          postId: params.id,
-          userId: req.user!.id,
-        },
-      },
-      select: { id: true },
-    });
+    if (!identity) {
+      return res.status(401).json({ error: "Authorization required" });
+    }
+
+    const existing = identity.userId
+      ? await prisma.communityPostLike.findUnique({
+          where: {
+            postId_userId: {
+              postId: params.id,
+              userId: identity.userId,
+            },
+          },
+          select: { id: true },
+        })
+      : await prisma.communityPostLike.findUnique({
+          where: {
+            postId_guestId: {
+              postId: params.id,
+              guestId: identity.guestId!,
+            },
+          },
+          select: { id: true },
+        });
 
     if (!existing) {
       await prisma.communityPostLike.create({
-        data: {
-          postId: params.id,
-          userId: req.user!.id,
-        },
+        data: identity.userId
+          ? {
+              postId: params.id,
+              userId: identity.userId,
+            }
+          : {
+              postId: params.id,
+              guestId: identity.guestId!,
+            },
       });
 
       const post = await prisma.communityPost.findUnique({
@@ -498,10 +557,10 @@ communityRouter.post(
         select: { authorId: true },
       });
 
-      if (post && post.authorId !== req.user!.id) {
+      if (post && identity.userId && post.authorId !== identity.userId) {
         await createNotification({
           userId: post.authorId,
-          actorId: req.user!.id,
+          actorId: identity.userId,
           type: "community_post_liked",
           title: "New like",
           body: "Someone liked your post.",
@@ -516,16 +575,29 @@ communityRouter.post(
 
 communityRouter.delete(
   "/posts/:id/like",
-  authRequired,
+  optionalAuth,
   asyncHandler(async (req, res) => {
     const params = postIdSchema.parse(req.params);
+    const identity = getRequestIdentity(req);
 
-    await prisma.communityPostLike.deleteMany({
-      where: {
-        postId: params.id,
-        userId: req.user!.id,
-      },
-    });
+    if (!identity) {
+      return res.status(401).json({ error: "Authorization required" });
+    }
+    await prisma.communityPostLike.deleteMany(
+      identity.userId
+        ? {
+            where: {
+              postId: params.id,
+              userId: identity.userId,
+            },
+          }
+        : {
+            where: {
+              postId: params.id,
+              guestId: identity.guestId!,
+            },
+          },
+    );
 
     res.status(204).send();
   }),
@@ -533,23 +605,44 @@ communityRouter.delete(
 
 communityRouter.post(
   "/posts/:id/save",
-  authRequired,
+  optionalAuth,
   asyncHandler(async (req, res) => {
     const params = postIdSchema.parse(req.params);
+    const identity = getRequestIdentity(req);
 
-    await prisma.communityPostSave.upsert({
-      where: {
-        postId_userId: {
-          postId: params.id,
-          userId: req.user!.id,
-        },
-      },
-      update: {},
-      create: {
-        postId: params.id,
-        userId: req.user!.id,
-      },
-    });
+    if (!identity) {
+      return res.status(401).json({ error: "Authorization required" });
+    }
+
+    await prisma.communityPostSave.upsert(
+      identity.userId
+        ? {
+            where: {
+              postId_userId: {
+                postId: params.id,
+                userId: identity.userId,
+              },
+            },
+            update: {},
+            create: {
+              postId: params.id,
+              userId: identity.userId,
+            },
+          }
+        : {
+            where: {
+              postId_guestId: {
+                postId: params.id,
+                guestId: identity.guestId!,
+              },
+            },
+            update: {},
+            create: {
+              postId: params.id,
+              guestId: identity.guestId!,
+            },
+          },
+    );
 
     res.status(204).send();
   }),
@@ -557,16 +650,29 @@ communityRouter.post(
 
 communityRouter.delete(
   "/posts/:id/save",
-  authRequired,
+  optionalAuth,
   asyncHandler(async (req, res) => {
     const params = postIdSchema.parse(req.params);
+    const identity = getRequestIdentity(req);
 
-    await prisma.communityPostSave.deleteMany({
-      where: {
-        postId: params.id,
-        userId: req.user!.id,
-      },
-    });
+    if (!identity) {
+      return res.status(401).json({ error: "Authorization required" });
+    }
+    await prisma.communityPostSave.deleteMany(
+      identity.userId
+        ? {
+            where: {
+              postId: params.id,
+              userId: identity.userId,
+            },
+          }
+        : {
+            where: {
+              postId: params.id,
+              guestId: identity.guestId!,
+            },
+          },
+    );
 
     res.status(204).send();
   }),
@@ -615,6 +721,12 @@ communityRouter.get(
 
     const formatted = await Promise.all(
       comments.map(async (comment) => {
+        if (!comment.author) {
+          return {
+            ...comment,
+            author: buildGuestAuthor(comment.guestId ?? "guest"),
+          };
+        }
         const avatarUrl = await resolveMediaUrl(comment.author.avatarKey);
         const { avatarKey: _avatarKey, ...author } = comment.author;
         return {
@@ -633,12 +745,17 @@ communityRouter.get(
 
 communityRouter.post(
   "/posts/:id/comments",
-  authRequired,
+  optionalAuth,
   asyncHandler(async (req, res) => {
     const params = postIdSchema.parse(req.params);
     const data = createCommentSchema.parse(req.body);
+    const identity = getRequestIdentity(req);
     const settings = await getClientSettings(req as CommunityRequest);
     const moderation = settings.communityModeration;
+
+    if (!identity) {
+      return res.status(401).json({ error: "Authorization required" });
+    }
 
     if (containsBlockedKeyword(data.content.trim(), moderation.bannedKeywords)) {
       return res.status(400).json({ error: "Comment contains blocked keywords." });
@@ -647,7 +764,9 @@ communityRouter.post(
     if (moderation.commentLimitPerDay > 0) {
       const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
       const recentCount = await prisma.communityPostComment.count({
-        where: { authorId: req.user!.id, createdAt: { gte: since } },
+        where: identity.userId
+          ? { authorId: identity.userId, createdAt: { gte: since } }
+          : { guestId: identity.guestId!, createdAt: { gte: since } },
       });
       if (recentCount >= moderation.commentLimitPerDay) {
         return res.status(429).json({ error: "Daily comment limit reached." });
@@ -657,7 +776,9 @@ communityRouter.post(
     const comment = await prisma.communityPostComment.create({
       data: {
         postId: params.id,
-        authorId: req.user!.id,
+        ...(identity.userId
+          ? { authorId: identity.userId }
+          : { guestId: identity.guestId! }),
         content: data.content.trim(),
       },
       include: {
@@ -678,13 +799,20 @@ communityRouter.post(
       },
     });
 
-    const avatarUrl = await resolveMediaUrl(comment.author.avatarKey);
-    const { avatarKey: _avatarKey, ...author } = comment.author;
+    const authorPayload = comment.author
+      ? (() => {
+          const { avatarKey: _avatarKey, ...author } = comment.author;
+          return { author, avatarKey: comment.author.avatarKey };
+        })()
+      : null;
+    const avatarUrl = authorPayload
+      ? await resolveMediaUrl(authorPayload.avatarKey)
+      : null;
     const { post: _post, ...commentRest } = comment;
-    if (comment.post.authorId !== req.user!.id) {
+    if (comment.post.authorId && identity.userId && comment.post.authorId !== identity.userId) {
       await createNotification({
         userId: comment.post.authorId,
-        actorId: req.user!.id,
+        actorId: identity.userId,
         type: "community_post_commented",
         title: "New comment",
         body: data.content.trim().slice(0, 160),
@@ -694,10 +822,12 @@ communityRouter.post(
     res.status(201).json({
       comment: {
         ...commentRest,
-        author: {
-          ...author,
-          avatarUrl,
-        },
+        author: authorPayload
+          ? {
+              ...authorPayload.author,
+              avatarUrl,
+            }
+          : buildGuestAuthor(identity.guestId ?? "guest"),
       },
     });
   }),

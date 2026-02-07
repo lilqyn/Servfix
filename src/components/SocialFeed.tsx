@@ -1,8 +1,9 @@
 import { useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useCommunityFeed } from "@/hooks/useCommunityFeed";
-import CommunityFeedList from "@/components/community/CommunityFeedList";
+import CommunityPostCard from "@/components/community/CommunityPostCard";
 import { usePublicSettings } from "@/hooks/usePublicSettings";
+import { Button } from "@/components/ui/button";
 
 const SocialFeed = () => {
   const navigate = useNavigate();
@@ -44,21 +45,53 @@ const SocialFeed = () => {
           </p>
         </div>
 
-        <CommunityFeedList
-          posts={posts}
-          isLoading={isLoading}
-          isError={isError}
-          error={error}
-          hasNextPage={hasNextPage}
-          isFetchingNextPage={isFetchingNextPage}
-          onLoadMore={() => fetchNextPage()}
-          onRetry={() => refetch()}
-          onRefresh={refetch}
-          emptyMessage="No community posts yet. Be the first to share!"
-          showExploreButton
-          onExplore={() => navigate("/community")}
-          className="max-w-2xl mx-auto"
-        />
+        <div className="max-w-2xl mx-auto space-y-6">
+          {isLoading ? (
+            <div className="text-center py-16 text-muted-foreground">
+              Loading community feed...
+            </div>
+          ) : isError ? (
+            <div className="text-center py-16">
+              <h3 className="text-lg font-semibold mb-2">Unable to load posts</h3>
+              <p className="text-muted-foreground mb-4">
+                {error?.message ?? "Please try again shortly."}
+              </p>
+              <Button variant="outline" onClick={() => refetch()}>
+                Retry
+              </Button>
+            </div>
+          ) : posts.length === 0 ? (
+            <div className="text-center py-16 text-muted-foreground">
+              No community posts yet. Be the first to share!
+            </div>
+          ) : (
+            posts.map((post) => (
+              <CommunityPostCard
+                key={post.id}
+                post={post}
+                onRefresh={refetch}
+                showFollow={false}
+              />
+            ))
+          )}
+
+          <div className="text-center pt-4">
+            {hasNextPage ? (
+              <Button
+                variant="outline"
+                size="lg"
+                onClick={() => fetchNextPage()}
+                disabled={isFetchingNextPage}
+              >
+                {isFetchingNextPage ? "Loading..." : "Load More Posts"}
+              </Button>
+            ) : (
+              <Button variant="outline" size="lg" onClick={() => navigate("/community")}>
+                Explore Community
+              </Button>
+            )}
+          </div>
+        </div>
       </div>
     </section>
   );

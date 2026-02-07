@@ -1,4 +1,5 @@
 import type { UserRole } from "@/lib/roles";
+import { getGuestId } from "@/lib/guest";
 
 export const API_BASE_URL =
   import.meta.env.VITE_API_BASE ??
@@ -37,6 +38,11 @@ export async function apiFetch<T>(
     localStorage.getItem("serveghana-token");
   if (token) {
     headers.set("Authorization", `Bearer ${token}`);
+  } else {
+    const guestId = getGuestId();
+    if (guestId) {
+      headers.set("x-guest-id", guestId);
+    }
   }
 
   const response = await fetch(`${API_BASE_URL}${path}`, {
