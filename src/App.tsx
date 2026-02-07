@@ -38,6 +38,7 @@ import AdminAnalytics from "./pages/admin/AdminAnalytics";
 import AdminSupport from "./pages/admin/AdminSupport";
 import AdminSettingsPage from "./pages/admin/AdminSettings";
 import AdminHomeContent from "./pages/admin/AdminHomeContent";
+import AdminPages from "./pages/admin/AdminPages";
 import SignIn from "./pages/SignIn";
 import SignUp from "./pages/SignUp";
 import NotFound from "./pages/NotFound";
@@ -45,6 +46,8 @@ import PaymentVerify from "./pages/PaymentVerify";
 import Cookies from "./pages/Cookies";
 import Privacy from "./pages/Privacy";
 import Terms from "./pages/Terms";
+import About from "./pages/About";
+import Blog from "./pages/Blog";
 import { ADMIN_ROLES } from "@/lib/roles";
 import ScrollToTop from "@/components/ScrollToTop";
 
@@ -65,6 +68,8 @@ const App = () => (
                   <Routes>
                     <Route path="/" element={<Index />} />
                     <Route path="/browse" element={<Browse />} />
+                    <Route path="/about" element={<About />} />
+                    <Route path="/blog" element={<Blog />} />
                     <Route path="/community" element={<Community />} />
                     <Route path="/profile/:id" element={<Profile />} />
                     <Route
@@ -128,6 +133,7 @@ const App = () => (
                       <Route path="support" element={<AdminSupport />} />
                       <Route path="payouts" element={<AdminPayouts />} />
                       <Route path="analytics" element={<AdminAnalytics />} />
+                      <Route path="pages" element={<AdminPages />} />
                       <Route path="home" element={<AdminHomeContent />} />
                       <Route path="settings" element={<AdminSettingsPage />} />
                       <Route path="settings/:section" element={<AdminSettingsPage />} />

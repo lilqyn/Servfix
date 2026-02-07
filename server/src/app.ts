@@ -19,6 +19,7 @@ import { payoutsRouter } from "./routes/payouts.js";
 import { webhooksRouter } from "./routes/webhooks.js";
 import { settingsRouter } from "./routes/settings.js";
 import { supportRouter } from "./routes/support.js";
+import { pagesRouter } from "./routes/pages.js";
 import { errorHandler } from "./middleware/error.js";
 
 export const app = express();
@@ -48,6 +49,7 @@ app.use("/api/messages", messagesRouter);
 app.use("/api/users", usersRouter);
 app.use("/api/notifications", notificationsRouter);
 app.use("/api/home-content", homeRouter);
+app.use("/api/pages", pagesRouter);
 app.use("/api/settings", settingsRouter);
 app.use("/api/admin", adminRouter);
 app.use("/api/reports", reportsRouter);

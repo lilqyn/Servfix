@@ -34,6 +34,7 @@ const ADMIN_PAGE_PATHS: Record<AdminPageKey, string> = {
   support: "/admin/support",
   payouts: "/admin/payouts",
   analytics: "/admin/analytics",
+  pages: "/admin/pages",
   home: "/admin/home",
   settings: "/admin/settings",
 };
@@ -62,6 +63,7 @@ const ADMIN_PAGE_REQUIREMENTS: Record<
   support: { permission: "support.read", functionKey: "customer_service" },
   payouts: { permission: "payouts.read", functionKey: "finance" },
   analytics: { permission: "analytics.read", functionKey: "accounting" },
+  pages: { permission: "settings.read" },
   home: { permission: "settings.read" },
   settings: { permission: "settings.read" },
 };
@@ -79,6 +81,7 @@ const ADMIN_PAGE_ORDER: AdminPageKey[] = [
   "support",
   "payouts",
   "analytics",
+  "pages",
   "home",
   "settings",
 ];
@@ -111,6 +114,8 @@ const getAdminPageKeyFromPath = (pathname: string): AdminPageKey | null => {
       return "payouts";
     case "analytics":
       return "analytics";
+    case "pages":
+      return "pages";
     case "home":
       return "home";
     case "settings":

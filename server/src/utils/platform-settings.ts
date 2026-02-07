@@ -94,6 +94,7 @@ export const ADMIN_PAGE_KEYS = [
   "support",
   "payouts",
   "analytics",
+  "pages",
   "home",
   "settings",
 ] as const;

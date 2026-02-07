@@ -10,6 +10,7 @@ import { env } from "../config.js";
 import { createNotification } from "../utils/notifications.js";
 import { createSupportTicketEvent, formatTicketNumber } from "../utils/tickets.js";
 import { defaultHomeContent, HOME_CONTENT_KEY } from "../utils/home-content.js";
+import { DEFAULT_PAGES, PAGE_KEYS, type StaticPageKey } from "../utils/pages.js";
 import {
   getPlatformSettings,
   updatePlatformSettings,
@@ -163,6 +164,16 @@ const homeContentSchema = z.object({
   hero: heroContentSchema,
   categories: categoriesContentSchema,
   howItWorks: howItWorksContentSchema,
+});
+
+const pageContentSchema = z.object({
+  title: z.string().trim().min(1).max(120),
+  body: z.string().trim().min(1).max(10000),
+});
+
+const pagesSchema = z.object({
+  about: pageContentSchema,
+  blog: pageContentSchema,
 });
 
 const requireBusinessFunctionAccess = (key: BusinessFunctionKey) =>
@@ -2056,6 +2067,62 @@ adminRouter.get(
       howItWorks: content.howItWorks,
       updatedAt: content.updatedAt,
     });
+  }),
+);
+
+adminRouter.get(
+  "/pages",
+  authRequired,
+  requirePermission("settings.read"),
+  requireAdminPageAccess("pages"),
+  asyncHandler(async (_req, res) => {
+    const pages = await prisma.staticPage.findMany({
+      where: { slug: { in: PAGE_KEYS } },
+    });
+    const pageMap = new Map(pages.map((page) => [page.slug, page]));
+
+    const payload = PAGE_KEYS.reduce((acc, slug) => {
+      const existing = pageMap.get(slug);
+      const fallback = DEFAULT_PAGES[slug];
+      acc[slug] = {
+        slug,
+        title: existing?.title ?? fallback.title,
+        body: existing?.body ?? fallback.body,
+        updatedAt: existing?.updatedAt ?? null,
+      };
+      return acc;
+    }, {} as Record<StaticPageKey, { slug: StaticPageKey; title: string; body: string; updatedAt: Date | null }>);
+
+    res.json({ pages: payload });
+  }),
+);
+
+adminRouter.put(
+  "/pages",
+  authRequired,
+  requirePermission("settings.update"),
+  requireAdminPageAccess("pages"),
+  asyncHandler(async (req, res) => {
+    const payload = pagesSchema.parse(req.body);
+
+    await prisma.$transaction(
+      PAGE_KEYS.map((slug) =>
+        prisma.staticPage.upsert({
+          where: { slug },
+          update: {
+            title: payload[slug].title,
+            body: payload[slug].body,
+          },
+          create: {
+            slug,
+            title: payload[slug].title,
+            body: payload[slug].body,
+          },
+        }),
+      ),
+    );
+
+    res.json({ status: "ok" });
   }),
 );
 

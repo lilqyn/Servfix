@@ -53,6 +53,7 @@ const Header = () => {
   }, [filteredNotifications, unreadNotifications, user?.role]);
   const isAdmin = isAdminRole(user?.role);
   const communityEnabled = publicSettings?.featureFlags.community ?? true;
+  const showCommunityLink = communityEnabled && isAuthenticated;
 
   const providerDisplayName = useMemo(() => {
     if (!user) {
@@ -170,7 +171,7 @@ const Header = () => {
             <Link to="/browse" className="text-sm font-medium text-muted-foreground hover:text-primary transition-colors">
               Browse
             </Link>
-            {communityEnabled && (
+            {showCommunityLink && (
               <Link
                 to="/community"
                 className="text-sm font-medium text-muted-foreground hover:text-primary transition-colors"
@@ -178,6 +179,12 @@ const Header = () => {
                 Community
               </Link>
             )}
+            <Link to="/about" className="text-sm font-medium text-muted-foreground hover:text-primary transition-colors">
+              About
+            </Link>
+            <Link to="/blog" className="text-sm font-medium text-muted-foreground hover:text-primary transition-colors">
+              Blog
+            </Link>
             {isAuthenticated && isProvider && (
               <Link to="/dashboard" className="text-sm font-medium text-muted-foreground hover:text-primary transition-colors">
                 Dashboard
@@ -363,7 +370,7 @@ const Header = () => {
               <Link to="/browse" className="px-4 py-3 text-sm font-medium text-muted-foreground hover:bg-muted rounded-lg transition-colors">
                 Browse Services
               </Link>
-              {communityEnabled && (
+              {showCommunityLink && (
                 <Link
                   to="/community"
                   className="px-4 py-3 text-sm font-medium text-muted-foreground hover:bg-muted rounded-lg transition-colors"
@@ -371,6 +378,12 @@ const Header = () => {
                   Community
                 </Link>
               )}
+              <Link to="/about" className="px-4 py-3 text-sm font-medium text-muted-foreground hover:bg-muted rounded-lg transition-colors">
+                About
+              </Link>
+              <Link to="/blog" className="px-4 py-3 text-sm font-medium text-muted-foreground hover:bg-muted rounded-lg transition-colors">
+                Blog
+              </Link>
               {isAuthenticated && (
                 <Link to="/notifications" className="px-4 py-3 text-sm font-medium text-muted-foreground hover:bg-muted rounded-lg transition-colors flex items-center justify-between">
                   Notifications

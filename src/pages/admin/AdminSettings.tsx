@@ -278,6 +278,7 @@ const ADMIN_PAGE_ACCESS: Array<{
   { key: "support", title: "Support", description: "Buyer support tickets and replies." },
   { key: "payouts", title: "Payouts", description: "Payout approvals and history." },
   { key: "analytics", title: "Analytics", description: "Analytics dashboards and insights." },
+  { key: "pages", title: "Pages", description: "About and blog page content." },
   { key: "home", title: "Home content", description: "Homepage and marketing content." },
   { key: "settings", title: "Settings", description: "Platform-wide settings and controls." },
 ];

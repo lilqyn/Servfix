@@ -30,6 +30,7 @@ import {
   ShieldCheck,
   Home,
   LifeBuoy,
+  FileText,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
@@ -193,6 +194,13 @@ const AdminSidebar = () => {
       permission: "analytics.read",
       functionKey: "accounting",
       pageKey: "analytics",
+    },
+    {
+      title: "Pages",
+      url: "/admin/pages",
+      icon: FileText,
+      permission: "settings.read",
+      pageKey: "pages",
     },
     {
       title: "Home Content",

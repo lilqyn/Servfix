@@ -470,6 +470,24 @@ export type HomeContent = HomeContentPayload & {
   updatedAt?: string;
 };
 
+export type StaticPageKey = "about" | "blog";
+
+export type StaticPagePayload = {
+  title: string;
+  body: string;
+};
+
+export type StaticPage = StaticPagePayload & {
+  slug: StaticPageKey;
+  updatedAt?: string | null;
+};
+
+export type AdminPagesPayload = Record<StaticPageKey, StaticPagePayload>;
+
+export type AdminPagesResponse = {
+  pages: Record<StaticPageKey, StaticPage>;
+};
+
 export type PublicSettings = {
   featureFlags: FeatureFlags;
   payments?: {
@@ -493,6 +511,10 @@ type OrdersResponse = {
 
 export async function fetchHomeContent(): Promise<HomeContentPayload> {
   return apiFetch<HomeContent>("/api/home-content");
+}
+
+export async function fetchStaticPage(slug: StaticPageKey): Promise<StaticPage> {
+  return apiFetch<StaticPage>(`/api/pages/${slug}`);
 }
 
 export async function fetchPublicSettings(): Promise<PublicSettings> {
@@ -1049,6 +1071,7 @@ export type AdminPageKey =
   | "support"
   | "payouts"
   | "analytics"
+  | "pages"
   | "home"
   | "settings";
 
@@ -1843,6 +1866,17 @@ export async function fetchAdminHomeContent(): Promise<HomeContent> {
 
 export async function updateAdminHomeContent(payload: HomeContentPayload): Promise<void> {
   await apiFetch("/api/admin/home-content", {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function fetchAdminPages(): Promise<AdminPagesResponse> {
+  return apiFetch("/api/admin/pages");
+}
+
+export async function updateAdminPages(payload: AdminPagesPayload): Promise<void> {
+  await apiFetch("/api/admin/pages", {
     method: "PUT",
     body: JSON.stringify(payload),
   });
