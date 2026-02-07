@@ -8,6 +8,8 @@ COPY . .
 ARG VITE_API_BASE
 ENV VITE_API_BASE=$VITE_API_BASE
 ENV NODE_ENV=production
+ARG PRISMA_SCHEMA_HASH
+ENV PRISMA_SCHEMA_HASH=$PRISMA_SCHEMA_HASH
 RUN npx prisma generate --schema prisma/schema.prisma
 RUN npm run build && npm run build:server
 RUN npm prune --omit=dev

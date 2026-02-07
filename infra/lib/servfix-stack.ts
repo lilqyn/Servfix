@@ -1,4 +1,6 @@
-﻿import path from "path";
+import { createHash } from "crypto";
+import { readFileSync } from "fs";
+import path from "path";
 import { fileURLToPath } from "url";
 import {
   CfnOutput,
@@ -35,6 +37,10 @@ export class ServfixStack extends Stack {
     const config = props.config;
     const modulePath = fileURLToPath(import.meta.url);
     const moduleDir = path.dirname(modulePath);
+    const prismaSchemaPath = path.resolve(moduleDir, "../..", "prisma", "schema.prisma");
+    const prismaSchemaHash = createHash("sha256")
+      .update(readFileSync(prismaSchemaPath))
+      .digest("hex");
 
     if (config.hostedZoneId === "REPLACE_ME") {
       throw new Error(
@@ -135,7 +141,10 @@ export class ServfixStack extends Stack {
     const imageAsset = new DockerImageAsset(this, "AppImage", {
       directory: path.resolve(moduleDir, "../.."),
       file: "Dockerfile",
-      buildArgs: { VITE_API_BASE: appUrl },
+      buildArgs: {
+        VITE_API_BASE: appUrl,
+        PRISMA_SCHEMA_HASH: prismaSchemaHash,
+      },
     });
 
     const logGroup = new logs.LogGroup(this, "AppLogs", {
@@ -231,3 +240,7 @@ export class ServfixStack extends Stack {
     new CfnOutput(this, "JwtSecretArn", { value: jwtSecret.secretArn });
   }
 }
+
+
+
+
