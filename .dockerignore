@@ -1,0 +1,12 @@
+﻿node_modules
+dist
+dist-ssr
+infra/node_modules
+infra/cdk.out
+cdk.out
+.git
+.gitignore
+.vscode
+.env
+.env.example
+*.log

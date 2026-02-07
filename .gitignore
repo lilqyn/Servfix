@@ -24,3 +24,10 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# CDK
+cdk.out
+cdk.context.json
+infra/cdk.out
+infra/cdk.context.json
+infra/node_modules

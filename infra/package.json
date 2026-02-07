@@ -1,0 +1,23 @@
+{
+  "name": "servfix-infra",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "watch": "tsc -w -p tsconfig.json",
+    "cdk": "cdk",
+    "synth": "cdk synth",
+    "diff": "cdk diff",
+    "deploy": "cdk deploy",
+    "bootstrap": "cdk bootstrap"
+  },
+  "devDependencies": {
+    "aws-cdk": "2.161.1",
+    "aws-cdk-lib": "2.161.1",
+    "constructs": "^10.3.0",
+    "ts-node": "^10.9.2",
+    "tsx": "^4.16.2",
+    "typescript": "^5.8.3"
+  }
+}
