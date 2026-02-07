@@ -519,25 +519,27 @@ communityRouter.post(
       return res.status(401).json({ error: "Authorization required" });
     }
 
-    const existing = identity.userId
-      ? await prisma.communityPostLike.findUnique({
-          where: {
-            postId_userId: {
-              postId: params.id,
-              userId: identity.userId,
-            },
+    let existing: { id: string } | null = null;
+
+    if (identity.userId) {
+      existing = await prisma.communityPostLike.findUnique({
+        where: {
+          postId_userId: {
+            postId: params.id,
+            userId: identity.userId,
           },
-          select: { id: true },
-        })
-      : await prisma.communityPostLike.findUnique({
-          where: {
-            postId_guestId: {
-              postId: params.id,
-              guestId: identity.guestId!,
-            },
-          },
-          select: { id: true },
-        });
+        },
+        select: { id: true },
+      });
+    } else {
+      existing = await prisma.communityPostLike.findFirst({
+        where: {
+          postId: params.id,
+          guestId: identity.guestId!,
+        },
+        select: { id: true },
+      });
+    }
 
     if (!existing) {
       await prisma.communityPostLike.create({
@@ -583,21 +585,12 @@ communityRouter.delete(
     if (!identity) {
       return res.status(401).json({ error: "Authorization required" });
     }
-    await prisma.communityPostLike.deleteMany(
-      identity.userId
-        ? {
-            where: {
-              postId: params.id,
-              userId: identity.userId,
-            },
-          }
-        : {
-            where: {
-              postId: params.id,
-              guestId: identity.guestId!,
-            },
-          },
-    );
+    const likeWhere: Prisma.CommunityPostLikeWhereInput = {
+      postId: params.id,
+      ...(identity.userId ? { userId: identity.userId } : { guestId: identity.guestId! }),
+    };
+
+    await prisma.communityPostLike.deleteMany({ where: likeWhere });
 
     res.status(204).send();
   }),
@@ -614,35 +607,38 @@ communityRouter.post(
       return res.status(401).json({ error: "Authorization required" });
     }
 
-    await prisma.communityPostSave.upsert(
-      identity.userId
-        ? {
-            where: {
-              postId_userId: {
-                postId: params.id,
-                userId: identity.userId,
-              },
-            },
-            update: {},
-            create: {
-              postId: params.id,
-              userId: identity.userId,
-            },
-          }
-        : {
-            where: {
-              postId_guestId: {
-                postId: params.id,
-                guestId: identity.guestId!,
-              },
-            },
-            update: {},
-            create: {
-              postId: params.id,
-              guestId: identity.guestId!,
-            },
+    if (identity.userId) {
+      await prisma.communityPostSave.upsert({
+        where: {
+          postId_userId: {
+            postId: params.id,
+            userId: identity.userId,
           },
-    );
+        },
+        update: {},
+        create: {
+          postId: params.id,
+          userId: identity.userId,
+        },
+      });
+    } else {
+      const existingSave = await prisma.communityPostSave.findFirst({
+        where: {
+          postId: params.id,
+          guestId: identity.guestId!,
+        },
+        select: { id: true },
+      });
+
+      if (!existingSave) {
+        await prisma.communityPostSave.create({
+          data: {
+            postId: params.id,
+            guestId: identity.guestId!,
+          },
+        });
+      }
+    }
 
     res.status(204).send();
   }),
@@ -658,21 +654,12 @@ communityRouter.delete(
     if (!identity) {
       return res.status(401).json({ error: "Authorization required" });
     }
-    await prisma.communityPostSave.deleteMany(
-      identity.userId
-        ? {
-            where: {
-              postId: params.id,
-              userId: identity.userId,
-            },
-          }
-        : {
-            where: {
-              postId: params.id,
-              guestId: identity.guestId!,
-            },
-          },
-    );
+    const saveWhere: Prisma.CommunityPostSaveWhereInput = {
+      postId: params.id,
+      ...(identity.userId ? { userId: identity.userId } : { guestId: identity.guestId! }),
+    };
+
+    await prisma.communityPostSave.deleteMany({ where: saveWhere });
 
     res.status(204).send();
   }),
