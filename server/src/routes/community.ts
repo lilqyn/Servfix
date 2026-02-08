@@ -91,10 +91,13 @@ const mediaItemSchema = z.union([
   }),
 ]);
 
+const mediaLayoutSchema = z.enum(["grid", "carousel"]);
+
 const createPostSchema = z
   .object({
     content: z.string().trim().max(2000).optional(),
     media: z.array(mediaItemSchema).max(6).optional(),
+    mediaLayout: mediaLayoutSchema.optional(),
   })
   .refine((data) => {
     const hasContent = Boolean(data.content && data.content.trim().length > 0);
@@ -105,6 +108,7 @@ const createPostSchema = z
 const updatePostSchema = z.object({
   content: z.string().trim().max(2000).optional(),
   media: z.array(mediaItemSchema).max(6).optional(),
+  mediaLayout: mediaLayoutSchema.optional(),
 });
 
 const createCommentSchema = z.object({
@@ -289,6 +293,7 @@ communityRouter.get(
         id: post.id,
         content: post.content,
         shareCount: post.shareCount,
+        mediaLayout: post.mediaLayout,
         createdAt: post.createdAt,
         updatedAt: post.updatedAt,
         author: {
@@ -348,6 +353,7 @@ communityRouter.post(
       data: {
         authorId: req.user!.id,
         content: data.content?.trim() ?? "",
+        mediaLayout: data.mediaLayout ?? "grid",
         media:
           media.length > 0
             ? {
@@ -450,6 +456,7 @@ communityRouter.put(
       where: { id: params.id },
       data: {
         ...(data.content !== undefined ? { content: data.content.trim() } : {}),
+        ...(data.mediaLayout !== undefined ? { mediaLayout: data.mediaLayout } : {}),
         media:
           normalizedMedia !== undefined
             ? {
@@ -746,6 +753,17 @@ communityRouter.post(
 
     if (containsBlockedKeyword(data.content.trim(), moderation.bannedKeywords)) {
       return res.status(400).json({ error: "Comment contains blocked keywords." });
+    }
+
+    if (!identity.userId) {
+      const guestCount = await prisma.communityPostComment.count({
+        where: { postId: params.id, guestId: identity.guestId! },
+      });
+      if (guestCount >= 2) {
+        return res
+          .status(403)
+          .json({ error: "Please register to comment more on this post." });
+      }
     }
 
     if (moderation.commentLimitPerDay > 0) {

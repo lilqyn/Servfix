@@ -8,6 +8,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "@/components/ui/use-toast";
 import { createCommunityPost } from "@/lib/api";
 import CommunityMediaPicker, { CommunityMediaDraft } from "@/components/community/CommunityMediaPicker";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { cn } from "@/lib/utils";
 
 type CommunityPostComposerProps = {
@@ -29,6 +30,7 @@ const CommunityPostComposer = ({
   const navigate = useNavigate();
   const [postContent, setPostContent] = useState("");
   const [postMedia, setPostMedia] = useState<CommunityMediaDraft[]>([]);
+  const [mediaLayout, setMediaLayout] = useState<"grid" | "carousel">("grid");
   const [isPosting, setIsPosting] = useState(false);
 
   const handleCreatePost = async () => {
@@ -51,9 +53,11 @@ const CommunityPostComposer = ({
       await createCommunityPost({
         content: content || undefined,
         media: media.length > 0 ? media : undefined,
+        mediaLayout: media.length > 0 ? mediaLayout : undefined,
       });
       setPostContent("");
       setPostMedia([]);
+      setMediaLayout("grid");
       if (onPostCreated) {
         await onPostCreated();
       }
@@ -84,6 +88,26 @@ const CommunityPostComposer = ({
           onChange={setPostMedia}
           disabled={isPosting}
         />
+        {postMedia.length > 1 ? (
+          <div className="space-y-2">
+            <p className="text-xs text-muted-foreground">Media layout</p>
+            <ToggleGroup
+              type="single"
+              variant="outline"
+              size="sm"
+              value={mediaLayout}
+              onValueChange={(value) => {
+                if (value === "grid" || value === "carousel") {
+                  setMediaLayout(value);
+                }
+              }}
+              className="justify-start"
+            >
+              <ToggleGroupItem value="grid">Grid</ToggleGroupItem>
+              <ToggleGroupItem value="carousel">Slider</ToggleGroupItem>
+            </ToggleGroup>
+          </div>
+        ) : null}
         <div className="flex justify-end">
           <Button onClick={handleCreatePost} disabled={isPosting}>
             {isPosting ? (

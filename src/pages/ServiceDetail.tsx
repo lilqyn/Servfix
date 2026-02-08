@@ -84,6 +84,18 @@ const ServiceDetail = () => {
     setSelectedPackage(preferred);
   }, [serviceData]);
 
+  const handleContactClick = () => {
+    if (typeof document === "undefined") {
+      return;
+    }
+    const section = document.getElementById("service-inquiry");
+    if (section) {
+      section.scrollIntoView({ behavior: "smooth", block: "start" });
+      const focusTarget = section.querySelector("input, textarea") as HTMLElement | null;
+      focusTarget?.focus();
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-background">
@@ -174,7 +186,7 @@ const ServiceDetail = () => {
             {/* Left Column - Gallery & Info */}
             <div className="lg:col-span-2 space-y-8">
               <ServiceGallery images={serviceData.images} name={serviceData.name} />
-              <ServiceInfo service={serviceData} />
+              <ServiceInfo service={serviceData} onContact={handleContactClick} />
               {reviewsEnabled && (
                 <ServiceReviews
                   reviews={reviews}

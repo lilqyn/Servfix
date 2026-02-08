@@ -158,6 +158,24 @@
       );
   }
 
+  .hero-grid {
+    background-image:
+      repeating-linear-gradient(
+        90deg,
+        transparent,
+        transparent 24px,
+        hsl(var(--border) / 0.35) 24px,
+        hsl(var(--border) / 0.35) 25px
+      ),
+      repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 24px,
+        hsl(var(--border) / 0.35) 24px,
+        hsl(var(--border) / 0.35) 25px
+      );
+  }
+
   /* Glass effect cards */
   .glass-card {
     @apply bg-card/80 backdrop-blur-xl border border-border/50;

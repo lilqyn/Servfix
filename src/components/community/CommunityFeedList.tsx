@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import {
   BadgeCheck,
   Bookmark,
@@ -18,6 +19,15 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import {
+  Carousel,
+  CarouselContent,
+  CarouselDots,
+  CarouselItem,
+  CarouselNext,
+  CarouselPrevious,
+} from "@/components/ui/carousel";
 import CommunityMediaPicker, {
   CommunityMediaDraft,
 } from "@/components/community/CommunityMediaPicker";
@@ -25,7 +35,10 @@ import { toast } from "@/components/ui/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { ensureGuestId } from "@/lib/guest";
 import {
+  ApiCommunityAuthor,
   ApiCommunityPost,
+  createCommunityComment,
+  fetchCommunityComments,
   deleteCommunityPost,
   likeCommunityPost,
   saveCommunityPost,
@@ -48,11 +61,12 @@ type FeedPost = {
     isBusiness: boolean;
   };
   content: string;
-  media?: {
+  media?: Array<{
+    id: string;
     type: "image" | "video";
     url: string;
-    thumbnail?: string;
-  };
+  }>;
+  mediaLayout?: "grid" | "carousel";
   likes: number;
   comments: number;
   shares: number;
@@ -74,6 +88,7 @@ type CommunityFeedListProps = {
   emptyMessage?: string;
   showExploreButton?: boolean;
   onExplore?: () => void;
+  focusedPostId?: string | null;
   className?: string;
 };
 
@@ -104,6 +119,38 @@ const formatTimestamp = (value: string) => {
   return days === 1 ? "1 day ago" : `${days} days ago`;
 };
 
+const formatCommentTimestamp = (value: string) => {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+  return date.toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" });
+};
+
+const getAuthorName = (author: ApiCommunityAuthor) => {
+  if (author.providerProfile?.displayName) {
+    return author.providerProfile.displayName;
+  }
+  if (author.username) {
+    return `@${author.username}`;
+  }
+  if (author.email) {
+    return author.email;
+  }
+  if (author.phone) {
+    return author.phone;
+  }
+  return author.role === "provider" ? "Service provider" : "Community member";
+};
+
+const getInitials = (name: string) => {
+  const cleaned = name.replace(/^@/, "");
+  const tokens = cleaned.split(" ").filter(Boolean);
+  const first = tokens[0]?.[0] ?? cleaned[0] ?? "U";
+  const second = tokens[1]?.[0] ?? "";
+  return `${first}${second}`.toUpperCase();
+};
+
 const mapPostToFeed = (post: ApiCommunityPost): FeedPost => {
   const author = post.author;
   const providerProfile = author.providerProfile ?? null;
@@ -116,8 +163,11 @@ const mapPostToFeed = (post: ApiCommunityPost): FeedPost => {
   const handle = author.username ? `@${author.username}` : null;
   const verified = providerProfile?.verificationStatus === "verified";
   const isBusiness = author.role === "provider";
-  const mediaItem = post.media?.[0];
-  const mediaUrl = mediaItem?.signedUrl ?? mediaItem?.url;
+  const mediaItems = post.media.map((media) => ({
+    id: media.id,
+    type: media.type === "video" ? "video" : "image",
+    url: media.signedUrl ?? media.url,
+  }));
 
   return {
     id: post.id,
@@ -131,13 +181,8 @@ const mapPostToFeed = (post: ApiCommunityPost): FeedPost => {
       isBusiness,
     },
     content: post.content ?? "",
-    media: mediaUrl
-      ? {
-          type: mediaItem?.type === "video" ? "video" : "image",
-          url: mediaUrl,
-          thumbnail: mediaItem?.type === "video" ? mediaUrl : undefined,
-        }
-      : undefined,
+    media: mediaItems.length > 0 ? mediaItems : undefined,
+    mediaLayout: post.mediaLayout ?? "grid",
     likes: post.counts.likes,
     comments: post.counts.comments,
     shares: post.shareCount,
@@ -167,6 +212,7 @@ const CommunityFeedList = ({
   emptyMessage = "No community posts yet. Be the first to share!",
   showExploreButton = false,
   onExplore,
+  focusedPostId,
   className,
 }: CommunityFeedListProps) => {
   const navigate = useNavigate();
@@ -179,6 +225,14 @@ const CommunityFeedList = ({
   const [editMedia, setEditMedia] = useState<CommunityMediaDraft[]>([]);
   const [updatingPostId, setUpdatingPostId] = useState<string | null>(null);
   const [deletingPostId, setDeletingPostId] = useState<string | null>(null);
+  const [openCommentsPostId, setOpenCommentsPostId] = useState<string | null>(null);
+  const [commentDraft, setCommentDraft] = useState("");
+  const [isCommenting, setIsCommenting] = useState(false);
+  const [hasFocusedPost, setHasFocusedPost] = useState(false);
+
+  useEffect(() => {
+    setHasFocusedPost(false);
+  }, [focusedPostId]);
 
   useEffect(() => {
     setFeedPosts(mappedPosts);
@@ -191,6 +245,32 @@ const CommunityFeedList = ({
       setEditMedia([]);
     }
   }, [editingPostId, posts]);
+
+  useEffect(() => {
+    if (!focusedPostId || hasFocusedPost) {
+      return;
+    }
+    const exists = feedPosts.some((post) => post.id === focusedPostId);
+    if (!exists) {
+      return;
+    }
+    setHasFocusedPost(true);
+    setOpenCommentsPostId(focusedPostId);
+    setCommentDraft("");
+    if (typeof document !== "undefined") {
+      window.requestAnimationFrame(() => {
+        const target = document.getElementById(`community-post-${focusedPostId}`);
+        target?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    }
+  }, [focusedPostId, feedPosts, hasFocusedPost]);
+
+  const commentsQuery = useQuery({
+    queryKey: ["community-comments", openCommentsPostId],
+    queryFn: () => fetchCommunityComments(openCommentsPostId!),
+    enabled: Boolean(openCommentsPostId),
+    staleTime: 15_000,
+  });
 
   const copyPostLink = async (postId: string) => {
     const url = getShareUrl(postId);
@@ -205,6 +285,21 @@ const CommunityFeedList = ({
       const message = copyError instanceof Error ? copyError.message : "Unable to copy link.";
       toast({ title: message });
     }
+  };
+
+  const ensureIdentity = (allowGuest = false) => {
+    if (isAuthenticated) {
+      return true;
+    }
+    if (allowGuest) {
+      const guestId = ensureGuestId();
+      if (guestId) {
+        return true;
+      }
+    }
+    toast({ title: "Please sign in to continue." });
+    navigate("/sign-in?next=/community");
+    return false;
   };
 
   const toggleLike = async (postId: string) => {
@@ -333,6 +428,45 @@ const CommunityFeedList = ({
     }
   };
 
+  const toggleComments = (postId: string) => {
+    setOpenCommentsPostId((current) => (current === postId ? null : postId));
+    setCommentDraft("");
+  };
+
+  const handleCommentSubmit = async () => {
+    if (!openCommentsPostId || !ensureIdentity(true) || isCommenting) {
+      return;
+    }
+    const content = commentDraft.trim();
+    if (!content) {
+      toast({ title: "Write a comment before posting." });
+      return;
+    }
+
+    setIsCommenting(true);
+    try {
+      await createCommunityComment(openCommentsPostId, content);
+      setCommentDraft("");
+      await commentsQuery.refetch();
+      setFeedPosts((prev) =>
+        prev.map((post) =>
+          post.id === openCommentsPostId
+            ? { ...post, comments: post.comments + 1 }
+            : post,
+        ),
+      );
+      if (onRefresh) {
+        await onRefresh();
+      }
+    } catch (commentError) {
+      const message =
+        commentError instanceof Error ? commentError.message : "Unable to post comment.";
+      toast({ title: message });
+    } finally {
+      setIsCommenting(false);
+    }
+  };
+
   const startEditing = (postId: string) => {
     const current = feedPosts.find((post) => post.id === postId);
     const source = posts.find((post) => post.id === postId);
@@ -417,6 +551,55 @@ const CommunityFeedList = ({
     }
   };
 
+  const renderMediaItem = (media: NonNullable<FeedPost["media"]>[number]) =>
+    media.type === "video" ? (
+      <video
+        src={media.url}
+        className="w-full object-cover max-h-96 rounded-xl"
+        controls
+      />
+    ) : (
+      <img
+        src={media.url}
+        alt="Post media"
+        className="w-full object-cover max-h-96 rounded-xl"
+        loading="lazy"
+      />
+    );
+
+  const renderPostMedia = (post: FeedPost) => {
+    if (!post.media || post.media.length === 0) {
+      return null;
+    }
+
+    const layout = post.mediaLayout ?? "grid";
+
+    if (post.media.length > 1 && layout === "carousel") {
+      return (
+        <Carousel className="w-full">
+          <CarouselContent>
+            {post.media.map((media) => (
+              <CarouselItem key={media.id}>{renderMediaItem(media)}</CarouselItem>
+            ))}
+          </CarouselContent>
+          <CarouselDots />
+          <CarouselPrevious className="-left-4" />
+          <CarouselNext className="-right-4" />
+        </Carousel>
+      );
+    }
+
+    const gridClass = post.media.length > 1 ? "sm:grid-cols-2" : "grid-cols-1";
+
+    return (
+      <div className={`grid gap-3 ${gridClass}`}>
+        {post.media.map((media) => (
+          <div key={media.id}>{renderMediaItem(media)}</div>
+        ))}
+      </div>
+    );
+  };
+
   if (isLoading) {
     return (
       <div className="text-center py-16 text-muted-foreground">
@@ -448,7 +631,7 @@ const CommunityFeedList = ({
       ) : (
         <div className="space-y-6">
           {feedPosts.map((post) => (
-            <article key={post.id} className="feed-post">
+            <article key={post.id} id={`community-post-${post.id}`} className="feed-post">
               {(() => {
                 const isOwnPost = user?.id === post.author.id;
                 const isEditing = editingPostId === post.id;
@@ -510,8 +693,8 @@ const CommunityFeedList = ({
                         <DropdownMenuSeparator />
                       </>
                     ) : null}
-                    <DropdownMenuItem onClick={() => navigate(buildPostLink(post.id))}>
-                      View post
+                    <DropdownMenuItem onClick={() => toggleComments(post.id)}>
+                      View comments
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={() => copyPostLink(post.id)}>
                       Copy link
@@ -566,23 +749,7 @@ const CommunityFeedList = ({
                 </div>
               ) : null}
 
-              {post.media ? (
-                <div className="relative">
-                  {post.media.type === "video" ? (
-                    <video
-                      src={post.media.url}
-                      className="w-full object-cover max-h-96"
-                      controls
-                    />
-                  ) : (
-                    <img
-                      src={post.media.url}
-                      alt="Post media"
-                      className="w-full object-cover max-h-96"
-                    />
-                  )}
-                </div>
-                ) : null}
+              {renderPostMedia(post)}
 
               {!isEditing && (
                 <div className="flex items-center justify-between p-4 border-t border-border/50">
@@ -601,7 +768,7 @@ const CommunityFeedList = ({
                       </span>
                     </button>
                     <button
-                      onClick={() => navigate(buildPostLink(post.id))}
+                      onClick={() => toggleComments(post.id)}
                       className="flex items-center gap-2 text-muted-foreground hover:text-primary transition-colors group"
                     >
                       <MessageCircle className="w-5 h-5 group-hover:scale-110 transition-transform" />
@@ -625,6 +792,84 @@ const CommunityFeedList = ({
                       }`}
                     />
                   </button>
+                </div>
+              )}
+              {!isEditing && openCommentsPostId === post.id && (
+                <div className="border-t border-border/50 px-4 py-4 space-y-3">
+                  {commentsQuery.isLoading ? (
+                    <div className="text-sm text-muted-foreground">Loading comments...</div>
+                  ) : commentsQuery.data && commentsQuery.data.length > 0 ? (
+                    <div className="space-y-3">
+                      {commentsQuery.data.map((comment) => {
+                        const commentAuthor = getAuthorName(comment.author);
+                        return (
+                          <div key={comment.id} className="flex gap-3">
+                            <Avatar className="h-8 w-8">
+                              {comment.author.avatarUrl ? (
+                                <AvatarImage
+                                  src={comment.author.avatarUrl}
+                                  alt={commentAuthor}
+                                />
+                              ) : null}
+                              <AvatarFallback className="bg-muted text-xs font-semibold">
+                                {getInitials(commentAuthor)}
+                              </AvatarFallback>
+                            </Avatar>
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs font-semibold text-foreground">
+                                  {commentAuthor}
+                                </span>
+                                <span className="text-[11px] text-muted-foreground">
+                                  {formatCommentTimestamp(comment.createdAt)}
+                                </span>
+                              </div>
+                              <p className="text-xs text-foreground whitespace-pre-line">
+                                {comment.content}
+                              </p>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="text-sm text-muted-foreground">No comments yet.</div>
+                  )}
+
+                  <div className="space-y-2">
+                    {!isAuthenticated ? (
+                      <p className="text-xs text-muted-foreground">
+                        Posting as guest. Guests can leave up to 2 comments per post.{" "}
+                        <Link to="/sign-up" className="underline">
+                          Register
+                        </Link>{" "}
+                        to comment more.
+                      </p>
+                    ) : null}
+                    <Textarea
+                      value={commentDraft}
+                      onChange={(event) => setCommentDraft(event.target.value)}
+                      placeholder="Write a comment..."
+                      rows={2}
+                    />
+                    <div className="flex justify-end">
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={handleCommentSubmit}
+                        disabled={isCommenting}
+                      >
+                        {isCommenting ? (
+                          <>
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            Posting...
+                          </>
+                        ) : (
+                          "Post comment"
+                        )}
+                      </Button>
+                    </div>
+                  </div>
                 </div>
               )}
                   </>

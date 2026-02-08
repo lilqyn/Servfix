@@ -35,6 +35,11 @@ enum ProviderVerificationStatus {
   rejected
 }
 
+enum CommunityMediaLayout {
+  grid
+  carousel
+}
+
 enum ServiceStatus {
   draft
   published
@@ -871,6 +876,7 @@ model CommunityPost {
 
   content    String
   shareCount Int @default(0)
+  mediaLayout CommunityMediaLayout @default(grid)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

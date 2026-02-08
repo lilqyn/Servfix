@@ -90,7 +90,7 @@ const Footer = () => {
                   </Link>
                 </li>
               )}
-              <li><Link to="/" className="hover:text-primary transition-colors">About Us</Link></li>
+              <li><Link to="/about" className="hover:text-primary transition-colors">About Us</Link></li>
               <li>
                 <a href="mailto:hello@servfix.com" className="hover:text-primary transition-colors">
                   Contact
@@ -151,10 +151,13 @@ const Footer = () => {
         {/* Bottom */}
         <div className="mt-12 pt-8 border-t border-background/10 flex flex-col md:flex-row justify-between items-center gap-4 text-sm text-background/50">
           <p>© 2024 SERVFIX. All rights reserved.</p>
-          <div className="flex items-center gap-6">
+          <div className="flex flex-wrap items-center gap-4">
             <Link to="/privacy" className="hover:text-background transition-colors">Privacy Policy</Link>
             <Link to="/terms" className="hover:text-background transition-colors">Terms of Service</Link>
             <Link to="/cookies" className="hover:text-background transition-colors">Cookie Policy</Link>
+            <Link to="/provider-addendum" className="hover:text-background transition-colors">
+              Provider Addendum
+            </Link>
           </div>
         </div>
       </div>

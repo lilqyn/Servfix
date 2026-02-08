@@ -1,79 +1,84 @@
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
-import { Card, CardContent } from "@/components/ui/card";
 
 const Privacy = () => {
   return (
     <div className="min-h-screen bg-background">
       <Header />
       <main className="container mx-auto px-4 py-10 space-y-8">
-        <div className="max-w-3xl space-y-3">
+        <div className="space-y-3">
           <h1 className="text-3xl font-display font-bold text-foreground">Privacy Policy</h1>
-          <p className="text-sm text-muted-foreground">Last updated February 6, 2026</p>
-          <p className="text-base text-muted-foreground">
-            This Privacy Policy explains how SERVFIX collects, uses, and protects your
-            information when you use our website and services.
-          </p>
+          <p className="text-sm text-muted-foreground">PRIVACY POLICY</p>
+          <p className="text-sm text-muted-foreground">SERVFIX / SERVFIX-GH</p>
+          <p className="text-sm text-muted-foreground">Last updated: February 8, 2026</p>
         </div>
 
-        <div className="grid gap-6">
-          <Card className="border-border/60">
-            <CardContent className="p-6 space-y-3">
-              <h2 className="text-lg font-semibold text-foreground">Information we collect</h2>
-              <ul className="list-disc pl-5 text-sm text-muted-foreground space-y-2">
-                <li>Account details like name, email, phone number, and profile data.</li>
-                <li>Service activity such as bookings, messages, and reviews.</li>
-                <li>Device and usage data, including browser type and IP address.</li>
-              </ul>
-            </CardContent>
-          </Card>
+        <div className="space-y-6 text-sm text-muted-foreground">
+          <section className="space-y-2">
+            <h2 className="text-lg font-semibold text-foreground">1. Data Controller</h2>
+            <p>
+              THE ADDO&apos;S PRIVATE LIMITED LIABILITY COMPANY (PLLC), operator of SERVFIX /
+              SERVFIX-GH.
+            </p>
+          </section>
 
-          <Card className="border-border/60">
-            <CardContent className="p-6 space-y-3">
-              <h2 className="text-lg font-semibold text-foreground">How we use information</h2>
-              <ul className="list-disc pl-5 text-sm text-muted-foreground space-y-2">
-                <li>Provide, maintain, and improve our services.</li>
-                <li>Verify identities and keep the platform secure.</li>
-                <li>Communicate updates, support responses, and platform notices.</li>
-                <li>Comply with legal requirements.</li>
-              </ul>
-            </CardContent>
-          </Card>
+          <section className="space-y-2">
+            <h2 className="text-lg font-semibold text-foreground">2. Data We Collect</h2>
+            <p>
+              We collect: name, email, phone number; login credentials (securely hashed); profile
+              information; messages exchanged on the Platform; transaction and payment metadata;
+              and usage data via Google Analytics.
+            </p>
+          </section>
 
-          <Card className="border-border/60">
-            <CardContent className="p-6 space-y-3">
-              <h2 className="text-lg font-semibold text-foreground">Sharing and disclosure</h2>
-              <p className="text-sm text-muted-foreground">
-                We only share data with trusted providers who support our services
-                (payments, messaging, analytics) or when required by law. We do not sell
-                your personal information.
-              </p>
-            </CardContent>
-          </Card>
+          <section className="space-y-2">
+            <h2 className="text-lg font-semibold text-foreground">3. Purpose of Processing</h2>
+            <p>
+              We process data to operate the Platform, authenticate users, facilitate payments and
+              escrow, resolve disputes, improve security and performance, and comply with legal
+              obligations.
+            </p>
+          </section>
 
-          <Card className="border-border/60">
-            <CardContent className="p-6 space-y-3">
-              <h2 className="text-lg font-semibold text-foreground">Your choices</h2>
-              <ul className="list-disc pl-5 text-sm text-muted-foreground space-y-2">
-                <li>Access and update your account details in settings.</li>
-                <li>Request data deletion or account closure by contacting support.</li>
-                <li>Manage cookies and marketing preferences in your browser.</li>
-              </ul>
-            </CardContent>
-          </Card>
+          <section className="space-y-2">
+            <h2 className="text-lg font-semibold text-foreground">4. Cookies &amp; Analytics</h2>
+            <p>
+              We use essential cookies for login and security and Google Analytics cookies to
+              analyze usage patterns. Analytics data is aggregated and non-identifying.
+            </p>
+          </section>
 
-          <Card className="border-border/60">
-            <CardContent className="p-6 space-y-3">
-              <h2 className="text-lg font-semibold text-foreground">Contact us</h2>
-              <p className="text-sm text-muted-foreground">
-                Questions about privacy? Email{" "}
-                <a href="mailto:hello@servfix.com" className="text-primary underline">
-                  hello@servfix.com
-                </a>
-                .
-              </p>
-            </CardContent>
-          </Card>
+          <section className="space-y-2">
+            <h2 className="text-lg font-semibold text-foreground">5. Data Sharing</h2>
+            <p>
+              We may share data with payment processors, hosting and infrastructure providers, and
+              regulators where legally required. We do not sell personal data.
+            </p>
+          </section>
+
+          <section className="space-y-2">
+            <h2 className="text-lg font-semibold text-foreground">6. Data Retention</h2>
+            <p>
+              Data is retained only as long as necessary for platform operation, legal compliance,
+              and dispute resolution.
+            </p>
+          </section>
+
+          <section className="space-y-2">
+            <h2 className="text-lg font-semibold text-foreground">7. Data Security</h2>
+            <p>
+              We implement reasonable technical and organizational safeguards to protect data.
+            </p>
+          </section>
+
+          <section className="space-y-2">
+            <h2 className="text-lg font-semibold text-foreground">8. User Rights</h2>
+            <p>
+              Users may request access, correction, deletion, and withdrawal of consent (where
+              applicable). Requests: support@servfixgh.com
+            </p>
+            <p>Contact: support@servfixgh.com &bull; https://www.servfixgh.com</p>
+          </section>
         </div>
       </main>
       <Footer />

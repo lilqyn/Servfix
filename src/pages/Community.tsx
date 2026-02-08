@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import { useAuth } from "@/contexts/AuthContext";
@@ -13,6 +13,8 @@ import CommunityFeedList from "@/components/community/CommunityFeedList";
 const Community = () => {
   const { isAuthenticated } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const focusedPostId = searchParams.get("post");
   const [feedScope, setFeedScope] = useState<"all" | "following">("all");
   const { data: publicSettings, isLoading: settingsLoading } = usePublicSettings();
   const communityEnabled = publicSettings?.featureFlags.community ?? false;
@@ -104,6 +106,7 @@ const Community = () => {
               onRetry={() => refetch()}
               onRefresh={refetch}
               emptyMessage={emptyMessage}
+              focusedPostId={focusedPostId}
               className="max-w-2xl mx-auto"
             />
           </>

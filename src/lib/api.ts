@@ -219,6 +219,7 @@ export type ApiCommunityPost = {
   id: string;
   content: string;
   shareCount: number;
+  mediaLayout: "grid" | "carousel";
   createdAt: string;
   updatedAt: string;
   author: ApiCommunityAuthor;
@@ -1270,6 +1271,7 @@ export async function updateMyProfile(payload: UpdateMyProfilePayload): Promise<
 export async function createCommunityPost(payload: {
   content?: string;
   media?: Array<string | CommunityPostMediaInput>;
+  mediaLayout?: "grid" | "carousel";
 }): Promise<void> {
   await apiFetch("/api/community/posts", {
     method: "POST",
@@ -1279,7 +1281,11 @@ export async function createCommunityPost(payload: {
 
 export async function updateCommunityPost(
   postId: string,
-  payload: { content?: string; media?: Array<string | CommunityPostMediaInput> },
+  payload: {
+    content?: string;
+    media?: Array<string | CommunityPostMediaInput>;
+    mediaLayout?: "grid" | "carousel";
+  },
 ): Promise<void> {
   await apiFetch(`/api/community/posts/${postId}`, {
     method: "PUT",

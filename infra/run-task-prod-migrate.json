@@ -1,0 +1,30 @@
+{
+    "cluster":  "ServfixProd-ClusterEB0386A7-5FsHCd5pVCRJ",
+    "overrides":  {
+                      "containerOverrides":  [
+                                                 {
+                                                     "command":  [
+                                                                     "npx",
+                                                                     "prisma",
+                                                                     "migrate",
+                                                                     "deploy"
+                                                                 ],
+                                                     "name":  "AppContainer"
+                                                 }
+                                             ]
+                  },
+    "networkConfiguration":  {
+                                 "awsvpcConfiguration":  {
+                                                             "subnets":  [
+                                                                             "subnet-0bea77afd05347d06",
+                                                                             "subnet-07f7df7e2a89bcc5e"
+                                                                         ],
+                                                             "assignPublicIp":  "ENABLED",
+                                                             "securityGroups":  [
+                                                                                    "sg-020711477a2372664"
+                                                                                ]
+                                                         }
+                             },
+    "launchType":  "FARGATE",
+    "taskDefinition":  "arn:aws:ecs:us-east-1:258974340169:task-definition/ServfixProdTaskDefB3D7DBDA:6"
+}

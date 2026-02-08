@@ -9,6 +9,11 @@
 1. Open infra/lib/config.ts and set hostedZoneId for prod and staging.
 2. Update instance sizes, desired counts, or subdomains if needed.
 3. Optional: add payment secrets via SSM by setting ssmSecrets in config.
+4. Flutterwave secrets can be sourced from SSM by setting:
+   - `SERVFIX_STAGING_FLUTTERWAVE_SECRET_KEY_PARAM`
+   - `SERVFIX_STAGING_FLUTTERWAVE_WEBHOOK_HASH_PARAM`
+   - `SERVFIX_PROD_FLUTTERWAVE_SECRET_KEY_PARAM`
+   - `SERVFIX_PROD_FLUTTERWAVE_WEBHOOK_HASH_PARAM`
 
 ## Bootstrap
 ```bash

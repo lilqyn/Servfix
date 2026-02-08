@@ -132,7 +132,7 @@ ${formData.message}`;
   };
 
   return (
-    <div className="bg-card rounded-2xl border border-border/50 p-6 shadow-sm">
+    <div id="service-inquiry" className="bg-card rounded-2xl border border-border/50 p-6 shadow-sm">
       <div className="flex items-center gap-2 mb-4">
         <MessageSquare className="w-5 h-5 text-primary" />
         <h3 className="font-display font-bold text-foreground">Send Inquiry</h3>

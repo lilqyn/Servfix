@@ -46,6 +46,7 @@ import PaymentVerify from "./pages/PaymentVerify";
 import Cookies from "./pages/Cookies";
 import Privacy from "./pages/Privacy";
 import Terms from "./pages/Terms";
+import ProviderAddendum from "./pages/ProviderAddendum";
 import About from "./pages/About";
 import Blog from "./pages/Blog";
 import { ADMIN_ROLES } from "@/lib/roles";
@@ -187,6 +188,7 @@ const App = () => (
                     <Route path="/cookies" element={<Cookies />} />
                     <Route path="/privacy" element={<Privacy />} />
                     <Route path="/terms" element={<Terms />} />
+                    <Route path="/provider-addendum" element={<ProviderAddendum />} />
                     {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
                     <Route path="*" element={<NotFound />} />
                   </Routes>

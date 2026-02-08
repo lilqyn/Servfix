@@ -1,33 +1,16 @@
 import { Link } from "react-router-dom";
 import { BadgeCheck, MapPin, Clock, Briefcase, Star, MessageCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
-
-interface Provider {
-  id: string;
-  name: string;
-  avatar: string;
-  username?: string | null;
-  verified: boolean;
-  topRated: boolean;
-  memberSince: string;
-  responseTime: string;
-  completedJobs: number;
-  rating: number;
-  reviews: number;
-  location: string;
-}
+import type { ServiceDetailData } from "@/lib/services";
 
 interface ServiceInfoProps {
-  service: {
-    name: string;
-    category: string;
-    description: string;
-    provider: Provider;
-    faqs: { question: string; answer: string }[];
-  };
+  service: ServiceDetailData;
+  onContact?: () => void;
 }
 
-const ServiceInfo = ({ service }: ServiceInfoProps) => {
+const ServiceInfo = ({ service, onContact }: ServiceInfoProps) => {
+  const canContact = Boolean(onContact);
+
   return (
     <div className="space-y-8">
       {/* Title & Provider */}
@@ -85,7 +68,13 @@ const ServiceInfo = ({ service }: ServiceInfoProps) => {
               </p>
             </div>
           </Link>
-          <Button variant="outline-gold" size="sm" className="hidden sm:flex gap-2">
+          <Button
+            variant="outline-gold"
+            size="sm"
+            className="hidden sm:flex gap-2"
+            onClick={onContact}
+            disabled={!canContact}
+          >
             <MessageCircle className="w-4 h-4" />
             Contact
           </Button>

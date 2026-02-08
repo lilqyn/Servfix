@@ -22,6 +22,16 @@
   ssmSecrets?: Record<string, string>;
 };
 
+const resolveFlutterwaveSecrets = (envName: "prod" | "staging") => {
+  const prefix = envName.toUpperCase();
+  return {
+    FLUTTERWAVE_SECRET_KEY:
+      process.env[`SERVFIX_${prefix}_FLUTTERWAVE_SECRET_KEY_PARAM`] ?? "",
+    FLUTTERWAVE_WEBHOOK_HASH:
+      process.env[`SERVFIX_${prefix}_FLUTTERWAVE_WEBHOOK_HASH_PARAM`] ?? "",
+  };
+};
+
 export const environments = {
   prod: {
     name: "prod",
@@ -43,7 +53,7 @@ export const environments = {
     retainData: true,
     enableDeletionProtection: true,
     allowedCorsOrigins: ["https://www.servfixgh.com", "https://servfixgh.com"],
-    ssmSecrets: {},
+    ssmSecrets: resolveFlutterwaveSecrets("prod"),
   } satisfies EnvironmentConfig,
   staging: {
     name: "staging",
@@ -65,7 +75,7 @@ export const environments = {
     retainData: false,
     enableDeletionProtection: false,
     allowedCorsOrigins: ["https://staging.servfixgh.com"],
-    ssmSecrets: {},
+    ssmSecrets: resolveFlutterwaveSecrets("staging"),
   } satisfies EnvironmentConfig,
 } as const;
 

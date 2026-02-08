@@ -9,6 +9,15 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { toast } from "@/components/ui/use-toast";
 import { cn } from "@/lib/utils";
 import { ensureGuestId } from "@/lib/guest";
+import {
+  Carousel,
+  CarouselContent,
+  CarouselDots,
+  CarouselItem,
+  CarouselNext,
+  CarouselPrevious,
+} from "@/components/ui/carousel";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import CommunityMediaPicker, {
   CommunityMediaDraft,
 } from "@/components/community/CommunityMediaPicker";
@@ -102,6 +111,9 @@ const CommunityPostCard = ({ post, onRefresh, showFollow = true }: CommunityPost
   const [editMedia, setEditMedia] = useState<CommunityMediaDraft[]>(
     mapPostMediaToDraft(post),
   );
+  const [editMediaLayout, setEditMediaLayout] = useState<"grid" | "carousel">(
+    post.mediaLayout ?? "grid",
+  );
   const [isUpdating, setIsUpdating] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
@@ -114,6 +126,7 @@ const CommunityPostCard = ({ post, onRefresh, showFollow = true }: CommunityPost
     if (!isEditing) {
       setEditContent(post.content ?? "");
       setEditMedia(mapPostMediaToDraft(post));
+      setEditMediaLayout(post.mediaLayout ?? "grid");
     }
   }, [isEditing, post]);
 
@@ -239,10 +252,28 @@ const CommunityPostCard = ({ post, onRefresh, showFollow = true }: CommunityPost
 
   const authorName = getAuthorName(post.author);
   const authorInitials = getInitials(authorName);
+  const mediaLayout = post.mediaLayout ?? "grid";
+
+  const renderMediaItem = (media: ApiCommunityPost["media"][number]) =>
+    media.type === "video" ? (
+      <video
+        src={media.signedUrl ?? media.url}
+        className="w-full h-48 rounded-lg object-cover border border-border/40"
+        controls
+      />
+    ) : (
+      <img
+        src={media.signedUrl ?? media.url}
+        alt="Community media"
+        className="w-full h-48 rounded-lg object-cover border border-border/40"
+        loading="lazy"
+      />
+    );
 
   const startEditing = () => {
     setEditContent(post.content ?? "");
     setEditMedia(mapPostMediaToDraft(post));
+    setEditMediaLayout(post.mediaLayout ?? "grid");
     setIsEditing(true);
   };
 
@@ -250,6 +281,7 @@ const CommunityPostCard = ({ post, onRefresh, showFollow = true }: CommunityPost
     setIsEditing(false);
     setEditContent(post.content ?? "");
     setEditMedia(mapPostMediaToDraft(post));
+    setEditMediaLayout(post.mediaLayout ?? "grid");
   };
 
   const handleUpdate = async () => {
@@ -270,6 +302,7 @@ const CommunityPostCard = ({ post, onRefresh, showFollow = true }: CommunityPost
       await updateCommunityPost(post.id, {
         content,
         media,
+        mediaLayout: editMediaLayout,
       });
       setIsEditing(false);
       await onRefresh();
@@ -388,6 +421,26 @@ const CommunityPostCard = ({ post, onRefresh, showFollow = true }: CommunityPost
               onChange={setEditMedia}
               disabled={isUpdating}
             />
+            {editMedia.length > 1 ? (
+              <div className="space-y-2">
+                <p className="text-xs text-muted-foreground">Media layout</p>
+                <ToggleGroup
+                  type="single"
+                  variant="outline"
+                  size="sm"
+                  value={editMediaLayout}
+                  onValueChange={(value) => {
+                    if (value === "grid" || value === "carousel") {
+                      setEditMediaLayout(value);
+                    }
+                  }}
+                  className="justify-start"
+                >
+                  <ToggleGroupItem value="grid">Grid</ToggleGroupItem>
+                  <ToggleGroupItem value="carousel">Slider</ToggleGroupItem>
+                </ToggleGroup>
+              </div>
+            ) : null}
             <div className="flex justify-end gap-2">
               <Button variant="outline" size="sm" onClick={cancelEditing} disabled={isUpdating}>
                 Cancel
@@ -411,26 +464,29 @@ const CommunityPostCard = ({ post, onRefresh, showFollow = true }: CommunityPost
             ) : null}
 
             {post.media?.length ? (
-              <div className="grid gap-3 sm:grid-cols-2">
-                {post.media.map((media) => (
-                  media.type === "video" ? (
-                    <video
-                      key={media.id}
-                      src={media.signedUrl ?? media.url}
-                      className="w-full h-48 rounded-lg object-cover border border-border/40"
-                      controls
-                    />
-                  ) : (
-                    <img
-                      key={media.id}
-                      src={media.signedUrl ?? media.url}
-                      alt="Community media"
-                      className="w-full h-48 rounded-lg object-cover border border-border/40"
-                      loading="lazy"
-                    />
-                  )
-                ))}
-              </div>
+              post.media.length > 1 && mediaLayout === "carousel" ? (
+                <Carousel className="w-full">
+                  <CarouselContent>
+                    {post.media.map((media) => (
+                      <CarouselItem key={media.id}>{renderMediaItem(media)}</CarouselItem>
+                    ))}
+                  </CarouselContent>
+                  <CarouselDots />
+                  <CarouselPrevious className="-left-4" />
+                  <CarouselNext className="-right-4" />
+                </Carousel>
+              ) : (
+                <div
+                  className={cn(
+                    "grid gap-3",
+                    post.media.length > 1 ? "sm:grid-cols-2" : "grid-cols-1",
+                  )}
+                >
+                  {post.media.map((media) => (
+                    <div key={media.id}>{renderMediaItem(media)}</div>
+                  ))}
+                </div>
+              )
             ) : null}
           </>
         )}
@@ -518,7 +574,13 @@ const CommunityPostCard = ({ post, onRefresh, showFollow = true }: CommunityPost
 
                 <div className="space-y-2">
                   {!isAuthenticated ? (
-                    <p className="text-xs text-muted-foreground">Posting as guest.</p>
+                    <p className="text-xs text-muted-foreground">
+                      Posting as guest. Guests can leave up to 2 comments per post.{" "}
+                      <Link to="/sign-up" className="underline">
+                        Register
+                      </Link>{" "}
+                      to comment more.
+                    </p>
                   ) : null}
                   <Textarea
                     value={commentDraft}
