@@ -12,6 +12,8 @@ export type Permission =
   | "services.moderate"
   | "orders.read"
   | "orders.update"
+  | "business.read"
+  | "business.update"
   | "reviews.read"
   | "reviews.moderate"
   | "community.read"
@@ -54,6 +56,8 @@ const rolePermissions: Record<UserRole, Permission[]> = {
     "services.moderate",
     "orders.read",
     "orders.update",
+    "business.read",
+    "business.update",
     "reviews.read",
     "reviews.moderate",
     "community.read",
@@ -79,6 +83,8 @@ const rolePermissions: Record<UserRole, Permission[]> = {
     "services.moderate",
     "orders.read",
     "orders.update",
+    "business.read",
+    "business.update",
     "reviews.read",
     "reviews.moderate",
     "community.read",
@@ -131,12 +137,16 @@ const rolePermissions: Record<UserRole, Permission[]> = {
     "services.read",
     "services.moderate",
     "orders.read",
+    "business.read",
+    "business.update",
     "support.read",
     "support.update",
   ],
   finance_manager: [
     "admin.access",
     "orders.read",
+    "business.read",
+    "business.update",
     "payouts.read",
     "payouts.update",
     "analytics.read",
@@ -159,6 +169,7 @@ const rolePermissions: Record<UserRole, Permission[]> = {
     "users.read",
     "services.read",
     "orders.read",
+    "business.read",
     "analytics.read",
     "support.read",
     "support.update",

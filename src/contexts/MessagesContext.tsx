@@ -31,6 +31,7 @@ export interface Conversation {
   }[];
   serviceId?: string | null;
   serviceName?: string | null;
+  orderId?: string | null;
   lastMessage?: Message;
   unreadCount: number;
   createdAt: Date;

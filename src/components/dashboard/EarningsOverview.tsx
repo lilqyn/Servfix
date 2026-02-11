@@ -173,8 +173,24 @@ const EarningsOverview = () => {
     ? toNumber(payoutData.wallet.pendingBalance)
     : derived.inEscrow;
   const displayCurrency = payoutData?.wallet?.currency ?? derived.currency;
+  const walletAvailableRaw = payoutData?.wallet?.availableBalance ?? null;
+  const fullBalanceValue =
+    walletAvailableRaw ?? (Number.isFinite(walletAvailable) ? String(walletAvailable) : "");
+  const payoutDisabledReason = !hasPayoutDestination
+    ? "Add your mobile money number and network in Account Settings to request a payout."
+    : walletAvailable <= 0
+      ? "No available balance to withdraw yet."
+      : null;
 
   const handleRequestPayout = async () => {
+    if (!hasPayoutDestination) {
+      toast("Add your mobile money number and network in Account Settings.");
+      return;
+    }
+    if (walletAvailable <= 0) {
+      toast("No available balance to withdraw yet.");
+      return;
+    }
     const amountValue = Number(payoutAmount);
     if (!Number.isFinite(amountValue) || amountValue <= 0) {
       toast("Enter a valid payout amount.");
@@ -193,6 +209,13 @@ const EarningsOverview = () => {
     } catch (error) {
       toast(error instanceof Error ? error.message : "Unable to request payout.");
     }
+  };
+
+  const handleUseFullBalance = () => {
+    if (walletAvailable <= 0) {
+      return;
+    }
+    setPayoutAmount(fullBalanceValue);
   };
 
   return (
@@ -276,7 +299,6 @@ const EarningsOverview = () => {
                   variant="gold"
                   size="sm"
                   className="w-full mt-3 gap-2"
-                  disabled={!hasPayoutDestination || walletAvailable <= 0}
                 >
                   <ArrowUpRight className="h-4 w-4" />
                   Request payout
@@ -286,6 +308,11 @@ const EarningsOverview = () => {
                 <DialogHeader>
                   <DialogTitle>Request payout</DialogTitle>
                 </DialogHeader>
+                {payoutDisabledReason ? (
+                  <div className="rounded-lg border border-border/60 bg-muted/40 p-3 text-sm text-muted-foreground">
+                    {payoutDisabledReason}
+                  </div>
+                ) : null}
                 <div className="space-y-4">
                   <div className="rounded-lg border border-border/50 bg-muted/40 p-3 text-sm">
                     <div className="text-xs text-muted-foreground">Destination</div>
@@ -301,13 +328,25 @@ const EarningsOverview = () => {
                       id="payout-amount"
                       type="number"
                       min="1"
+                      step="0.01"
                       value={payoutAmount}
                       onChange={(event) => setPayoutAmount(event.target.value)}
                       placeholder="Enter amount"
                     />
-                    <p className="text-xs text-muted-foreground">
-                      Available: {formatCurrency(walletAvailable, displayCurrency)}
-                    </p>
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs text-muted-foreground">
+                        Available: {formatCurrency(walletAvailable, displayCurrency)}
+                      </p>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={handleUseFullBalance}
+                        disabled={walletAvailable <= 0}
+                      >
+                        Use full balance
+                      </Button>
+                    </div>
                   </div>
                 </div>
                 <DialogFooter>
@@ -316,7 +355,7 @@ const EarningsOverview = () => {
                   </Button>
                   <Button
                     onClick={() => void handleRequestPayout()}
-                    disabled={!hasPayoutDestination || walletAvailable <= 0}
+                    disabled={Boolean(payoutDisabledReason)}
                   >
                     Submit request
                   </Button>

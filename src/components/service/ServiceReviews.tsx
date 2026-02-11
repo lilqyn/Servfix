@@ -62,7 +62,7 @@ const ServiceReviews = ({
     }
 
     if (!canReview) {
-      setDraftError("Sign in as a buyer to leave a review.");
+      setDraftError("Sign in to leave a review.");
       return;
     }
 
@@ -157,7 +157,7 @@ const ServiceReviews = ({
             </div>
           ) : (
             <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
-              <span>Sign in as a buyer to leave a review.</span>
+              <span>Sign in to leave a review.</span>
               <Button
                 asChild
                 variant="outline"

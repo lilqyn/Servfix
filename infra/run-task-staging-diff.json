@@ -1,0 +1,29 @@
+{
+  "cluster": "ServfixStaging-ClusterEB0386A7-IGsrdTzU8CTq",
+  "overrides": {
+    "containerOverrides": [
+      {
+        "command": [
+          "/bin/sh",
+          "-c",
+          "npx prisma migrate diff --from-url \"$DATABASE_URL\" --to-schema-datamodel prisma/schema.prisma --script"
+        ],
+        "name": "AppContainer"
+      }
+    ]
+  },
+  "networkConfiguration": {
+    "awsvpcConfiguration": {
+      "subnets": [
+        "subnet-0c106c7856c877570",
+        "subnet-0a2fc8f69196f8df7"
+      ],
+      "assignPublicIp": "ENABLED",
+      "securityGroups": [
+        "sg-06cafa2fea812346f"
+      ]
+    }
+  },
+  "launchType": "FARGATE",
+  "taskDefinition": "arn:aws:ecs:us-east-1:258974340169:task-definition/ServfixStagingTaskDefFD8ED30F:33"
+}

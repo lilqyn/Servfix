@@ -57,7 +57,7 @@ const ServiceDetail = () => {
     reviewsEnabled &&
       isAuthenticated &&
       user &&
-      (user.role === "buyer" || isCoreAdminRole(user.role)),
+      (user.role === "buyer" || user.role === "provider" || isCoreAdminRole(user.role)),
   );
 
   const summaryToDisplay = useMemo(() => {
@@ -215,6 +215,7 @@ const ServiceDetail = () => {
                   location={serviceData.provider.location}
                   image={serviceData.images[0]}
                   verified={serviceData.provider.verified}
+                  onRequestQuote={handleContactClick}
                 />
                 <div className="mt-6">
                   <ServiceInquiryForm 

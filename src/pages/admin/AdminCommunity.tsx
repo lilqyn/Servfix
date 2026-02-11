@@ -5,6 +5,16 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { toast } from "@/components/ui/use-toast";
 import {
   deleteAdminCommunityComment,
@@ -19,7 +29,11 @@ const AdminCommunity = () => {
   const { user } = useAuth();
   const [search, setSearch] = useState("");
   const [activeTab, setActiveTab] = useState("posts");
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; type: "post" | "comment" } | null>(null);
+  const [deleteSubmitting, setDeleteSubmitting] = useState(false);
   const canModerate = hasPermission(user?.role ?? null, "community.moderate");
+  const deleteItemLabel = deleteTarget?.type === "comment" ? "comment" : "post";
 
   const postsQuery = useQuery({
     queryKey: ["admin-community-posts", search],
@@ -33,31 +47,38 @@ const AdminCommunity = () => {
     enabled: activeTab === "comments",
   });
 
-  const handleDeletePost = async (id: string) => {
+  const handleDeletePost = (id: string) => {
     if (!canModerate) return;
-    const confirmed = window.confirm("Delete this post permanently?");
-    if (!confirmed) return;
-    try {
-      await deleteAdminCommunityPost(id);
-      toast({ title: "Post deleted." });
-      await postsQuery.refetch();
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Unable to delete post.";
-      toast({ title: message });
-    }
+    setDeleteTarget({ id, type: "post" });
+    setDeleteDialogOpen(true);
   };
 
-  const handleDeleteComment = async (id: string) => {
+  const handleDeleteComment = (id: string) => {
     if (!canModerate) return;
-    const confirmed = window.confirm("Delete this comment permanently?");
-    if (!confirmed) return;
+    setDeleteTarget({ id, type: "comment" });
+    setDeleteDialogOpen(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!canModerate || !deleteTarget || deleteSubmitting) return;
+    setDeleteSubmitting(true);
     try {
-      await deleteAdminCommunityComment(id);
-      toast({ title: "Comment deleted." });
-      await commentsQuery.refetch();
+      if (deleteTarget.type === "post") {
+        await deleteAdminCommunityPost(deleteTarget.id);
+        toast({ title: "Post deleted." });
+        await postsQuery.refetch();
+      } else {
+        await deleteAdminCommunityComment(deleteTarget.id);
+        toast({ title: "Comment deleted." });
+        await commentsQuery.refetch();
+      }
+      setDeleteDialogOpen(false);
+      setDeleteTarget(null);
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Unable to delete comment.";
+      const message = err instanceof Error ? err.message : "Unable to delete item.";
       toast({ title: message });
+    } finally {
+      setDeleteSubmitting(false);
     }
   };
 
@@ -215,6 +236,35 @@ const AdminCommunity = () => {
           </Card>
         </TabsContent>
       </Tabs>
+
+      <AlertDialog
+        open={deleteDialogOpen}
+        onOpenChange={(open) => {
+          setDeleteDialogOpen(open);
+          if (!open) {
+            setDeleteTarget(null);
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete {deleteItemLabel}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. The {deleteItemLabel} will be permanently removed.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteSubmitting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDelete}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={deleteSubmitting}
+            >
+              {deleteSubmitting ? "Deleting..." : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

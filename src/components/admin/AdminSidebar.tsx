@@ -31,6 +31,7 @@ import {
   Home,
   LifeBuoy,
   FileText,
+  Building2,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
@@ -136,6 +137,14 @@ const AdminSidebar = () => {
       icon: ShoppingCart,
       permission: "orders.read",
       pageKey: "orders",
+    },
+    {
+      title: "Business",
+      url: "/admin/business",
+      icon: Building2,
+      permission: "business.read",
+      functionKey: "finance",
+      pageKey: "business",
     },
     {
       title: "Disputes",

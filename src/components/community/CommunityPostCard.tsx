@@ -4,6 +4,16 @@ import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { toast } from "@/components/ui/use-toast";
@@ -116,6 +126,7 @@ const CommunityPostCard = ({ post, onRefresh, showFollow = true }: CommunityPost
   );
   const [isUpdating, setIsUpdating] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
   const liked = Boolean(post.viewer?.liked);
   const saved = Boolean(post.viewer?.saved);
@@ -254,21 +265,24 @@ const CommunityPostCard = ({ post, onRefresh, showFollow = true }: CommunityPost
   const authorInitials = getInitials(authorName);
   const mediaLayout = post.mediaLayout ?? "grid";
 
-  const renderMediaItem = (media: ApiCommunityPost["media"][number]) =>
-    media.type === "video" ? (
-      <video
-        src={media.signedUrl ?? media.url}
-        className="w-full h-48 rounded-lg object-cover border border-border/40"
-        controls
-      />
-    ) : (
-      <img
-        src={media.signedUrl ?? media.url}
-        alt="Community media"
-        className="w-full h-48 rounded-lg object-cover border border-border/40"
-        loading="lazy"
-      />
-    );
+  const renderMediaItem = (media: ApiCommunityPost["media"][number]) => (
+    <div className="aspect-[4/3] w-full overflow-hidden rounded-lg border border-border/40 bg-muted/20">
+      {media.type === "video" ? (
+        <video
+          src={media.signedUrl ?? media.url}
+          className="h-full w-full object-cover"
+          controls
+        />
+      ) : (
+        <img
+          src={media.signedUrl ?? media.url}
+          alt="Community media"
+          className="h-full w-full object-cover"
+          loading="lazy"
+        />
+      )}
+    </div>
+  );
 
   const startEditing = () => {
     setEditContent(post.content ?? "");
@@ -313,20 +327,22 @@ const CommunityPostCard = ({ post, onRefresh, showFollow = true }: CommunityPost
     }
   };
 
-  const handleDelete = async () => {
+  const handleDelete = () => {
     if (!ensureIdentity() || isDeleting) {
       return;
     }
+    setDeleteDialogOpen(true);
+  };
 
-    const confirmed = window.confirm("Delete this post permanently?");
-    if (!confirmed) {
+  const confirmDelete = async () => {
+    if (!ensureIdentity() || isDeleting) {
       return;
     }
-
     setIsDeleting(true);
     try {
       await deleteCommunityPost(post.id);
       await onRefresh();
+      setDeleteDialogOpen(false);
     } catch (error) {
       toast(error instanceof Error ? error.message : "Unable to delete post.");
     } finally {
@@ -611,6 +627,31 @@ const CommunityPostCard = ({ post, onRefresh, showFollow = true }: CommunityPost
           </>
         )}
       </CardContent>
+      <AlertDialog
+        open={deleteDialogOpen}
+        onOpenChange={(open) => {
+          setDeleteDialogOpen(open);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete post?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. This post will be permanently removed.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDelete}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={isDeleting}
+            >
+              {isDeleting ? "Deleting..." : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Card>
   );
 };

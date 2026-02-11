@@ -109,6 +109,7 @@ const AdminPayouts = () => {
       "Destination",
       "Network",
       "Reference",
+      "Failure reason",
       "Created At",
     ];
     const escapeValue = (value: string) => {
@@ -122,6 +123,7 @@ const AdminPayouts = () => {
         profile?.displayName || provider.username || provider.email || provider.phone || "Provider";
       const destination = request.destinationMomo ?? "";
       const network = request.momoNetwork ?? "";
+      const failureReason = request.failureReason ?? "";
       const createdAt = new Date(request.createdAt).toISOString();
       return [
         request.id,
@@ -134,6 +136,7 @@ const AdminPayouts = () => {
         destination,
         network,
         request.reference ?? "",
+        failureReason,
         createdAt,
       ].map((value) => escapeValue(String(value)));
     });
@@ -299,6 +302,7 @@ const AdminPayouts = () => {
                   <TableHead>Amount</TableHead>
                   <TableHead>Destination</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead>Failure reason</TableHead>
                   <TableHead>Requested</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
@@ -322,6 +326,10 @@ const AdminPayouts = () => {
                     month: "short",
                     day: "numeric",
                   });
+                  const failureReason =
+                    request.status === "failed"
+                      ? request.failureReason || "Transfer failed."
+                      : "-";
                   const isProcessing = activeActionId === request.id;
                   const canAct = request.status === "requested";
 
@@ -339,6 +347,12 @@ const AdminPayouts = () => {
                       <TableCell>{destination}</TableCell>
                       <TableCell>
                         <Badge variant={statusVariant}>{request.status.replace("_", " ")}</Badge>
+                      </TableCell>
+                      <TableCell
+                        className="text-xs text-muted-foreground max-w-[220px] truncate"
+                        title={failureReason}
+                      >
+                        {failureReason}
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">{requestedAt}</TableCell>
                       <TableCell className="text-right">
@@ -366,7 +380,7 @@ const AdminPayouts = () => {
                 })}
                 {filteredRequests.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center text-sm text-muted-foreground">
+                    <TableCell colSpan={7} className="text-center text-sm text-muted-foreground">
                       No payout requests found.
                     </TableCell>
                   </TableRow>

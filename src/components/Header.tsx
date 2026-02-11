@@ -52,8 +52,10 @@ const Header = () => {
     return countUnreadNotifications(filteredNotifications);
   }, [filteredNotifications, unreadNotifications, user?.role]);
   const isAdmin = isAdminRole(user?.role);
+  const isBuyer = user?.role === "buyer";
   const communityEnabled = publicSettings?.featureFlags.community ?? true;
   const showCommunityLink = communityEnabled && isAuthenticated;
+  const showBusinessLink = isAuthenticated && (isBuyer || isAdmin);
 
   const providerDisplayName = useMemo(() => {
     if (!user) {
@@ -286,6 +288,11 @@ const Header = () => {
                   <DropdownMenuItem onClick={() => navigate("/support")}>
                     Help & support
                   </DropdownMenuItem>
+                  {showBusinessLink && (
+                    <DropdownMenuItem onClick={() => navigate("/business")}>
+                      Business accounts
+                    </DropdownMenuItem>
+                  )}
                   {isProvider && (
                     <DropdownMenuItem onClick={() => navigate("/dashboard")}>
                       Provider dashboard
@@ -410,6 +417,14 @@ const Header = () => {
                   >
                     My Profile
                   </Link>
+                  {showBusinessLink && (
+                    <Link
+                      to="/business"
+                      className="px-4 py-3 text-sm font-medium text-muted-foreground hover:bg-muted rounded-lg transition-colors"
+                    >
+                      Business accounts
+                    </Link>
+                  )}
                   <Link
                     to="/account"
                     className="px-4 py-3 text-sm font-medium text-muted-foreground hover:bg-muted rounded-lg transition-colors"

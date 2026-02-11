@@ -11,12 +11,15 @@ interface Package {
   id: string;
   name: string;
   price: number;
+  priceMax?: number | null;
   description: string;
   features: string[];
   deliveryTime: string;
   popular: boolean;
   pricingType?: "flat" | "per_unit";
   unitLabel?: string | null;
+  pricingModel?: "fixed" | "negotiable" | "market";
+  priceNote?: string | null;
 }
 
 interface Provider {
@@ -43,6 +46,7 @@ interface ServicePricingProps {
   image: string;
   verified: boolean;
   isPreview?: boolean;
+  onRequestQuote?: () => void;
 }
 
 const ServicePricing = ({
@@ -58,10 +62,16 @@ const ServicePricing = ({
   image,
   verified,
   isPreview = false,
+  onRequestQuote,
 }: ServicePricingProps) => {
   const [isBooking, setIsBooking] = useState(false);
   const selected = packages.find(p => p.id === selectedPackage) || packages[0];
   const unitLabel = selected?.unitLabel?.trim() || "unit";
+  const pricingModel = selected?.pricingModel ?? "fixed";
+  const isNegotiable = pricingModel !== "fixed";
+  const minPrice = selected?.price ?? 0;
+  const maxPrice =
+    selected?.priceMax && selected.priceMax > minPrice ? selected.priceMax : null;
   const navigate = useNavigate();
   const locationState = useLocation();
   const { addToCart } = useCart();
@@ -86,14 +96,23 @@ const ServicePricing = ({
       return;
     }
 
+    if (isNegotiable) {
+      if (onRequestQuote) {
+        onRequestQuote();
+      } else {
+        toast.info("Request a quote to continue.");
+      }
+      return;
+    }
+
     if (!isAuthenticated) {
       const next = encodeURIComponent(`${locationState.pathname}${locationState.search}`);
       navigate(`/sign-in?next=${next}`);
       return;
     }
 
-    if (user?.role !== "buyer" && !isCoreAdminRole(user?.role)) {
-      toast.error("Only buyers can book services.");
+    if (user?.role !== "buyer" && user?.role !== "provider" && !isCoreAdminRole(user?.role)) {
+      toast.error("Only buyers and providers can book services.");
       navigate("/dashboard");
       return;
     }
@@ -149,8 +168,14 @@ const ServicePricing = ({
         <div className="flex items-baseline justify-between mb-2">
           <div>
             <span className="text-3xl font-display font-bold text-foreground">
-              GH₵ {selected.price.toLocaleString()}
+              GH₵ {minPrice.toLocaleString()}
+              {isNegotiable && maxPrice ? ` - GH₵ ${maxPrice.toLocaleString()}` : ""}
             </span>
+            {isNegotiable && (
+              <span className="ml-2 text-xs uppercase tracking-wide text-secondary">
+                {pricingModel === "market" ? "Market Price" : "Negotiable"}
+              </span>
+            )}
             {selected.pricingType === "per_unit" && (
               <span className="ml-2 text-sm text-muted-foreground">
                 per {unitLabel}
@@ -159,6 +184,9 @@ const ServicePricing = ({
           </div>
           <span className="text-sm text-muted-foreground">{selected.description}</span>
         </div>
+        {selected.priceNote && (
+          <p className="text-xs text-muted-foreground mb-3">{selected.priceNote}</p>
+        )}
 
         <p className="text-sm text-muted-foreground mb-4 flex items-center gap-2">
           <Clock className="w-4 h-4" />
@@ -191,7 +219,11 @@ const ServicePricing = ({
           ) : (
             <>
               <Calendar className="w-4 h-4" />
-              {isPreview ? "Preview mode" : `Book Now - GH₵ ${selected.price.toLocaleString()}`}
+              {isPreview
+                ? "Preview mode"
+                : isNegotiable
+                  ? "Request Quote"
+                  : `Book Now - GH₵ ${selected.price.toLocaleString()}`}
             </>
           )}
         </Button>

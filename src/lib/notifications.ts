@@ -1,6 +1,6 @@
 import type { ApiNotification } from "@/lib/api";
 import type { AuthUser } from "@/lib/auth";
-import type { UserRole } from "@/lib/roles";
+import { isAdminRole, type UserRole } from "@/lib/roles";
 
 export type NotificationDestination = {
   href: string;
@@ -31,7 +31,13 @@ export const getNotificationDestination = (
       };
     case "order_created":
     case "order_status":
+      if (isAdminRole(viewerRole ?? null)) {
+        return { href: "/admin/orders" };
+      }
       if (viewerRole === "buyer") {
+        if (threadId) {
+          return { href: "/messages", state: { activeConversationId: threadId } };
+        }
         return { href: "/cart" };
       }
       return { href: "/dashboard" };

@@ -27,6 +27,7 @@ const ADMIN_PAGE_PATHS: Record<AdminPageKey, string> = {
   providers: "/admin/providers",
   services: "/admin/services",
   orders: "/admin/orders",
+  business: "/admin/business",
   disputes: "/admin/disputes",
   reviews: "/admin/reviews",
   community: "/admin/community",
@@ -48,6 +49,7 @@ const ADMIN_PAGE_REQUIREMENTS: Record<
   providers: { permission: "providers.read" },
   services: { permission: "services.read" },
   orders: { permission: "orders.read" },
+  business: { permission: "business.read", functionKey: "finance" },
   disputes: { permission: "orders.read", functionKey: "customer_service" },
   reviews: {
     permission: "reviews.read",
@@ -74,6 +76,7 @@ const ADMIN_PAGE_ORDER: AdminPageKey[] = [
   "providers",
   "services",
   "orders",
+  "business",
   "disputes",
   "reviews",
   "community",
@@ -100,6 +103,8 @@ const getAdminPageKeyFromPath = (pathname: string): AdminPageKey | null => {
       return "services";
     case "orders":
       return "orders";
+    case "business":
+      return "business";
     case "disputes":
       return "disputes";
     case "reviews":

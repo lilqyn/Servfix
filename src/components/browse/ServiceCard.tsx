@@ -22,6 +22,13 @@ const ServiceCard = ({ service }: ServiceCardProps) => {
   const { addToWishlist, removeFromWishlist, isInWishlist } = useWishlist();
   const { startConversation } = useMessages();
   const { isAuthenticated } = useAuth();
+  const isFeatured = service.boostTypes?.includes("featured");
+  const hasBoost = !isFeatured && (service.boostTypes?.length ?? 0) > 0;
+  const planBadge = service.planBadge?.trim();
+  const planBadgeClass =
+    service.planTier === "business"
+      ? "bg-gradient-gold text-primary-foreground"
+      : "bg-primary/15 text-primary";
 
   const handleWishlistToggle = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -88,6 +95,23 @@ const ServiceCard = ({ service }: ServiceCardProps) => {
         />
         {/* Badges */}
         <div className="absolute top-3 left-3 flex gap-2">
+          {isFeatured && (
+            <span className="flex items-center gap-1 px-2 py-1 bg-primary text-primary-foreground text-xs font-medium rounded-full">
+              Featured
+            </span>
+          )}
+          {hasBoost && (
+            <span className="flex items-center gap-1 px-2 py-1 bg-accent text-accent-foreground text-xs font-medium rounded-full">
+              Boosted
+            </span>
+          )}
+          {planBadge && (
+            <span
+              className={`flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-full ${planBadgeClass}`}
+            >
+              {planBadge}
+            </span>
+          )}
           {service.verified && (
             <span className="flex items-center gap-1 px-2 py-1 bg-secondary text-secondary-foreground text-xs font-medium rounded-full">
               <BadgeCheck className="w-3 h-3" />

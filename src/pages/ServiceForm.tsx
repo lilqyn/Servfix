@@ -23,16 +23,48 @@ import { useAuth } from "@/contexts/AuthContext";
 import { FALLBACK_AVATAR, FALLBACK_IMAGE, type ServiceDetailData } from "@/lib/services";
 import type { ApiService } from "@/lib/api";
 
-const pricingTierSchema = z.object({
-  name: z.string().min(1, "Name is required"),
-  price: z.number().min(1, "Price must be greater than 0"),
-  description: z.string().min(1, "Description is required"),
-  deliveryTime: z.string().min(1, "Delivery time is required"),
-  features: z.array(z.string()).min(1, "At least one feature is required"),
-  popular: z.boolean().default(false),
-  pricingType: z.enum(["flat", "per_unit"]).default("flat"),
-  unitLabel: z.string().optional(),
-});
+const pricingTierSchema = z
+  .object({
+    name: z.string().min(1, "Name is required"),
+    price: z.number().min(0, "Price must be 0 or greater"),
+    priceMax: z.number().optional(),
+    priceNote: z.string().optional(),
+    description: z.string().min(1, "Description is required"),
+    deliveryTime: z.string().min(1, "Delivery time is required"),
+    features: z.array(z.string()).min(1, "At least one feature is required"),
+    popular: z.boolean().default(false),
+    pricingType: z.enum(["flat", "per_unit"]).default("flat"),
+    pricingModel: z.enum(["fixed", "negotiable", "market"]).default("fixed"),
+    unitLabel: z.string().optional(),
+  })
+  .superRefine((value, ctx) => {
+    if (value.pricingModel === "fixed") {
+      if (value.price <= 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Price must be greater than 0",
+          path: ["price"],
+        });
+      }
+      return;
+    }
+
+    if (value.price <= 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Minimum price must be greater than 0",
+        path: ["price"],
+      });
+    }
+
+    if (!value.priceMax || value.priceMax <= value.price) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Maximum price must be greater than minimum price",
+        path: ["priceMax"],
+      });
+    }
+  });
 
 const serviceFormSchema = z.object({
   name: z.string().min(3, "Service name must be at least 3 characters"),
@@ -72,31 +104,40 @@ const defaultValues: Partial<ServiceFormData> = {
     {
       name: "Basic",
       price: 0,
+      priceMax: 0,
+      priceNote: "",
       description: "",
       deliveryTime: "",
       features: [""],
       popular: false,
       pricingType: "flat",
+      pricingModel: "fixed",
       unitLabel: "",
     },
     {
       name: "Standard",
       price: 0,
+      priceMax: 0,
+      priceNote: "",
       description: "",
       deliveryTime: "",
       features: [""],
       popular: true,
       pricingType: "flat",
+      pricingModel: "fixed",
       unitLabel: "",
     },
     {
       name: "Premium",
       price: 0,
+      priceMax: 0,
+      priceNote: "",
       description: "",
       deliveryTime: "",
       features: [""],
       popular: false,
       pricingType: "flat",
+      pricingModel: "fixed",
       unitLabel: "",
     },
   ],
@@ -229,6 +270,8 @@ const buildPricingTiers = (tiers: ApiService["tiers"]): ServiceFormData["pricing
       return {
         name: label,
         price: 0,
+        priceMax: 0,
+        priceNote: "",
         description: "",
         deliveryTime: "",
         features: [""],
@@ -239,11 +282,14 @@ const buildPricingTiers = (tiers: ApiService["tiers"]): ServiceFormData["pricing
     return {
       name: label,
       price: Number(tier.price),
+      priceMax: tier.priceMax ? Number(tier.priceMax) : 0,
+      priceNote: tier.priceNote ?? "",
       description: `${label} package`,
       deliveryTime: `${tier.deliveryDays} days`,
       features: [""],
       popular: name === "standard",
       pricingType: tier.pricingType ?? "flat",
+      pricingModel: tier.pricingModel ?? "fixed",
       unitLabel: tier.unitLabel ?? "",
     };
   });
@@ -326,6 +372,12 @@ const buildServicePayload = (data: ServiceFormData, status: "draft" | "published
       deliveryDays: parseDeliveryDays(tier.deliveryTime),
       revisionCount: 0,
       pricingType: tier.pricingType ?? "flat",
+      pricingModel: tier.pricingModel ?? "fixed",
+      priceMax:
+        tier.pricingModel !== "fixed" && tier.priceMax && tier.priceMax > tier.price
+          ? Number(tier.priceMax)
+          : undefined,
+      priceNote: tier.priceNote?.trim() || undefined,
       unitLabel:
         tier.pricingType === "per_unit"
           ? tier.unitLabel?.trim() || "unit"
@@ -442,12 +494,18 @@ const ServiceForm = () => {
               id: `${name.toLowerCase().replace(/\s+/g, "-")}-${index}`,
               name,
               price: Number.isFinite(tier.price) ? Number(tier.price) : 0,
+              priceMax:
+                Number.isFinite(tier.priceMax ?? 0) && (tier.priceMax ?? 0) > 0
+                  ? Number(tier.priceMax)
+                  : null,
               description: tier.description?.trim() || `${name} package`,
               features: features.length > 0 ? features : ["Custom scope"],
               deliveryTime: tier.deliveryTime?.trim() || "Flexible",
               popular: tier.popular ?? index === 1,
               pricingType: tier.pricingType ?? "flat",
               unitLabel: tier.unitLabel ?? null,
+              pricingModel: tier.pricingModel ?? "fixed",
+              priceNote: tier.priceNote ?? null,
             };
           })
         : [

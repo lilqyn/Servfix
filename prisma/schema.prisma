@@ -57,6 +57,12 @@ enum PricingType {
   per_unit
 }
 
+enum PricingModel {
+  fixed
+  negotiable
+  market
+}
+
 enum OrderStatus {
   created
   paid_to_escrow
@@ -89,6 +95,38 @@ enum OrderEventType {
   refunded
   chargeback
   admin_action
+  progress_reported
+  balance_requested
+  release_requested
+  release_approved
+  release_rejected
+}
+
+enum OrderPaymentStage {
+  deposit
+  balance
+}
+
+enum OrderPaymentStatus {
+  pending
+  paid
+  cancelled
+  refunded
+}
+
+enum QuoteStatus {
+  sent
+  accepted
+  rejected
+  cancelled
+  expired
+}
+
+enum ReleaseRequestStatus {
+  pending
+  approved
+  rejected
+  cancelled
 }
 
 enum ReportTargetType {
@@ -193,6 +231,37 @@ enum SubscriptionStatus {
   expired
 }
 
+enum BusinessAccountStatus {
+  active
+  suspended
+}
+
+enum BusinessMemberRole {
+  owner
+  admin
+  member
+}
+
+enum BusinessMemberStatus {
+  active
+  invited
+  removed
+}
+
+enum BusinessJobStatus {
+  open
+  assigned
+  closed
+  cancelled
+}
+
+enum BusinessInvoiceStatus {
+  draft
+  issued
+  paid
+  void
+}
+
 enum BoostType {
   featured
   feed_boost
@@ -233,6 +302,7 @@ model User {
   phone        String? @unique
   email        String? @unique
   username     String? @unique
+  location     String?
   // If you do password auth. If OTP-only, this can remain null.
   passwordHash String?
   avatarKey    String?
@@ -247,12 +317,17 @@ model User {
   services         Service[] @relation("ProviderServices")
   ordersAsBuyer    Order[]   @relation("BuyerOrders")
   ordersAsProvider Order[]   @relation("ProviderOrders")
+  quotesAsBuyer    Quote[]   @relation("BuyerQuotes")
+  quotesAsProvider Quote[]   @relation("ProviderQuotes")
 
   threadsAsBuyer    Thread[]  @relation("BuyerThreads")
   threadsAsProvider Thread[]  @relation("ProviderThreads")
   messages          Message[]
   reviewsAuthored   Review[] @relation("ReviewAuthor")
   reviewsReceived   Review[] @relation("ReviewProvider")
+  progressReports   OrderProgressReport[]
+  releaseRequests   OrderReleaseRequest[] @relation("ReleaseRequester")
+  releaseApprovals  OrderReleaseRequest[] @relation("ReleaseApprover")
 
   communityPosts         CommunityPost[]
   communityPostLikes     CommunityPostLike[]
@@ -271,6 +346,9 @@ model User {
   payoutRequests PayoutRequest[]
   ledgerEntries  LedgerEntry[]
   subscriptions  ProviderSubscription[]
+  businessMemberships BusinessMember[]
+  businessJobsRequested BusinessJob[] @relation("BusinessJobRequester")
+  businessJobsAssigned BusinessJob[] @relation("BusinessJobProvider")
   reportsFiled    Report[] @relation("ReportReporter")
   reportsResolved Report[] @relation("ReportResolvedBy")
   supportTickets SupportTicket[] @relation("SupportTicketRequester")
@@ -454,6 +532,7 @@ model Service {
   tiers          ServiceTier[]
   media          ServiceMedia[]
   orders         Order[]
+  quotes         Quote[]
   boostPurchases BoostPurchase[]
   threads        Thread[]
   reviews        Review[]
@@ -471,12 +550,16 @@ model ServiceTier {
   serviceId String
   service   Service @relation(fields: [serviceId], references: [id], onDelete: Cascade)
   orders    Order[]
+  quotes    Quote[]
 
   name     TierName
   price    Decimal      @db.Decimal(12, 2)
   currency CurrencyCode @default(GHS)
   pricingType PricingType @default(flat)
   unitLabel   String?
+  pricingModel PricingModel @default(fixed)
+  priceMax Decimal? @db.Decimal(12, 2)
+  priceNote String?
 
   deliveryDays  Int
   revisionCount Int @default(0)
@@ -505,17 +588,59 @@ model ServiceMedia {
   @@index([serviceId])
 }
 
+model Quote {
+  id        String @id @default(uuid())
+  threadId  String
+  thread    Thread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  serviceId String
+  service   Service @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  tierId    String?
+  tier      ServiceTier? @relation(fields: [tierId], references: [id], onDelete: SetNull)
+  providerId String
+  provider  User   @relation("ProviderQuotes", fields: [providerId], references: [id], onDelete: Cascade)
+  buyerId   String
+  buyer     User   @relation("BuyerQuotes", fields: [buyerId], references: [id], onDelete: Cascade)
+
+  status QuoteStatus @default(sent)
+
+  amount         Decimal      @db.Decimal(12, 2)
+  currency       CurrencyCode @default(GHS)
+  quantity       Int          @default(1)
+  depositPercent Int          @default(0)
+  depositAmount  Decimal      @db.Decimal(12, 2)
+  balanceAmount  Decimal      @db.Decimal(12, 2)
+  message        String?
+  expiresAt      DateTime?
+  acceptedAt     DateTime?
+  rejectedAt     DateTime?
+  cancelledAt    DateTime?
+
+  order     Order?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([threadId])
+  @@index([serviceId])
+  @@index([tierId])
+  @@index([providerId])
+  @@index([buyerId])
+  @@index([status])
+}
+
 model Order {
   id         String @id @default(uuid())
   buyerId    String
   providerId String
   serviceId  String
-  tierId     String
+  tierId     String?
+  quoteId    String? @unique
 
   buyer    User        @relation("BuyerOrders", fields: [buyerId], references: [id], onDelete: Restrict)
   provider User        @relation("ProviderOrders", fields: [providerId], references: [id], onDelete: Restrict)
   service  Service     @relation(fields: [serviceId], references: [id], onDelete: Restrict)
-  tier     ServiceTier @relation(fields: [tierId], references: [id], onDelete: Restrict)
+  tier     ServiceTier? @relation(fields: [tierId], references: [id], onDelete: Restrict)
+  quote    Quote? @relation(fields: [quoteId], references: [id], onDelete: SetNull)
 
   status OrderStatus @default(created)
 
@@ -525,6 +650,12 @@ model Order {
   taxAmount         Decimal      @db.Decimal(12, 2)
   amountNetProvider Decimal      @db.Decimal(12, 2)
   currency          CurrencyCode @default(GHS)
+  amountPaid        Decimal      @default(0.0) @db.Decimal(12, 2)
+  amountPaidNet     Decimal      @default(0.0) @db.Decimal(12, 2)
+  amountReleasedNet Decimal      @default(0.0) @db.Decimal(12, 2)
+  depositPercent    Int?
+  depositAmount     Decimal?     @db.Decimal(12, 2)
+  balanceAmount     Decimal?     @db.Decimal(12, 2)
 
   acceptedAt  DateTime?
   deliveredAt DateTime?
@@ -541,10 +672,18 @@ model Order {
 
   events         OrderEvent[]
   ledgerEntries  LedgerEntry[]
+  payments       OrderPayment[]
+  progressReports OrderProgressReport[]
+  releaseRequests OrderReleaseRequest[]
   paymentIntentId String?
   paymentIntent   PaymentIntent? @relation("PaymentIntentOrders", fields: [paymentIntentId], references: [id], onDelete: SetNull)
   disputes       Dispute[]
   threads        Thread[]
+  businessAccountId String?
+  businessAccount   BusinessAccount? @relation(fields: [businessAccountId], references: [id], onDelete: SetNull)
+  businessInvoiceId String?
+  businessInvoice   BusinessInvoice? @relation(fields: [businessInvoiceId], references: [id], onDelete: SetNull)
+  businessJob   BusinessJob? @relation("BusinessJobOrder")
 
   @@index([buyerId])
   @@index([providerId])
@@ -552,6 +691,8 @@ model Order {
   @@index([status])
   @@index([refundReference])
   @@index([paymentIntentId])
+  @@index([businessAccountId])
+  @@index([businessInvoiceId])
   @@index([createdAt])
 }
 
@@ -569,9 +710,85 @@ model OrderEvent {
   @@index([createdAt])
 }
 
+model OrderPayment {
+  id        String @id @default(uuid())
+  orderId   String
+  order     Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  stage  OrderPaymentStage
+  status OrderPaymentStatus @default(pending)
+
+  amount           Decimal      @db.Decimal(12, 2)
+  platformFee      Decimal      @db.Decimal(12, 2)
+  taxAmount        Decimal      @db.Decimal(12, 2)
+  amountNetProvider Decimal     @db.Decimal(12, 2)
+  currency         CurrencyCode @default(GHS)
+
+  paymentIntentId String?
+  paymentIntent   PaymentIntent? @relation(fields: [paymentIntentId], references: [id], onDelete: SetNull)
+
+  paidAt   DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  releaseRequests OrderReleaseRequest[]
+
+  @@index([orderId])
+  @@index([paymentIntentId])
+  @@index([stage])
+  @@index([status])
+}
+
+model OrderProgressReport {
+  id        String @id @default(uuid())
+  orderId   String
+  order     Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  providerId String
+  provider  User   @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  title           String
+  body            String?
+  percentComplete Int @default(0)
+
+  createdAt DateTime @default(now())
+
+  @@index([orderId])
+  @@index([providerId])
+  @@index([createdAt])
+}
+
+model OrderReleaseRequest {
+  id        String @id @default(uuid())
+  orderId   String
+  order     Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  paymentId String?
+  payment   OrderPayment? @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+
+  requestedById String
+  requestedBy   User   @relation("ReleaseRequester", fields: [requestedById], references: [id], onDelete: Cascade)
+  approvedById  String?
+  approvedBy    User?  @relation("ReleaseApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+
+  amount   Decimal      @db.Decimal(12, 2)
+  currency CurrencyCode @default(GHS)
+  status   ReleaseRequestStatus @default(pending)
+  note     String?
+
+  createdAt DateTime @default(now())
+  decidedAt DateTime?
+
+  @@index([orderId])
+  @@index([paymentId])
+  @@index([requestedById])
+  @@index([approvedById])
+  @@index([status])
+  @@index([createdAt])
+}
+
 model PaymentIntent {
   id      String @id @default(uuid())
   orders Order[] @relation("PaymentIntentOrders")
+  orderPayments OrderPayment[]
 
   provider PaymentProvider
   status   PaymentIntentStatus @default(created)
@@ -667,6 +884,92 @@ model PayoutRequest {
   @@index([createdAt])
 }
 
+model BusinessAccount {
+  id     String               @id @default(uuid())
+  name   String
+  slug   String               @unique
+  status BusinessAccountStatus @default(active)
+  industry String?
+  size     String?
+  notes    String?
+
+  members  BusinessMember[]
+  jobs     BusinessJob[]
+  invoices BusinessInvoice[]
+  orders   Order[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+}
+
+model BusinessMember {
+  id        String              @id @default(uuid())
+  accountId String
+  account   BusinessAccount     @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role      BusinessMemberRole  @default(member)
+  status    BusinessMemberStatus @default(active)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([accountId, userId])
+  @@index([accountId])
+  @@index([userId])
+  @@index([status])
+}
+
+model BusinessJob {
+  id        String            @id @default(uuid())
+  accountId String
+  account   BusinessAccount   @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  title     String
+  description String
+  category  String
+  budget    Decimal?          @db.Decimal(12, 2)
+  currency  CurrencyCode      @default(GHS)
+  status    BusinessJobStatus @default(open)
+
+  requestedById    String?
+  requestedBy      User?      @relation("BusinessJobRequester", fields: [requestedById], references: [id], onDelete: SetNull)
+  assignedProviderId String?
+  assignedProvider   User?    @relation("BusinessJobProvider", fields: [assignedProviderId], references: [id], onDelete: SetNull)
+  orderId String? @unique
+  order   Order?    @relation("BusinessJobOrder", fields: [orderId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([accountId])
+  @@index([status])
+  @@index([requestedById])
+}
+
+model BusinessInvoice {
+  id        String               @id @default(uuid())
+  accountId String
+  account   BusinessAccount      @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  periodStart DateTime
+  periodEnd   DateTime
+  total       Decimal            @db.Decimal(12, 2)
+  currency    CurrencyCode       @default(GHS)
+  status      BusinessInvoiceStatus @default(draft)
+  issuedAt    DateTime?
+  paidAt      DateTime?
+  metadata    Json?
+  orders      Order[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([accountId])
+  @@index([status])
+  @@index([periodStart])
+}
+
 model Plan {
   id           String       @id @default(uuid())
   name         String
@@ -751,6 +1054,7 @@ model Thread {
   updatedAt DateTime @updatedAt
 
   messages Message[]
+  quotes   Quote[]
 
   @@index([buyerId])
   @@index([providerId])
@@ -991,6 +1295,7 @@ model StaticPage {
   slug  String @unique
   title String
   body  String
+  content Json?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1004,6 +1309,7 @@ model PlatformSettings {
   payoutRules Json?
   disputePolicy Json?
   orderRules Json?
+  boostCatalog Json?
   providerVerification Json?
   reviewModeration Json?
   communityModeration Json?

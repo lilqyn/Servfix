@@ -10,7 +10,15 @@ import { env } from "../config.js";
 import { createNotification } from "../utils/notifications.js";
 import { createSupportTicketEvent, formatTicketNumber } from "../utils/tickets.js";
 import { defaultHomeContent, HOME_CONTENT_KEY } from "../utils/home-content.js";
-import { DEFAULT_PAGES, PAGE_KEYS, type StaticPageKey } from "../utils/pages.js";
+import {
+  DEFAULT_PAGES,
+  PAGE_KEYS,
+  type StaticPageContent,
+  type StaticPageKey,
+  type BlogPost,
+  type StaffProfile,
+} from "../utils/pages.js";
+import { normalizeS3Key, signS3Key } from "../utils/s3.js";
 import {
   getPlatformSettings,
   updatePlatformSettings,
@@ -60,6 +68,10 @@ const ordersQuerySchema = paginationSchema.extend({
       "chargeback",
     ])
     .optional(),
+});
+
+const releaseRequestsQuerySchema = paginationSchema.extend({
+  status: z.enum(["pending", "approved", "rejected", "cancelled"]).optional(),
 });
 
 const reviewsQuerySchema = paginationSchema.extend({
@@ -171,9 +183,32 @@ const pageContentSchema = z.object({
   body: z.string().trim().min(1).max(10000),
 });
 
+const blogPostSchema = z.object({
+  title: z.string().trim().min(1).max(140),
+  summary: z.string().trim().max(240).optional().nullable(),
+  body: z.string().trim().max(5000),
+  imageUrl: z.string().trim().max(500).optional().nullable(),
+  publishedAt: z.string().trim().min(1).max(40),
+});
+
+const staffProfileSchema = z.object({
+  name: z.string().trim().min(1).max(120),
+  role: z.string().trim().min(1).max(120),
+  bio: z.string().trim().max(600).optional().nullable(),
+  photoUrl: z.string().trim().max(500).optional().nullable(),
+});
+
+const aboutPageSchema = pageContentSchema.extend({
+  staff: z.array(staffProfileSchema).max(12).optional(),
+});
+
+const blogPageSchema = pageContentSchema.extend({
+  posts: z.array(blogPostSchema).max(20).optional(),
+});
+
 const pagesSchema = z.object({
-  about: pageContentSchema,
-  blog: pageContentSchema,
+  about: aboutPageSchema,
+  blog: blogPageSchema,
 });
 
 const requireBusinessFunctionAccess = (key: BusinessFunctionKey) =>
@@ -342,6 +377,46 @@ const payoutNetworkMap: Record<string, string> = {
   airteltigo: "TGO",
 };
 
+const paystackPayoutNetworkMap: Record<string, string> = {
+  mtn: "MTN",
+  vodafone: "VOD",
+  airteltigo: "ATL",
+};
+
+const normalizeMomoNumber = (value: string) => {
+  const digits = value.replace(/\D/g, "");
+  if (!digits) return digits;
+  if (digits.startsWith("233") && digits.length >= 12) {
+    const local = digits.slice(3);
+    return local.startsWith("0") ? local : `0${local}`;
+  }
+  return digits;
+};
+
+const getPayoutFailureReason = (metadata: Prisma.JsonValue | null): string | null => {
+  if (!metadata || typeof metadata !== "object") {
+    return null;
+  }
+  const meta = metadata as Record<string, unknown>;
+  const payload = meta.payload && typeof meta.payload === "object" ? (meta.payload as Record<string, unknown>) : null;
+  if (!payload) {
+    return null;
+  }
+  if (typeof payload.error === "string") {
+    return payload.error;
+  }
+  if (typeof payload.message === "string") {
+    return payload.message;
+  }
+  const transfer = payload.transfer && typeof payload.transfer === "object"
+    ? (payload.transfer as Record<string, unknown>)
+    : null;
+  if (transfer && typeof transfer.message === "string") {
+    return transfer.message;
+  }
+  return null;
+};
+
 const initiateFlutterwaveTransfer = async (params: {
   amount: Prisma.Decimal;
   currency: string;
@@ -349,8 +424,9 @@ const initiateFlutterwaveTransfer = async (params: {
   momoNetwork: string;
   reference: string;
   narration: string;
+  secretKey: string;
 }) => {
-  if (!env.FLUTTERWAVE_SECRET_KEY) {
+  if (!params.secretKey) {
     throw new Error("Flutterwave is not configured.");
   }
 
@@ -362,7 +438,7 @@ const initiateFlutterwaveTransfer = async (params: {
   const response = await fetch("https://api.flutterwave.com/v3/transfers", {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${env.FLUTTERWAVE_SECRET_KEY}`,
+      Authorization: `Bearer ${params.secretKey}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
@@ -386,6 +462,104 @@ const initiateFlutterwaveTransfer = async (params: {
   }
 
   return payload;
+};
+
+const createPaystackRecipient = async (params: {
+  momoNumber: string;
+  momoNetwork: string;
+  name: string;
+  currency: string;
+  secretKey: string;
+}) => {
+  if (!params.secretKey) {
+    throw new Error("Paystack is not configured.");
+  }
+  const bankCode = paystackPayoutNetworkMap[params.momoNetwork];
+  if (!bankCode) {
+    throw new Error("Unsupported mobile money network.");
+  }
+  const normalizedNumber = normalizeMomoNumber(params.momoNumber);
+  if (!normalizedNumber) {
+    throw new Error("Invalid mobile money number.");
+  }
+
+  const response = await fetch("https://api.paystack.co/transferrecipient", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${params.secretKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      type: "mobile_money",
+      name: params.name,
+      account_number: normalizedNumber,
+      bank_code: bankCode,
+      currency: params.currency,
+    }),
+  });
+
+  const payload = (await response.json()) as {
+    status?: boolean;
+    message?: string;
+    data?: { recipient_code?: string };
+  };
+
+  if (!response.ok || !payload.status || !payload.data?.recipient_code) {
+    throw new Error(payload.message ?? "Paystack transfer recipient failed.");
+  }
+
+  return { recipientCode: payload.data.recipient_code, payload };
+};
+
+const initiatePaystackTransfer = async (params: {
+  amount: Prisma.Decimal;
+  currency: string;
+  momoNumber: string;
+  momoNetwork: string;
+  reference: string;
+  narration: string;
+  name: string;
+  secretKey: string;
+}) => {
+  if (!params.secretKey) {
+    throw new Error("Paystack is not configured.");
+  }
+
+  const { recipientCode, payload: recipientPayload } = await createPaystackRecipient({
+    momoNumber: params.momoNumber,
+    momoNetwork: params.momoNetwork,
+    name: params.name,
+    currency: params.currency,
+    secretKey: params.secretKey,
+  });
+
+  const amountMinor = Number(params.amount.mul(100).toFixed(0));
+  const response = await fetch("https://api.paystack.co/transfer", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${params.secretKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      source: "balance",
+      amount: amountMinor,
+      recipient: recipientCode,
+      reference: params.reference,
+      reason: params.narration,
+    }),
+  });
+
+  const payload = (await response.json()) as {
+    status?: boolean;
+    message?: string;
+    data?: { status?: string; transfer_code?: string; id?: number | string };
+  };
+
+  if (!response.ok || !payload.status) {
+    throw new Error(payload.message ?? "Paystack transfer failed.");
+  }
+
+  return { transfer: payload, recipient: recipientPayload };
 };
 
 const logAdminAction = async (params: {
@@ -785,6 +959,70 @@ adminRouter.get(
   }),
 );
 
+adminRouter.get(
+  "/orders/release-requests",
+  authRequired,
+  requirePermission("orders.read"),
+  requireAdminPageAccess("orders"),
+  asyncHandler(async (req, res) => {
+    const query = releaseRequestsQuerySchema.parse(req.query);
+    const limit = query.limit ?? 20;
+
+    const where: Prisma.OrderReleaseRequestWhereInput = {};
+    if (query.status) {
+      where.status = query.status;
+    }
+
+    const requests = await prisma.orderReleaseRequest.findMany({
+      where,
+      take: limit + 1,
+      ...(query.cursor
+        ? {
+            cursor: { id: query.cursor },
+            skip: 1,
+          }
+        : {}),
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      include: {
+        requestedBy: {
+          select: {
+            id: true,
+            email: true,
+            phone: true,
+            username: true,
+            providerProfile: { select: { displayName: true } },
+          },
+        },
+        order: {
+          select: {
+            id: true,
+            amountPaidNet: true,
+            amountReleasedNet: true,
+            currency: true,
+            service: { select: { id: true, title: true } },
+            buyer: { select: { id: true, email: true, phone: true, username: true } },
+            provider: {
+              select: {
+                id: true,
+                email: true,
+                phone: true,
+                username: true,
+                providerProfile: { select: { displayName: true } },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    const hasNext = requests.length > limit;
+    const trimmed = hasNext ? requests.slice(0, limit) : requests;
+    const nextCursor = hasNext ? trimmed[trimmed.length - 1]?.id ?? null : null;
+
+    res.json({ requests: trimmed, nextCursor });
+  }),
+);
+
 adminRouter.patch(
   "/orders/:id/status",
   authRequired,
@@ -794,14 +1032,19 @@ adminRouter.patch(
     const params = z.object({ id: z.string().uuid() }).parse(req.params);
     const data = updateOrderStatusSchema.parse(req.body);
 
-    const order = await prisma.order.findUnique({
+  const order = await prisma.order.findUnique({
       where: { id: params.id },
       select: {
         id: true,
         status: true,
         providerId: true,
+        amountGross: true,
         amountNetProvider: true,
+        amountPaid: true,
+        amountPaidNet: true,
+        amountReleasedNet: true,
         currency: true,
+        depositAmount: true,
       },
     });
 
@@ -837,6 +1080,46 @@ adminRouter.patch(
         select: { id: true, status: true },
       });
 
+      if (data.status === "paid_to_escrow" && order.amountGross.greaterThan(0)) {
+        const targetPaid =
+          order.depositAmount && order.depositAmount.greaterThan(0)
+            ? order.depositAmount
+            : order.amountGross;
+
+        const paidRatio = order.amountGross.equals(0)
+          ? new Prisma.Decimal(0)
+          : targetPaid.div(order.amountGross);
+        const targetPaidNet = order.amountNetProvider.mul(paidRatio);
+
+        const paidDelta = targetPaid.sub(order.amountPaid);
+        const paidNetDelta = targetPaidNet.sub(order.amountPaidNet);
+
+        if (paidDelta.greaterThan(0) || paidNetDelta.greaterThan(0)) {
+          await tx.order.update({
+            where: { id: order.id },
+            data: {
+              amountPaid: paidDelta.greaterThan(0) ? targetPaid : undefined,
+              amountPaidNet: paidNetDelta.greaterThan(0) ? targetPaidNet : undefined,
+            },
+          });
+
+          if (paidNetDelta.greaterThan(0)) {
+            await tx.providerWallet.upsert({
+              where: { providerId: order.providerId },
+              create: {
+                providerId: order.providerId,
+                availableBalance: new Prisma.Decimal(0),
+                pendingBalance: paidNetDelta,
+                currency: order.currency,
+              },
+              update: {
+                pendingBalance: { increment: paidNetDelta },
+              },
+            });
+          }
+        }
+      }
+
       if (data.status === "released" && order.status !== "released") {
         const wallet = await tx.providerWallet.upsert({
           where: { providerId: order.providerId },
@@ -849,13 +1132,23 @@ adminRouter.patch(
           update: {},
         });
 
-        const amount = order.amountNetProvider;
-        const pendingAfter = wallet.pendingBalance.sub(amount);
+        const releaseAmount = order.amountPaidNet.sub(order.amountReleasedNet);
+        if (releaseAmount.lte(0)) {
+          return next;
+        }
+        const pendingAfter = wallet.pendingBalance.sub(releaseAmount);
         await tx.providerWallet.update({
           where: { providerId: order.providerId },
           data: {
-            availableBalance: { increment: amount },
+            availableBalance: { increment: releaseAmount },
             pendingBalance: pendingAfter.gte(0) ? pendingAfter : new Prisma.Decimal(0),
+          },
+        });
+
+        await tx.order.update({
+          where: { id: order.id },
+          data: {
+            amountReleasedNet: order.amountReleasedNet.add(releaseAmount),
           },
         });
       }
@@ -1700,25 +1993,20 @@ adminRouter.get(
       },
     });
 
-    const released = await prisma.order.groupBy({
+    const payoutSummary = await prisma.order.groupBy({
       by: ["providerId"],
-      where: { status: "released" },
-      _sum: { amountNetProvider: true },
-    });
-
-    const pending = await prisma.order.groupBy({
-      by: ["providerId"],
-      where: {
-        status: { in: ["approved", "delivered", "accepted", "in_progress", "paid_to_escrow", "created"] },
-      },
-      _sum: { amountNetProvider: true },
+      _sum: { amountPaidNet: true, amountReleasedNet: true },
     });
 
     const releasedMap = new Map(
-      released.map((row) => [row.providerId, row._sum.amountNetProvider?.toString() ?? "0"]),
+      payoutSummary.map((row) => [row.providerId, row._sum.amountReleasedNet?.toString() ?? "0"]),
     );
     const pendingMap = new Map(
-      pending.map((row) => [row.providerId, row._sum.amountNetProvider?.toString() ?? "0"]),
+      payoutSummary.map((row) => {
+        const paid = row._sum.amountPaidNet ?? new Prisma.Decimal(0);
+        const released = row._sum.amountReleasedNet ?? new Prisma.Decimal(0);
+        return [row.providerId, paid.sub(released).toString()];
+      }),
     );
 
     res.json({
@@ -1765,19 +2053,20 @@ adminRouter.get(
       },
     });
 
-    res.json({
-      requests: requests.map((request) => ({
-        id: request.id,
-        amount: request.amount.toString(),
-        currency: request.currency,
-        status: request.status,
-        destinationMomo: request.destinationMomo,
-        momoNetwork: request.momoNetwork,
-        reference: request.reference,
-        createdAt: request.createdAt,
-        provider: request.provider,
-      })),
-    });
+      res.json({
+        requests: requests.map((request) => ({
+          id: request.id,
+          amount: request.amount.toString(),
+          currency: request.currency,
+          status: request.status,
+          destinationMomo: request.destinationMomo,
+          momoNetwork: request.momoNetwork,
+          reference: request.reference,
+          failureReason: request.status === "failed" ? getPayoutFailureReason(request.metadata) : null,
+          createdAt: request.createdAt,
+          provider: request.provider,
+        })),
+      });
   }),
 );
 
@@ -1790,17 +2079,19 @@ adminRouter.post(
   asyncHandler(async (req, res) => {
     const params = z.object({ id: z.string().uuid() }).parse(req.params);
 
-    const request = await prisma.payoutRequest.findUnique({
-      where: { id: params.id },
-      include: {
-        provider: {
-          select: {
-            id: true,
-            providerProfile: { select: { momoNumber: true, momoNetwork: true } },
+      const request = await prisma.payoutRequest.findUnique({
+        where: { id: params.id },
+        include: {
+          provider: {
+            select: {
+              id: true,
+              username: true,
+              email: true,
+              providerProfile: { select: { momoNumber: true, momoNetwork: true, displayName: true } },
+            },
           },
         },
-      },
-    });
+      });
 
     if (!request) {
       return res.status(404).json({ error: "Payout request not found." });
@@ -1813,38 +2104,86 @@ adminRouter.post(
     const momoNumber = request.destinationMomo ?? request.provider.providerProfile?.momoNumber ?? null;
     const momoNetwork = request.momoNetwork ?? request.provider.providerProfile?.momoNetwork;
 
-    if (!momoNumber || !momoNetwork) {
-      return res.status(400).json({ error: "Provider payout details are incomplete." });
-    }
+      if (!momoNumber || !momoNetwork) {
+        return res.status(400).json({ error: "Provider payout details are incomplete." });
+      }
 
-    const transferRef = `scg_payout_${request.id}`;
+      const { settings } = await getPlatformSettings();
+      const payoutProvider = settings.payoutRules.provider ?? "flutterwave";
+      const flutterwaveSecret =
+        settings.integrations.payments.flutterwaveSecretKey ||
+        env.FLUTTERWAVE_SECRET_KEY ||
+        "";
+      const paystackSecret =
+        settings.integrations.payments.paystackSecretKey ||
+        env.PAYSTACK_SECRET_KEY ||
+        "";
+      const providerName =
+        request.provider.providerProfile?.displayName ||
+        request.provider.username ||
+        request.provider.email ||
+        "Provider payout";
 
-    let payload: Prisma.JsonValue | null = null;
-    let nextStatus: "processing" | "paid" | "failed" = "processing";
-    let transferId: string | undefined;
+      const transferRef = `scg_payout_${request.id}`;
 
-    try {
-      const transfer = await initiateFlutterwaveTransfer({
-        amount: request.amount,
-        currency: request.currency,
-        momoNumber,
-        momoNetwork,
-        reference: transferRef,
-        narration: `Service Connect payout ${request.id}`,
-      });
+      let payload: Prisma.JsonValue | null = null;
+      let nextStatus: "processing" | "paid" | "failed" = "processing";
+      let transferId: string | undefined;
 
-      payload = transfer as Prisma.JsonValue;
-      const status = String(transfer.data?.status ?? "").toLowerCase();
-      const isSuccess = ["successful", "success", "completed"].includes(status);
-      const isPending = ["pending", "new", "queued", "processing"].includes(status);
-      transferId = transfer.data?.id?.toString();
-      nextStatus = isSuccess ? "paid" : isPending ? "processing" : "failed";
-    } catch (error) {
-      payload = {
-        error: error instanceof Error ? error.message : "Flutterwave transfer failed.",
-      } as Prisma.JsonValue;
-      nextStatus = "failed";
-    }
+      try {
+        if (payoutProvider === "paystack" && !paystackSecret) {
+          return res.status(400).json({ error: "Paystack is not configured." });
+        }
+        if (payoutProvider !== "paystack" && !flutterwaveSecret) {
+          return res.status(400).json({ error: "Flutterwave is not configured." });
+        }
+        if (payoutProvider === "paystack") {
+          const transfer = await initiatePaystackTransfer({
+            amount: request.amount,
+            currency: request.currency,
+            momoNumber,
+            momoNetwork,
+            reference: transferRef,
+            narration: `Service Connect payout ${request.id}`,
+            name: providerName,
+            secretKey: paystackSecret,
+          });
+
+          payload = { provider: "paystack", ...transfer } as Prisma.JsonValue;
+          const status = String(transfer.transfer.data?.status ?? "").toLowerCase();
+          const isSuccess = ["successful", "completed"].includes(status);
+          const isPending = ["pending", "otp", "queued", "processing", "new", "success"].includes(
+            status,
+          );
+          transferId =
+            transfer.transfer.data?.transfer_code?.toString() ??
+            transfer.transfer.data?.id?.toString();
+          nextStatus = isSuccess ? "paid" : isPending ? "processing" : "failed";
+        } else {
+          const transfer = await initiateFlutterwaveTransfer({
+            amount: request.amount,
+            currency: request.currency,
+            momoNumber,
+            momoNetwork,
+            reference: transferRef,
+            narration: `Service Connect payout ${request.id}`,
+            secretKey: flutterwaveSecret,
+          });
+
+          payload = { provider: "flutterwave", ...transfer } as Prisma.JsonValue;
+          const status = String(transfer.data?.status ?? "").toLowerCase();
+          const isSuccess = ["successful", "success", "completed"].includes(status);
+          const isPending = ["pending", "new", "queued", "processing"].includes(status);
+          transferId = transfer.data?.id?.toString();
+          nextStatus = isSuccess ? "paid" : isPending ? "processing" : "failed";
+        }
+      } catch (error) {
+        payload = {
+          error: error instanceof Error ? error.message : "Payout transfer failed.",
+          provider: payoutProvider,
+        } as Prisma.JsonValue;
+        nextStatus = "failed";
+      }
 
     await prisma.$transaction(async (tx) => {
       const wallet = await tx.providerWallet.upsert({
@@ -2011,8 +2350,8 @@ adminRouter.get(
       prisma.user.count({ where: { status: "active" } }),
       prisma.user.count({ where: { status: "suspended" } }),
       prisma.order.count(),
-      prisma.order.aggregate({ _sum: { amountGross: true } }),
-      prisma.order.aggregate({ _sum: { amountNetProvider: true, platformFee: true, taxAmount: true } }),
+      prisma.order.aggregate({ _sum: { amountPaid: true } }),
+      prisma.order.aggregate({ _sum: { amountPaidNet: true, platformFee: true, taxAmount: true } }),
       prisma.communityPost.count(),
       prisma.review.count(),
     ]);
@@ -2033,8 +2372,8 @@ adminRouter.get(
         reviews,
       },
       revenue: {
-        gross: gross._sum.amountGross?.toString() ?? "0",
-        netProvider: net._sum.amountNetProvider?.toString() ?? "0",
+        gross: gross._sum.amountPaid?.toString() ?? "0",
+        netProvider: net._sum.amountPaidNet?.toString() ?? "0",
         platformFee: net._sum.platformFee?.toString() ?? "0",
         tax: net._sum.taxAmount?.toString() ?? "0",
       },
@@ -2081,17 +2420,79 @@ adminRouter.get(
     });
     const pageMap = new Map(pages.map((page) => [page.slug, page]));
 
-    const payload = PAGE_KEYS.reduce((acc, slug) => {
-      const existing = pageMap.get(slug);
-      const fallback = DEFAULT_PAGES[slug];
-      acc[slug] = {
-        slug,
-        title: existing?.title ?? fallback.title,
-        body: existing?.body ?? fallback.body,
-        updatedAt: existing?.updatedAt ?? null,
-      };
-      return acc;
-    }, {} as Record<StaticPageKey, { slug: StaticPageKey; title: string; body: string; updatedAt: Date | null }>);
+    const resolvePosts = async (items: BlogPost[]) =>
+      Promise.all(
+        items.map(async (post) => ({
+          ...post,
+          imageSignedUrl: await signS3Key(post.imageUrl),
+        })),
+      );
+
+    const resolveStaff = async (items: StaffProfile[]) =>
+      Promise.all(
+        items.map(async (member) => ({
+          ...member,
+          photoSignedUrl: await signS3Key(member.photoUrl),
+        })),
+      );
+
+    const payloadEntries = await Promise.all(
+      PAGE_KEYS.map(async (slug) => {
+        const existing = pageMap.get(slug);
+        const fallback = DEFAULT_PAGES[slug];
+        const content = (existing?.content ?? {}) as Partial<StaticPageContent> & {
+          media?: Array<{ url?: string; caption?: string | null }>;
+        };
+        const legacyMedia = Array.isArray(content.media) ? content.media : [];
+        const legacyPosts: BlogPost[] =
+          legacyMedia.length > 0
+            ? legacyMedia.map((item) => {
+                const caption = item.caption ?? "";
+                const [titleLine, ...rest] = caption
+                  .split("\n")
+                  .map((part) => part.trim())
+                  .filter(Boolean);
+                return {
+                  title: titleLine || "SERVFIX Update",
+                  summary: rest.length > 0 ? rest.join(" ") : null,
+                  body: "",
+                  imageUrl: item.url ?? null,
+                  publishedAt: new Date().toISOString().slice(0, 10),
+                };
+              })
+            : [];
+        const posts = Array.isArray(content.posts)
+          ? content.posts
+          : legacyPosts.length > 0
+            ? legacyPosts
+            : fallback.posts ?? [];
+        const staff = Array.isArray(content.staff) ? content.staff : fallback.staff ?? [];
+
+        return [
+          slug,
+          {
+            slug,
+            title: existing?.title ?? fallback.title,
+            body: existing?.body ?? fallback.body,
+            posts: await resolvePosts(posts),
+            staff: await resolveStaff(staff),
+            updatedAt: existing?.updatedAt ?? null,
+          },
+        ] as const;
+      }),
+    );
+
+    const payload = Object.fromEntries(payloadEntries) as Record<
+      StaticPageKey,
+      {
+        slug: StaticPageKey;
+        title: string;
+        body: string;
+        posts: Array<BlogPost & { imageSignedUrl?: string | null }>;
+        staff: Array<StaffProfile & { photoSignedUrl?: string | null }>;
+        updatedAt: Date | null;
+      }
+    >;
 
     res.json({ pages: payload });
   }),
@@ -2105,6 +2506,43 @@ adminRouter.put(
   asyncHandler(async (req, res) => {
     const payload = pagesSchema.parse(req.body);
 
+    const normalizePosts = (items: BlogPost[]) =>
+      items
+        .map((post) => ({
+          title: post.title.trim(),
+          summary: post.summary?.trim() || null,
+          body: post.body.trim(),
+          imageUrl: normalizeS3Key(post.imageUrl?.trim() ?? ""),
+          publishedAt: post.publishedAt.trim(),
+        }))
+        .filter((post) => post.title)
+        .map((post) => ({
+          ...post,
+          imageUrl: post.imageUrl || null,
+        }));
+
+    const normalizeStaff = (items: StaffProfile[]) =>
+      items
+        .map((member) => ({
+          name: member.name.trim(),
+          role: member.role.trim(),
+          bio: member.bio?.trim() || null,
+          photoUrl: normalizeS3Key(member.photoUrl?.trim() ?? ""),
+        }))
+        .filter((member) => member.name && member.role)
+        .map((member) => ({
+          ...member,
+          photoUrl: member.photoUrl || null,
+        }));
+
+    const aboutContent = {
+      staff: normalizeStaff(payload.about.staff ?? []),
+    };
+
+    const blogContent = {
+      posts: normalizePosts(payload.blog.posts ?? []),
+    };
+
     await prisma.$transaction(
       PAGE_KEYS.map((slug) =>
         prisma.staticPage.upsert({
@@ -2112,11 +2550,13 @@ adminRouter.put(
           update: {
             title: payload[slug].title,
             body: payload[slug].body,
+            content: slug === "about" ? aboutContent : blogContent,
           },
           create: {
             slug,
             title: payload[slug].title,
             body: payload[slug].body,
+            content: slug === "about" ? aboutContent : blogContent,
           },
         }),
       ),
@@ -2169,6 +2609,7 @@ adminRouter.get(
       payoutRules: settings.payoutRules,
       disputePolicy: settings.disputePolicy,
       orderRules: settings.orderRules,
+      boostCatalog: settings.boostCatalog,
       providerVerification: settings.providerVerification,
       reviewModeration: settings.reviewModeration,
       communityModeration: settings.communityModeration,

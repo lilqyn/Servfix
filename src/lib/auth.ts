@@ -29,6 +29,7 @@ export type AuthUser = {
   email?: string | null;
   phone?: string | null;
   username?: string | null;
+  location?: string | null;
   avatarUrl?: string | null;
   bannerUrl?: string | null;
   createdAt?: string;

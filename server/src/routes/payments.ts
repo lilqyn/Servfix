@@ -1,17 +1,18 @@
 import { Router } from "express";
 import { z } from "zod";
-import { Prisma } from "@prisma/client";
+import { Prisma, BoostType } from "@prisma/client";
 import { prisma } from "../db.js";
 import { asyncHandler } from "../utils/async-handler.js";
 import { authRequired, requireRole } from "../middleware/auth.js";
 import { env } from "../config.js";
 import { createNotification } from "../utils/notifications.js";
 import { getPlatformSettings, type PlatformSettings } from "../utils/platform-settings.js";
+import { getBoostOption } from "../utils/boosts.js";
 
 export const paymentsRouter = Router();
 
 const checkoutSchema = z.object({
-  provider: z.enum(["flutterwave", "stripe"]),
+  provider: z.enum(["flutterwave", "stripe", "paystack"]),
   method: z.enum(["card", "mobile_money"]).optional(),
   items: z
     .array(
@@ -24,11 +25,19 @@ const checkoutSchema = z.object({
     .min(1),
 });
 
+const orderPaymentCheckoutSchema = z.object({
+  provider: z.enum(["flutterwave", "stripe", "paystack"]),
+  method: z.enum(["card", "mobile_money"]).optional(),
+  orderPaymentId: z.string().uuid(),
+});
+
 const verifySchema = z.object({
-  provider: z.enum(["flutterwave", "stripe"]),
+  provider: z.enum(["flutterwave", "stripe", "paystack"]),
   transaction_id: z.string().optional(),
   tx_ref: z.string().optional(),
   session_id: z.string().optional(),
+  reference: z.string().optional(),
+  trxref: z.string().optional(),
 });
 
 const appUrl = env.APP_URL.replace(/\/+$/, "");
@@ -42,6 +51,30 @@ const toMinorUnits = (amount: Prisma.Decimal) => {
 
 const toJsonInput = (value: Prisma.JsonValue) =>
   value === null ? Prisma.JsonNull : (value as Prisma.InputJsonValue);
+
+type PaymentPurpose = "orders" | "boost" | "subscription" | "invoice" | "order_payment";
+
+type PaymentMetadata = {
+  purpose?: PaymentPurpose;
+  orderIds?: string[];
+  orderPaymentId?: string;
+  orderId?: string;
+  buyerId?: string;
+  boostType?: BoostType;
+  serviceId?: string;
+  providerId?: string;
+  planId?: string;
+  invoiceId?: string;
+  accountId?: string;
+  payerId?: string;
+};
+
+const getPaymentMetadata = (value: Prisma.JsonValue | null | undefined): PaymentMetadata => {
+  if (!value || typeof value !== "object") {
+    return {};
+  }
+  return value as PaymentMetadata;
+};
 
 const ensureBuyerAccess = async (paymentIntentId: string, user: { id: string; role: string }) => {
   if (user.role !== "buyer") {
@@ -57,6 +90,73 @@ const ensureBuyerAccess = async (paymentIntentId: string, user: { id: string; ro
   if (orders.some((order) => order.buyerId !== user.id)) {
     throw new Error("You are not allowed to verify this payment.");
   }
+};
+
+const ensureOrderPaymentAccess = async (
+  orderPaymentId: string,
+  user: { id: string; role: string },
+) => {
+  if (user.role === "admin") {
+    return;
+  }
+  const payment = await prisma.orderPayment.findUnique({
+    where: { id: orderPaymentId },
+    select: { order: { select: { buyerId: true } } },
+  });
+  if (!payment || payment.order?.buyerId !== user.id) {
+    throw new Error("You are not allowed to verify this payment.");
+  }
+};
+
+const addMonths = (date: Date, months: number) => {
+  const next = new Date(date);
+  next.setMonth(next.getMonth() + months);
+  return next;
+};
+
+const ensurePaymentAccess = async (
+  paymentIntent: { id: string; metadata: Prisma.JsonValue | null },
+  user: { id: string; role: string },
+) => {
+  const metadata = getPaymentMetadata(paymentIntent.metadata);
+  if (metadata.purpose === "boost" || metadata.purpose === "subscription") {
+    if (user.role !== "provider" && user.role !== "admin") {
+      throw new Error("You are not allowed to verify this payment.");
+    }
+    if (metadata.providerId && user.role !== "admin" && metadata.providerId !== user.id) {
+      throw new Error("You are not allowed to verify this payment.");
+    }
+    return;
+  }
+
+  if (metadata.purpose === "invoice") {
+    if (user.role === "admin") {
+      return;
+    }
+    if (metadata.payerId && metadata.payerId === user.id) {
+      return;
+    }
+    if (metadata.accountId) {
+      const membership = await prisma.businessMember.findFirst({
+        where: { accountId: metadata.accountId, userId: user.id, status: "active" },
+        select: { id: true },
+      });
+      if (membership) {
+        return;
+      }
+    }
+    throw new Error("You are not allowed to verify this payment.");
+  }
+
+  if (metadata.purpose === "order_payment") {
+    if (!metadata.orderPaymentId) {
+      throw new Error("Order payment reference missing.");
+    }
+    await ensureOrderPaymentAccess(metadata.orderPaymentId, user);
+    return;
+  }
+
+  await ensureBuyerAccess(paymentIntent.id, user);
 };
 
 const createOrdersForCheckout = async (
@@ -110,7 +210,7 @@ const createOrdersForCheckout = async (
 paymentsRouter.post(
   "/checkout",
   authRequired,
-  requireRole("buyer", "admin"),
+  requireRole("buyer", "provider", "admin"),
   asyncHandler(async (req, res) => {
     const data = checkoutSchema.parse(req.body);
     const { settings } = await getPlatformSettings();
@@ -122,14 +222,46 @@ paymentsRouter.post(
 
     const flutterwaveSecret =
       settings.integrations.payments.flutterwaveSecretKey || env.FLUTTERWAVE_SECRET_KEY;
+    const paystackSecret =
+      settings.integrations.payments.paystackSecretKey || env.PAYSTACK_SECRET_KEY;
     const stripeSecret =
       settings.integrations.payments.stripeSecretKey || env.STRIPE_SECRET_KEY;
 
     if (data.provider === "flutterwave" && !flutterwaveSecret) {
       return res.status(400).json({ error: "Flutterwave is not configured." });
     }
+    if (data.provider === "paystack" && !paystackSecret) {
+      return res.status(400).json({ error: "Paystack is not configured." });
+    }
     if (data.provider === "stripe" && !stripeSecret) {
       return res.status(400).json({ error: "Stripe is not configured." });
+    }
+
+    const tierIds = Array.from(new Set(data.items.map((item) => item.tierId)));
+    const tiers = await prisma.serviceTier.findMany({
+      where: { id: { in: tierIds } },
+      select: { id: true, serviceId: true, pricingModel: true },
+    });
+
+    if (tiers.length !== tierIds.length) {
+      return res.status(400).json({ error: "Invalid service tier." });
+    }
+
+    const tierMap = new Map(tiers.map((tier) => [tier.id, tier]));
+    const invalidTier = data.items.find((item) => {
+      const tier = tierMap.get(item.tierId);
+      return !tier || tier.serviceId !== item.serviceId;
+    });
+
+    if (invalidTier) {
+      return res.status(400).json({ error: "Invalid service tier." });
+    }
+
+    const hasNonFixed = tiers.some(
+      (tier) => (tier.pricingModel ?? "fixed") !== "fixed",
+    );
+    if (hasNonFixed) {
+      return res.status(400).json({ error: "This service requires a quote." });
     }
 
     const result = await prisma.$transaction(async (tx) => {
@@ -242,6 +374,78 @@ paymentsRouter.post(
         });
       }
 
+      if (data.provider === "paystack") {
+        const reference = `scg_${result.paymentIntent.id}`;
+        const channels =
+          data.method === "mobile_money"
+            ? ["mobile_money"]
+            : data.method === "card"
+              ? ["card"]
+              : undefined;
+
+        const payloadBody: Record<string, unknown> = {
+          email: req.user!.email ?? `${req.user!.id}@servfix.local`,
+          amount: toMinorUnits(result.total),
+          currency: result.currency,
+          reference,
+          callback_url: `${appUrl}/payment/verify?provider=paystack`,
+          metadata: {
+            paymentIntentId: result.paymentIntent.id,
+            orderIds: result.orders.map((order) => order.id),
+            buyerId: req.user!.id,
+          },
+        };
+
+        if (channels) {
+          payloadBody.channels = channels;
+        }
+
+        const response = await fetch("https://api.paystack.co/transaction/initialize", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${paystackSecret}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(payloadBody),
+        });
+
+        const payload = (await response.json()) as {
+          status?: boolean;
+          message?: string;
+          data?: { authorization_url?: string; reference?: string };
+        };
+
+        if (!response.ok || !payload.status || !payload.data?.authorization_url) {
+          await prisma.paymentIntent.update({
+            where: { id: result.paymentIntent.id },
+            data: { status: "failed", metadata: toJsonInput(payload as Prisma.JsonValue) },
+          });
+          return res.status(400).json({
+            error: payload.message ?? "Unable to initialize Paystack payment.",
+          });
+        }
+
+        await prisma.paymentIntent.update({
+          where: { id: result.paymentIntent.id },
+          data: {
+            status: "pending",
+            providerRef: payload.data.reference ?? reference,
+            metadata: {
+              orderIds: result.orders.map((order) => order.id),
+              buyerId: req.user!.id,
+              paystack: payload,
+            },
+          },
+        });
+
+        return res.json({
+          checkoutUrl: payload.data.authorization_url,
+          paymentIntentId: result.paymentIntent.id,
+          provider: "paystack",
+          orderIds: result.orders.map((order) => order.id),
+        });
+      }
+
       const amountMinor = toMinorUnits(result.total);
       const stripeBody = new URLSearchParams();
       stripeBody.append("mode", "payment");
@@ -316,6 +520,305 @@ paymentsRouter.post(
   }),
 );
 
+paymentsRouter.post(
+  "/order-payment",
+  authRequired,
+  requireRole("buyer", "admin"),
+  asyncHandler(async (req, res) => {
+    const data = orderPaymentCheckoutSchema.parse(req.body);
+    const { settings } = await getPlatformSettings();
+    const enabledProviders = settings.integrations.payments.enabledProviders;
+
+    if (!enabledProviders.includes(data.provider)) {
+      return res.status(400).json({ error: "Payment provider is currently disabled." });
+    }
+
+    const flutterwaveSecret =
+      settings.integrations.payments.flutterwaveSecretKey || env.FLUTTERWAVE_SECRET_KEY;
+    const paystackSecret =
+      settings.integrations.payments.paystackSecretKey || env.PAYSTACK_SECRET_KEY;
+    const stripeSecret =
+      settings.integrations.payments.stripeSecretKey || env.STRIPE_SECRET_KEY;
+
+    if (data.provider === "flutterwave" && !flutterwaveSecret) {
+      return res.status(400).json({ error: "Flutterwave is not configured." });
+    }
+    if (data.provider === "paystack" && !paystackSecret) {
+      return res.status(400).json({ error: "Paystack is not configured." });
+    }
+    if (data.provider === "stripe" && !stripeSecret) {
+      return res.status(400).json({ error: "Stripe is not configured." });
+    }
+
+    const orderPayment = await prisma.orderPayment.findUnique({
+      where: { id: data.orderPaymentId },
+      include: {
+        order: {
+          select: { id: true, buyerId: true, providerId: true },
+        },
+      },
+    });
+
+    if (!orderPayment) {
+      return res.status(404).json({ error: "Order payment not found." });
+    }
+
+    if (req.user!.role !== "admin" && orderPayment.order?.buyerId !== req.user!.id) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+
+    if (orderPayment.status !== "pending") {
+      return res.status(400).json({ error: "This payment has already been processed." });
+    }
+
+    const paymentIntent = await prisma.paymentIntent.create({
+      data: {
+        provider: data.provider,
+        status: "created",
+        amount: orderPayment.amount,
+        currency: orderPayment.currency,
+        metadata: {
+          purpose: "order_payment",
+          orderPaymentId: orderPayment.id,
+          orderId: orderPayment.orderId,
+          buyerId: orderPayment.order?.buyerId,
+        },
+      },
+    });
+
+    await prisma.orderPayment.update({
+      where: { id: orderPayment.id },
+      data: { paymentIntentId: paymentIntent.id },
+    });
+
+    try {
+      if (data.provider === "flutterwave") {
+        const txRef = `scg_${paymentIntent.id}`;
+        const paymentOptions =
+          data.method === "mobile_money" ? "mobilemoneyghana" : "card";
+
+        const response = await fetch("https://api.flutterwave.com/v3/payments", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${flutterwaveSecret}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            tx_ref: txRef,
+            amount: orderPayment.amount.toFixed(2),
+            currency: orderPayment.currency,
+            redirect_url: `${appUrl}/payment/verify?provider=flutterwave`,
+            payment_options: paymentOptions,
+            customer: {
+              email: req.user!.email ?? `${req.user!.id}@servfix.local`,
+              phonenumber: req.user!.phone ?? undefined,
+            },
+            meta: {
+              paymentIntentId: paymentIntent.id,
+              orderPaymentId: orderPayment.id,
+              orderId: orderPayment.orderId,
+            },
+            customizations: {
+              title: "SERVFIX",
+              description: "Escrow payment for your service order.",
+            },
+          }),
+        });
+
+        const payload = (await response.json()) as {
+          status?: string;
+          message?: string;
+          data?: { link?: string };
+        };
+
+        if (!response.ok || payload.status !== "success" || !payload.data?.link) {
+          await prisma.paymentIntent.update({
+            where: { id: paymentIntent.id },
+            data: { status: "failed", metadata: toJsonInput(payload as Prisma.JsonValue) },
+          });
+          return res.status(400).json({
+            error: payload.message ?? "Unable to initialize Flutterwave payment.",
+          });
+        }
+
+        await prisma.paymentIntent.update({
+          where: { id: paymentIntent.id },
+          data: {
+            status: "pending",
+            providerRef: txRef,
+            metadata: {
+              purpose: "order_payment",
+              orderPaymentId: orderPayment.id,
+              orderId: orderPayment.orderId,
+              buyerId: orderPayment.order?.buyerId,
+              flutterwave: payload,
+            },
+          },
+        });
+
+        return res.json({
+          checkoutUrl: payload.data.link,
+          paymentIntentId: paymentIntent.id,
+          provider: "flutterwave",
+          orderPaymentId: orderPayment.id,
+          orderId: orderPayment.orderId,
+        });
+      }
+
+      if (data.provider === "paystack") {
+        const reference = `scg_${paymentIntent.id}`;
+        const channels =
+          data.method === "mobile_money"
+            ? ["mobile_money"]
+            : data.method === "card"
+              ? ["card"]
+              : undefined;
+
+        const payloadBody: Record<string, unknown> = {
+          email: req.user!.email ?? `${req.user!.id}@servfix.local`,
+          amount: toMinorUnits(orderPayment.amount),
+          currency: orderPayment.currency,
+          reference,
+          callback_url: `${appUrl}/payment/verify?provider=paystack`,
+          metadata: {
+            paymentIntentId: paymentIntent.id,
+            orderPaymentId: orderPayment.id,
+            orderId: orderPayment.orderId,
+            buyerId: orderPayment.order?.buyerId,
+          },
+        };
+
+        if (channels) {
+          payloadBody.channels = channels;
+        }
+
+        const response = await fetch("https://api.paystack.co/transaction/initialize", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${paystackSecret}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(payloadBody),
+        });
+
+        const payload = (await response.json()) as {
+          status?: boolean;
+          message?: string;
+          data?: { authorization_url?: string; reference?: string };
+        };
+
+        if (!response.ok || !payload.status || !payload.data?.authorization_url) {
+          await prisma.paymentIntent.update({
+            where: { id: paymentIntent.id },
+            data: { status: "failed", metadata: toJsonInput(payload as Prisma.JsonValue) },
+          });
+          return res.status(400).json({
+            error: payload.message ?? "Unable to initialize Paystack payment.",
+          });
+        }
+
+        await prisma.paymentIntent.update({
+          where: { id: paymentIntent.id },
+          data: {
+            status: "pending",
+            providerRef: payload.data.reference ?? reference,
+            metadata: {
+              purpose: "order_payment",
+              orderPaymentId: orderPayment.id,
+              orderId: orderPayment.orderId,
+              buyerId: orderPayment.order?.buyerId,
+              paystack: payload,
+            },
+          },
+        });
+
+        return res.json({
+          checkoutUrl: payload.data.authorization_url,
+          paymentIntentId: paymentIntent.id,
+          provider: "paystack",
+          orderPaymentId: orderPayment.id,
+          orderId: orderPayment.orderId,
+        });
+      }
+
+      const amountMinor = toMinorUnits(orderPayment.amount);
+      const stripeBody = new URLSearchParams();
+      stripeBody.append("mode", "payment");
+      stripeBody.append(
+        "success_url",
+        `${appUrl}/payment/verify?provider=stripe&session_id={CHECKOUT_SESSION_ID}`,
+      );
+      stripeBody.append("cancel_url", `${appUrl}/cart?payment=cancelled`);
+      stripeBody.append("line_items[0][price_data][currency]", orderPayment.currency.toLowerCase());
+      stripeBody.append("line_items[0][price_data][product_data][name]", "SERVFIX");
+      stripeBody.append("line_items[0][price_data][unit_amount]", String(amountMinor));
+      stripeBody.append("line_items[0][quantity]", "1");
+      stripeBody.append("metadata[paymentIntentId]", paymentIntent.id);
+      stripeBody.append("metadata[orderPaymentId]", orderPayment.id);
+      stripeBody.append("metadata[orderId]", orderPayment.orderId);
+      stripeBody.append("client_reference_id", paymentIntent.id);
+      if (req.user!.email) {
+        stripeBody.append("customer_email", req.user!.email);
+      }
+
+      const stripeResponse = await fetch("https://api.stripe.com/v1/checkout/sessions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${stripeSecret}`,
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: stripeBody.toString(),
+      });
+
+      const stripePayload = (await stripeResponse.json()) as {
+        id?: string;
+        url?: string;
+        error?: { message?: string };
+      };
+
+      if (!stripeResponse.ok || !stripePayload.id || !stripePayload.url) {
+        await prisma.paymentIntent.update({
+          where: { id: paymentIntent.id },
+          data: { status: "failed", metadata: toJsonInput(stripePayload as Prisma.JsonValue) },
+        });
+        return res
+          .status(400)
+          .json({ error: stripePayload.error?.message ?? "Unable to initialize Stripe payment." });
+      }
+
+      await prisma.paymentIntent.update({
+        where: { id: paymentIntent.id },
+        data: {
+          status: "pending",
+          providerRef: stripePayload.id,
+          metadata: {
+            purpose: "order_payment",
+            orderPaymentId: orderPayment.id,
+            orderId: orderPayment.orderId,
+            buyerId: orderPayment.order?.buyerId,
+            stripe: stripePayload,
+          },
+        },
+      });
+
+      return res.json({
+        checkoutUrl: stripePayload.url,
+        paymentIntentId: paymentIntent.id,
+        provider: "stripe",
+        orderPaymentId: orderPayment.id,
+        orderId: orderPayment.orderId,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to initialize payment.";
+      await prisma.paymentIntent.update({
+        where: { id: paymentIntent.id },
+        data: { status: "failed", metadata: { error: message } },
+      });
+      return res.status(400).json({ error: message });
+    }
+  }),
+);
+
 paymentsRouter.get(
   "/verify",
   authRequired,
@@ -325,6 +828,8 @@ paymentsRouter.get(
     const enabledProviders = settings.integrations.payments.enabledProviders;
     const flutterwaveSecret =
       settings.integrations.payments.flutterwaveSecretKey || env.FLUTTERWAVE_SECRET_KEY;
+    const paystackSecret =
+      settings.integrations.payments.paystackSecretKey || env.PAYSTACK_SECRET_KEY;
     const stripeSecret =
       settings.integrations.payments.stripeSecretKey || env.STRIPE_SECRET_KEY;
 
@@ -349,7 +854,7 @@ paymentsRouter.get(
         return res.status(404).json({ error: "Payment intent not found." });
       }
       try {
-        await ensureBuyerAccess(paymentIntent.id, req.user!);
+        await ensurePaymentAccess(paymentIntent, req.user!);
       } catch (error) {
         const message = error instanceof Error ? error.message : "Unauthorized";
         return res.status(403).json({ error: message });
@@ -413,9 +918,134 @@ paymentsRouter.get(
         providerEventId: String(transactionId),
         providerPayload: toJsonInput(verifyPayload as Prisma.JsonValue),
         actorId: req.user!.id,
+        settings,
       });
 
-      return res.json({ status: "success", paymentIntentId: paymentIntent.id, orders: result.orders });
+      return res.json({
+        status: "success",
+        paymentIntentId: paymentIntent.id,
+        orders: result.orders,
+        purpose: result.purpose,
+        boost: result.boost ?? null,
+        subscription: result.subscription ?? null,
+        invoice: result.invoice ?? null,
+      });
+    }
+
+    if (query.provider === "paystack") {
+      if (!enabledProviders.includes("paystack")) {
+        return res.status(400).json({ error: "Paystack is currently disabled." });
+      }
+      const reference = query.reference ?? query.trxref;
+      if (!reference) {
+        return res.status(400).json({ error: "Missing Paystack reference." });
+      }
+      if (!paystackSecret) {
+        return res.status(400).json({ error: "Paystack is not configured." });
+      }
+
+      const paymentIntent = await prisma.paymentIntent.findFirst({
+        where: { provider: "paystack", providerRef: reference },
+      });
+
+      if (!paymentIntent) {
+        return res.status(404).json({ error: "Payment intent not found." });
+      }
+      try {
+        await ensurePaymentAccess(paymentIntent, req.user!);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Unauthorized";
+        return res.status(403).json({ error: message });
+      }
+
+      const verifyResponse = await fetch(
+        `https://api.paystack.co/transaction/verify/${reference}`,
+        {
+          headers: {
+            Authorization: `Bearer ${paystackSecret}`,
+          },
+        },
+      );
+
+      const verifyPayload = (await verifyResponse.json()) as {
+        status?: boolean;
+        message?: string;
+        data?: {
+          id?: number | string;
+          status?: string;
+          amount?: number;
+          currency?: string;
+          reference?: string;
+        };
+      };
+
+      if (!verifyResponse.ok || !verifyPayload.status) {
+        await prisma.paymentIntent.update({
+          where: { id: paymentIntent.id },
+          data: { status: "failed", metadata: toJsonInput(verifyPayload as Prisma.JsonValue) },
+        });
+        return res
+          .status(400)
+          .json({ error: verifyPayload.message ?? "Unable to verify Paystack payment." });
+      }
+
+      const data = verifyPayload.data ?? {};
+      const status = String(data.status ?? "").toLowerCase();
+      if (status !== "success") {
+        await prisma.paymentIntent.update({
+          where: { id: paymentIntent.id },
+          data: { status: "failed", metadata: toJsonInput(verifyPayload as Prisma.JsonValue) },
+        });
+        return res.status(400).json({ error: "Paystack payment not successful." });
+      }
+
+      if (data.reference && data.reference !== reference) {
+        await prisma.paymentIntent.update({
+          where: { id: paymentIntent.id },
+          data: { status: "failed", metadata: toJsonInput(verifyPayload as Prisma.JsonValue) },
+        });
+        return res.status(400).json({ error: "Paystack reference mismatch." });
+      }
+
+      if (
+        data.currency &&
+        String(data.currency).toUpperCase() !== paymentIntent.currency
+      ) {
+        await prisma.paymentIntent.update({
+          where: { id: paymentIntent.id },
+          data: { status: "failed", metadata: toJsonInput(verifyPayload as Prisma.JsonValue) },
+        });
+        return res.status(400).json({ error: "Currency mismatch." });
+      }
+
+      if (
+        data.amount !== undefined &&
+        data.amount < toMinorUnits(paymentIntent.amount)
+      ) {
+        await prisma.paymentIntent.update({
+          where: { id: paymentIntent.id },
+          data: { status: "failed", metadata: toJsonInput(verifyPayload as Prisma.JsonValue) },
+        });
+        return res.status(400).json({ error: "Amount mismatch." });
+      }
+
+      const result = await finalizePayment({
+        paymentIntentId: paymentIntent.id,
+        providerEventId: String(data.id ?? reference),
+        providerPayload: toJsonInput(verifyPayload as Prisma.JsonValue),
+        actorId: req.user!.id,
+        settings,
+      });
+
+      return res.json({
+        status: "success",
+        paymentIntentId: paymentIntent.id,
+        orders: result.orders,
+        purpose: result.purpose,
+        boost: result.boost ?? null,
+        subscription: result.subscription ?? null,
+        invoice: result.invoice ?? null,
+      });
     }
 
     const sessionId = query.session_id;
@@ -467,7 +1097,7 @@ paymentsRouter.get(
       return res.status(404).json({ error: "Payment intent not found." });
     }
     try {
-      await ensureBuyerAccess(paymentIntent.id, req.user!);
+      await ensurePaymentAccess(paymentIntent, req.user!);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unauthorized";
       return res.status(403).json({ error: message });
@@ -508,9 +1138,18 @@ paymentsRouter.get(
       providerEventId: stripePayload.id,
       providerPayload: toJsonInput(stripePayload as Prisma.JsonValue),
       actorId: req.user!.id,
+      settings,
     });
 
-    return res.json({ status: "success", paymentIntentId: paymentIntent.id, orders: result.orders });
+    return res.json({
+      status: "success",
+      paymentIntentId: paymentIntent.id,
+      orders: result.orders,
+      purpose: result.purpose,
+      boost: result.boost ?? null,
+      subscription: result.subscription ?? null,
+      invoice: result.invoice ?? null,
+    });
   }),
 );
 
@@ -519,6 +1158,7 @@ const finalizePayment = async (params: {
   providerEventId: string;
   providerPayload: Prisma.InputJsonValue | Prisma.NullTypes.JsonNull;
   actorId: string;
+  settings: PlatformSettings;
 }) => {
   const result = await prisma.$transaction(async (tx) => {
     const paymentIntent = await tx.paymentIntent.findUnique({
@@ -529,12 +1169,21 @@ const finalizePayment = async (params: {
       throw new Error("Payment intent not found.");
     }
 
-    const orders = await tx.order.findMany({
-      where: { paymentIntentId: paymentIntent.id },
-      include: { service: true },
-    });
-
+    const metadata = getPaymentMetadata(paymentIntent.metadata);
+    const purpose: PaymentPurpose = metadata.purpose ?? "orders";
     const didFinalize = paymentIntent.status !== "succeeded";
+
+    let orders: Array<
+      Prisma.OrderGetPayload<{ include: { service: true } }>
+    > = [];
+    let boost: Prisma.BoostPurchaseGetPayload<{
+      include: { service: { select: { id: true; title: true; category: true } } };
+    }> | null = null;
+    let subscription: Prisma.ProviderSubscriptionGetPayload<{ include: { plan: true } }> | null =
+      null;
+    let invoice: Prisma.BusinessInvoiceGetPayload<{
+      include: { account: true; orders: true };
+    }> | null = null;
 
     if (didFinalize) {
       await tx.paymentIntent.update({
@@ -554,17 +1203,296 @@ const finalizePayment = async (params: {
         ],
         skipDuplicates: true,
       });
+    }
 
+    if (purpose === "boost") {
+      const boostType = metadata.boostType;
+      const serviceId = metadata.serviceId;
+      const providerId = metadata.providerId;
+
+      if (!boostType || !serviceId || !providerId) {
+        throw new Error("Boost metadata missing.");
+      }
+
+      const option = getBoostOption(params.settings, boostType);
+      if (!option) {
+        throw new Error("Boost type is not configured.");
+      }
+
+      if (didFinalize) {
+        const service = await tx.service.findUnique({
+          where: { id: serviceId },
+          select: { id: true, providerId: true, category: true, status: true },
+        });
+
+        if (!service || service.providerId !== providerId) {
+          throw new Error("Boost service not found.");
+        }
+
+        const now = new Date();
+        const existing = await tx.boostPurchase.findFirst({
+          where: {
+            providerId,
+            serviceId,
+            type: boostType,
+            status: "active",
+            endsAt: { gt: now },
+          },
+        });
+
+        const startsAt = existing ? existing.endsAt : now;
+        const endsAt = new Date(startsAt.getTime() + option.durationHours * 60 * 60 * 1000);
+        const status = startsAt > now ? "scheduled" : "active";
+
+        boost = await tx.boostPurchase.create({
+          data: {
+            providerId,
+            serviceId,
+            type: boostType,
+            status,
+            startsAt,
+            endsAt,
+            price: paymentIntent.amount,
+            currency: paymentIntent.currency,
+            metadata: {
+              category: service.category,
+              source: "gateway",
+              paymentIntentId: paymentIntent.id,
+            },
+          },
+          include: {
+            service: {
+              select: { id: true, title: true, category: true },
+            },
+          },
+        });
+      }
+
+      return { paymentIntent, orders, didFinalize, purpose, boost, subscription, invoice };
+    }
+
+    if (purpose === "subscription") {
+      const planId = metadata.planId;
+      const providerId = metadata.providerId;
+
+      if (!planId || !providerId) {
+        throw new Error("Subscription metadata missing.");
+      }
+
+      if (didFinalize) {
+        const plan = await tx.plan.findUnique({
+          where: { id: planId },
+        });
+
+        if (!plan || !plan.isActive) {
+          throw new Error("Plan not available.");
+        }
+
+        await tx.providerSubscription.updateMany({
+          where: { providerId, status: "active" },
+          data: { status: "cancelled", endsAt: new Date() },
+        });
+
+        subscription = await tx.providerSubscription.create({
+          data: {
+            providerId,
+            planId,
+            status: "active",
+            renewsAt: addMonths(new Date(), 1),
+            providerRef: paymentIntent.providerRef ?? paymentIntent.id,
+            metadata: { paymentIntentId: paymentIntent.id },
+          },
+          include: { plan: true },
+        });
+      }
+
+      return { paymentIntent, orders, didFinalize, purpose, boost, subscription, invoice };
+    }
+
+    if (purpose === "invoice") {
+      const invoiceId = metadata.invoiceId;
+      const accountId = metadata.accountId;
+
+      if (!invoiceId || !accountId) {
+        throw new Error("Invoice metadata missing.");
+      }
+
+      if (didFinalize) {
+        invoice = await tx.businessInvoice.findUnique({
+          where: { id: invoiceId },
+          include: { account: true, orders: true },
+        });
+
+        if (!invoice || invoice.accountId !== accountId) {
+          throw new Error("Invoice not found.");
+        }
+
+        if (invoice.status === "paid" || invoice.status === "void") {
+          return { paymentIntent, orders, didFinalize, purpose, boost, subscription, invoice };
+        }
+
+        await tx.businessInvoice.update({
+          where: { id: invoice.id },
+          data: {
+            status: "paid",
+            issuedAt: invoice.issuedAt ?? new Date(),
+            paidAt: new Date(),
+          },
+        });
+
+        orders = await tx.order.findMany({
+          where: { businessInvoiceId: invoice.id },
+          include: { service: true },
+        });
+
+        const eligibleOrders = orders.filter((order) => order.status === "created");
+
+        if (eligibleOrders.length > 0) {
+          await Promise.all(
+            eligibleOrders.map((order) =>
+              tx.order.update({
+                where: { id: order.id },
+                data: {
+                  status: "paid_to_escrow",
+                  paymentIntentId: paymentIntent.id,
+                  amountPaid: order.amountGross,
+                  amountPaidNet: order.amountNetProvider,
+                },
+              }),
+            ),
+          );
+
+          const pendingByProvider = new Map<string, Prisma.Decimal>();
+          eligibleOrders.forEach((order) => {
+            const current = pendingByProvider.get(order.providerId) ?? new Prisma.Decimal(0);
+            pendingByProvider.set(order.providerId, current.add(order.amountNetProvider));
+          });
+
+          await Promise.all(
+            Array.from(pendingByProvider.entries()).map(([providerId, amount]) =>
+              tx.providerWallet.upsert({
+                where: { providerId },
+                create: {
+                  providerId,
+                  availableBalance: new Prisma.Decimal(0),
+                  pendingBalance: amount,
+                  currency: orders[0]?.currency ?? "GHS",
+                },
+                update: {
+                  pendingBalance: { increment: amount },
+                },
+              }),
+            ),
+          );
+
+          await tx.orderEvent.createMany({
+            data: eligibleOrders.map((order) => ({
+              orderId: order.id,
+              type: "paid",
+              payload: { provider: paymentIntent.provider, source: "invoice" },
+            })),
+          });
+        }
+      }
+
+      if (!invoice) {
+        invoice = await tx.businessInvoice.findUnique({
+          where: { id: invoiceId },
+          include: { account: true, orders: true },
+        });
+      }
+
+      return { paymentIntent, orders, didFinalize, purpose, boost, subscription, invoice };
+    }
+
+    if (purpose === "order_payment") {
+      const orderPaymentId = metadata.orderPaymentId;
+
+      if (!orderPaymentId) {
+        throw new Error("Order payment metadata missing.");
+      }
+
+      const orderPayment = await tx.orderPayment.findUnique({
+        where: { id: orderPaymentId },
+        include: { order: { include: { service: true } } },
+      });
+
+      if (!orderPayment || !orderPayment.order) {
+        throw new Error("Order payment not found.");
+      }
+
+      orders = [orderPayment.order];
+
+      if (didFinalize && orderPayment.status !== "paid") {
+        await tx.orderPayment.update({
+          where: { id: orderPayment.id },
+          data: { status: "paid", paidAt: new Date() },
+        });
+
+        const order = orderPayment.order;
+        const nextPaid = order.amountPaid.add(orderPayment.amount);
+        const nextPaidNet = order.amountPaidNet.add(orderPayment.amountNetProvider);
+
+        const orderUpdate: Prisma.OrderUpdateInput = {
+          amountPaid: nextPaid,
+          amountPaidNet: nextPaidNet,
+        };
+
+        if (order.status === "created") {
+          orderUpdate.status = "paid_to_escrow";
+        }
+
+        await tx.order.update({
+          where: { id: order.id },
+          data: orderUpdate,
+        });
+
+        await tx.providerWallet.upsert({
+          where: { providerId: order.providerId },
+          create: {
+            providerId: order.providerId,
+            availableBalance: new Prisma.Decimal(0),
+            pendingBalance: orderPayment.amountNetProvider,
+            currency: orderPayment.currency,
+          },
+          update: {
+            pendingBalance: { increment: orderPayment.amountNetProvider },
+          },
+        });
+
+        await tx.orderEvent.create({
+          data: {
+            orderId: order.id,
+            type: "paid",
+            payload: { provider: paymentIntent.provider, stage: orderPayment.stage },
+          },
+        });
+      }
+
+      return { paymentIntent, orders, didFinalize, purpose, boost, subscription, invoice };
+    }
+
+    orders = await tx.order.findMany({
+      where: { paymentIntentId: paymentIntent.id },
+      include: { service: true },
+    });
+
+    if (didFinalize) {
       const eligibleOrders = orders.filter((order) => order.status === "created");
 
       if (eligibleOrders.length > 0) {
-        await tx.order.updateMany({
-          where: {
-            id: { in: eligibleOrders.map((order) => order.id) },
-            status: "created",
-          },
-          data: { status: "paid_to_escrow" },
-        });
+        await Promise.all(
+          eligibleOrders.map((order) =>
+            tx.order.update({
+              where: { id: order.id },
+              data: {
+                status: "paid_to_escrow",
+                amountPaid: order.amountGross,
+                amountPaidNet: order.amountNetProvider,
+              },
+            }),
+          ),
+        );
 
         const pendingByProvider = new Map<string, Prisma.Decimal>();
         eligibleOrders.forEach((order) => {
@@ -599,10 +1527,10 @@ const finalizePayment = async (params: {
       }
     }
 
-    return { paymentIntent, orders, didFinalize };
+    return { paymentIntent, orders, didFinalize, purpose, boost, subscription, invoice };
   });
 
-  if (result.didFinalize) {
+  if ((result.purpose === "orders" || result.purpose === "invoice") && result.didFinalize) {
     const notifiedOrders = result.orders.filter((order) => order.status === "created");
     await Promise.all(
       notifiedOrders.flatMap((order) => {
@@ -627,6 +1555,36 @@ const finalizePayment = async (params: {
         ];
       }),
     );
+  }
+
+  if (result.purpose === "order_payment" && result.didFinalize) {
+    const orderPayment = await prisma.orderPayment.findFirst({
+      where: { paymentIntentId: result.paymentIntent.id },
+      include: { order: { include: { service: true } } },
+    });
+
+    if (orderPayment?.order) {
+      const serviceTitle = orderPayment.order.service?.title ?? "service";
+      const stageLabel = orderPayment.stage === "deposit" ? "Deposit" : "Balance";
+      await Promise.all([
+        createNotification({
+          userId: orderPayment.order.providerId,
+          actorId: params.actorId,
+          type: "order_status",
+          title: `${stageLabel} payment received`,
+          body: `${stageLabel} payment received for ${serviceTitle}.`,
+          data: { orderId: orderPayment.order.id, serviceId: orderPayment.order.serviceId },
+        }),
+        createNotification({
+          userId: orderPayment.order.buyerId,
+          actorId: orderPayment.order.providerId,
+          type: "order_status",
+          title: `${stageLabel} payment confirmed`,
+          body: `Your ${stageLabel.toLowerCase()} payment for ${serviceTitle} was confirmed.`,
+          data: { orderId: orderPayment.order.id, serviceId: orderPayment.order.serviceId },
+        }),
+      ]);
+    }
   }
 
   return result;

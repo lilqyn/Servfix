@@ -17,7 +17,25 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
@@ -229,6 +247,14 @@ const CommunityFeedList = ({
   const [commentDraft, setCommentDraft] = useState("");
   const [isCommenting, setIsCommenting] = useState(false);
   const [hasFocusedPost, setHasFocusedPost] = useState(false);
+  const [reportDialogOpen, setReportDialogOpen] = useState(false);
+  const [reportPostId, setReportPostId] = useState<string | null>(null);
+  const [reportReason, setReportReason] = useState("");
+  const [reportDetails, setReportDetails] = useState("");
+  const [reportError, setReportError] = useState<string | null>(null);
+  const [reportSubmitting, setReportSubmitting] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deletePostId, setDeletePostId] = useState<string | null>(null);
 
   useEffect(() => {
     setHasFocusedPost(false);
@@ -348,26 +374,43 @@ const CommunityFeedList = ({
       navigate("/sign-in?next=/community");
       return;
     }
+    setReportPostId(postId);
+    setReportReason("");
+    setReportDetails("");
+    setReportError(null);
+    setReportDialogOpen(true);
+  };
 
-    const reason = window.prompt("Why are you reporting this post?");
-    if (!reason || reason.trim().length < 3) {
-      toast({ title: "Report reason is required." });
+  const handleReportSubmit = async () => {
+    if (!reportPostId || reportSubmitting) {
       return;
     }
 
-    const details = window.prompt("Add more details (optional):") ?? undefined;
+    const reason = reportReason.trim();
+    const details = reportDetails.trim();
 
+    if (reason.length < 3) {
+      setReportError("Report reason is required.");
+      return;
+    }
+
+    setReportSubmitting(true);
+    setReportError(null);
     try {
       await createReport({
         targetType: "community_post",
-        targetId: postId,
-        reason: reason.trim(),
-        details: details?.trim() || undefined,
+        targetId: reportPostId,
+        reason,
+        details: details.length > 0 ? details : undefined,
       });
       toast({ title: "Report submitted. Thank you." });
+      setReportDialogOpen(false);
+      setReportPostId(null);
     } catch (reportError) {
       const message = reportError instanceof Error ? reportError.message : "Unable to submit report.";
-      toast({ title: message });
+      setReportError(message);
+    } finally {
+      setReportSubmitting(false);
     }
   };
 
@@ -527,22 +570,27 @@ const CommunityFeedList = ({
     }
   };
 
-  const handleDelete = async (postId: string) => {
+  const handleDelete = (postId: string) => {
     if (!isAuthenticated || deletingPostId) {
       return;
     }
+    setDeletePostId(postId);
+    setDeleteDialogOpen(true);
+  };
 
-    const confirmed = window.confirm("Delete this post permanently?");
-    if (!confirmed) {
+  const confirmDelete = async () => {
+    if (!deletePostId || deletingPostId) {
       return;
     }
 
-    setDeletingPostId(postId);
+    setDeletingPostId(deletePostId);
     try {
-      await deleteCommunityPost(postId);
+      await deleteCommunityPost(deletePostId);
       if (onRefresh) {
         await onRefresh();
       }
+      setDeleteDialogOpen(false);
+      setDeletePostId(null);
     } catch (deleteError) {
       const message = deleteError instanceof Error ? deleteError.message : "Unable to delete post.";
       toast({ title: message });
@@ -551,21 +599,24 @@ const CommunityFeedList = ({
     }
   };
 
-  const renderMediaItem = (media: NonNullable<FeedPost["media"]>[number]) =>
-    media.type === "video" ? (
-      <video
-        src={media.url}
-        className="w-full object-cover max-h-96 rounded-xl"
-        controls
-      />
-    ) : (
-      <img
-        src={media.url}
-        alt="Post media"
-        className="w-full object-cover max-h-96 rounded-xl"
-        loading="lazy"
-      />
-    );
+  const renderMediaItem = (media: NonNullable<FeedPost["media"]>[number]) => (
+    <div className="aspect-[4/3] w-full overflow-hidden rounded-xl border border-border/40 bg-muted/20">
+      {media.type === "video" ? (
+        <video
+          src={media.url}
+          className="h-full w-full object-cover"
+          controls
+        />
+      ) : (
+        <img
+          src={media.url}
+          alt="Post media"
+          className="h-full w-full object-cover"
+          loading="lazy"
+        />
+      )}
+    </div>
+  );
 
   const renderPostMedia = (post: FeedPost) => {
     if (!post.media || post.media.length === 0) {
@@ -903,6 +954,103 @@ const CommunityFeedList = ({
           </Button>
         ) : null}
       </div>
+
+      <Dialog
+        open={reportDialogOpen}
+        onOpenChange={(open) => {
+          setReportDialogOpen(open);
+          if (!open) {
+            setReportPostId(null);
+            setReportReason("");
+            setReportDetails("");
+            setReportError(null);
+            setReportSubmitting(false);
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Report Post</DialogTitle>
+            <DialogDescription>
+              Tell us why you are reporting this post. The report goes to the admin team.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <label htmlFor="report-reason" className="text-sm font-medium text-foreground">
+                Reason
+              </label>
+              <Textarea
+                id="report-reason"
+                rows={3}
+                value={reportReason}
+                onChange={(event) => {
+                  setReportReason(event.target.value);
+                  if (reportError) {
+                    setReportError(null);
+                  }
+                }}
+                placeholder="Explain what is wrong with this post."
+              />
+            </div>
+            <div className="space-y-2">
+              <label htmlFor="report-details" className="text-sm font-medium text-foreground">
+                Details (optional)
+              </label>
+              <Textarea
+                id="report-details"
+                rows={3}
+                value={reportDetails}
+                onChange={(event) => setReportDetails(event.target.value)}
+                placeholder="Add any extra context that helps us review."
+              />
+            </div>
+            {reportError && <p className="text-sm text-destructive">{reportError}</p>}
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setReportDialogOpen(false)}
+              disabled={reportSubmitting}
+            >
+              Cancel
+            </Button>
+            <Button type="button" onClick={handleReportSubmit} disabled={reportSubmitting}>
+              {reportSubmitting ? "Sending..." : "Send Report"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog
+        open={deleteDialogOpen}
+        onOpenChange={(open) => {
+          setDeleteDialogOpen(open);
+          if (!open) {
+            setDeletePostId(null);
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete post?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. This post will be permanently removed.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deletingPostId !== null}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDelete}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={deletingPostId !== null}
+            >
+              {deletingPostId ? "Deleting..." : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

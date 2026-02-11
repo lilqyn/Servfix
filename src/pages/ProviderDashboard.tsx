@@ -8,6 +8,8 @@ import OrdersList from "@/components/dashboard/OrdersList";
 import EarningsOverview from "@/components/dashboard/EarningsOverview";
 import ProviderPayouts from "@/components/dashboard/ProviderPayouts";
 import ProviderReviews from "@/components/dashboard/ProviderReviews";
+import ProviderBoosts from "@/components/dashboard/ProviderBoosts";
+import ProviderSubscriptions from "@/components/dashboard/ProviderSubscriptions";
 import { Button } from "@/components/ui/button";
 import { Bell, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
@@ -25,6 +27,8 @@ const ProviderDashboard = () => {
   const { data: publicSettings } = usePublicSettings();
   const reviewsEnabled = publicSettings?.featureFlags.reviews ?? true;
   const communityEnabled = publicSettings?.featureFlags.community ?? true;
+  const boostsEnabled = publicSettings?.featureFlags.boosts ?? false;
+  const subscriptionsEnabled = publicSettings?.featureFlags.subscriptions ?? false;
 
   const displayName = useMemo(() => {
     if (!user) {
@@ -61,19 +65,33 @@ const ProviderDashboard = () => {
       "orders",
       "earnings",
       "payouts",
+      ...(boostsEnabled ? ["boosts"] : []),
+      ...(subscriptionsEnabled ? ["subscription"] : []),
       ...(reviewsEnabled ? ["reviews"] : []),
     ]);
     if (!segment) {
       return "overview";
     }
     return allowed.has(segment) ? segment : "overview";
-  }, [location.pathname, reviewsEnabled]);
+  }, [location.pathname, reviewsEnabled, subscriptionsEnabled, boostsEnabled]);
 
   useEffect(() => {
     if (!reviewsEnabled && location.pathname.includes("/dashboard/reviews")) {
       navigate("/dashboard", { replace: true });
     }
   }, [location.pathname, navigate, reviewsEnabled]);
+
+  useEffect(() => {
+    if (!boostsEnabled && location.pathname.includes("/dashboard/boosts")) {
+      navigate("/dashboard", { replace: true });
+    }
+  }, [boostsEnabled, location.pathname, navigate]);
+
+  useEffect(() => {
+    if (!subscriptionsEnabled && location.pathname.includes("/dashboard/subscription")) {
+      navigate("/dashboard", { replace: true });
+    }
+  }, [subscriptionsEnabled, location.pathname, navigate]);
 
   const handleTabChange = (value: string) => {
     if (value === "overview") {
@@ -136,6 +154,8 @@ const ProviderDashboard = () => {
                 <TabsTrigger value="orders">Orders</TabsTrigger>
                 <TabsTrigger value="earnings">Earnings</TabsTrigger>
                 <TabsTrigger value="payouts">Payouts</TabsTrigger>
+                {boostsEnabled && <TabsTrigger value="boosts">Boosts</TabsTrigger>}
+                {subscriptionsEnabled && <TabsTrigger value="subscription">Subscription</TabsTrigger>}
                 {reviewsEnabled && <TabsTrigger value="reviews">Reviews</TabsTrigger>}
               </TabsList>
 
@@ -167,6 +187,18 @@ const ProviderDashboard = () => {
               <TabsContent value="payouts" className="mt-6">
                 <ProviderPayouts />
               </TabsContent>
+
+              {boostsEnabled && (
+                <TabsContent value="boosts" className="mt-6">
+                  <ProviderBoosts />
+                </TabsContent>
+              )}
+
+              {subscriptionsEnabled && (
+                <TabsContent value="subscription" className="mt-6">
+                  <ProviderSubscriptions />
+                </TabsContent>
+              )}
 
               {reviewsEnabled && (
                 <TabsContent value="reviews" className="mt-6">

@@ -14,6 +14,7 @@ const publicUserSelect = {
   email: true,
   phone: true,
   username: true,
+  location: true,
   role: true,
   status: true,
   createdAt: true,

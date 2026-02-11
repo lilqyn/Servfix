@@ -5,6 +5,7 @@ import { prisma } from "../db.js";
 import { asyncHandler } from "../utils/async-handler.js";
 import { authRequired, requireRole } from "../middleware/auth.js";
 import { getPlatformSettings } from "../utils/platform-settings.js";
+import { getActiveSubscriptionForProvider } from "../utils/subscriptions.js";
 
 export const payoutsRouter = Router();
 
@@ -63,6 +64,8 @@ payoutsRouter.post(
   asyncHandler(async (req, res) => {
     const data = requestSchema.parse(req.body);
     const { settings } = await getPlatformSettings();
+    const subscription = await getActiveSubscriptionForProvider(req.user!.id);
+    const payoutMinOverride = subscription?.benefits.payoutMinAmount;
 
     const provider = await prisma.user.findUnique({
       where: { id: req.user!.id },
@@ -96,9 +99,14 @@ payoutsRouter.post(
     const wallet = await ensureWallet(req.user!.id);
     const amount = new Prisma.Decimal(data.amount);
 
-    if (settings.payoutRules.minAmount > 0 && amount.lt(settings.payoutRules.minAmount)) {
+    const minAmount =
+      typeof payoutMinOverride === "number"
+        ? payoutMinOverride
+        : settings.payoutRules.minAmount;
+
+    if (minAmount > 0 && amount.lt(minAmount)) {
       return res.status(400).json({
-        error: `Minimum payout amount is ${settings.payoutRules.minAmount}.`,
+        error: `Minimum payout amount is ${minAmount}.`,
       });
     }
 
@@ -123,6 +131,10 @@ payoutsRouter.post(
           destinationMomo: momoNumber,
           momoNetwork,
           status: "requested",
+          metadata: {
+            subscriptionTier: subscription?.benefits.tier ?? "free",
+            priority: subscription?.benefits.tier ?? "free",
+          },
         },
       });
 

@@ -28,6 +28,8 @@ import {
   Star,
   Bell,
   Users,
+  Zap,
+  Crown,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
@@ -58,6 +60,8 @@ const DashboardSidebar = () => {
   const { data: publicSettings } = usePublicSettings();
   const reviewsEnabled = publicSettings?.featureFlags.reviews ?? true;
   const communityEnabled = publicSettings?.featureFlags.community ?? true;
+  const boostsEnabled = publicSettings?.featureFlags.boosts ?? false;
+  const subscriptionsEnabled = publicSettings?.featureFlags.subscriptions ?? false;
 
   const serviceCount = services.length;
   const orderCount = orders.filter((order) => ORDER_BADGE_STATUSES.includes(order.status)).length;
@@ -93,6 +97,8 @@ const DashboardSidebar = () => {
     { title: "Orders", url: "/dashboard/orders", icon: ShoppingCart, badge: orderCount > 0 ? `${orderCount}` : undefined },
     { title: "Earnings", url: "/dashboard/earnings", icon: Wallet },
     { title: "Payouts", url: "/dashboard/payouts", icon: ArrowUpRight },
+    ...(boostsEnabled ? [{ title: "Boosts", url: "/dashboard/boosts", icon: Zap }] : []),
+    ...(subscriptionsEnabled ? [{ title: "Subscription", url: "/dashboard/subscription", icon: Crown }] : []),
     { title: "Messages", url: "/messages", icon: MessageSquare, badge: unreadMessages > 0 ? `${unreadMessages}` : undefined },
     ...(reviewsEnabled ? [{ title: "Reviews", url: "/dashboard/reviews", icon: Star }] : []),
     ...(communityEnabled ? [{ title: "Community", url: "/community", icon: Users }] : []),

@@ -32,19 +32,18 @@ const Cart = () => {
     updateCartItem,
     getLineTotal,
     getCartTotal,
-    getPlatformFee,
     getEscrowAmount,
   } = useCart();
 
   const [isCheckingOut, setIsCheckingOut] = useState(false);
   const [checkoutStep, setCheckoutStep] = useState<"cart" | "details" | "payment" | "success">("cart");
-  const [paymentProvider, setPaymentProvider] = useState<"flutterwave" | "stripe">("flutterwave");
+  const [paymentProvider, setPaymentProvider] = useState<"flutterwave" | "stripe" | "paystack">("flutterwave");
   const [paymentMethod, setPaymentMethod] = useState<"mobile_money" | "card">("mobile_money");
   const { data: publicSettings } = usePublicSettings();
 
   const paymentConfig = publicSettings?.payments;
   const availableProviders = useMemo(
-    () => paymentConfig?.enabledProviders ?? ["flutterwave", "stripe"],
+    () => paymentConfig?.enabledProviders ?? ["flutterwave", "stripe", "paystack"],
     [paymentConfig?.enabledProviders],
   );
   const defaultProvider = paymentConfig?.defaultProvider ?? "flutterwave";
@@ -53,6 +52,7 @@ const Cart = () => {
     : availableProviders[0];
   const flutterwaveEnabled = availableProviders.includes("flutterwave");
   const stripeEnabled = availableProviders.includes("stripe");
+  const paystackEnabled = availableProviders.includes("paystack");
 
   useEffect(() => {
     if (availableProviders.length === 0) {
@@ -101,7 +101,10 @@ const Cart = () => {
     try {
       const response = await createPaymentCheckout({
         provider: paymentProvider,
-        method: paymentProvider === "flutterwave" ? paymentMethod : "card",
+        method:
+          paymentProvider === "flutterwave" || paymentProvider === "paystack"
+            ? paymentMethod
+            : "card",
         items: cart.map((item) => ({
           serviceId: item.id,
           tierId: item.tierId!,
@@ -455,51 +458,28 @@ const Cart = () => {
                                 </div>
                               </button>
                             )}
-                          </div>
-                        )}
-
-                        {paymentProvider === "flutterwave" && flutterwaveEnabled && (
-                          <div className="grid sm:grid-cols-2 gap-4">
-                            <button
-                              className={`p-4 border-2 rounded-xl text-left transition-colors ${
-                                paymentMethod === "mobile_money"
-                                  ? "border-primary bg-primary/5"
-                                  : "border-border/50 hover:border-primary/50"
-                              }`}
-                              onClick={() => setPaymentMethod("mobile_money")}
-                            >
-                              <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center">
-                                  <span className="text-lg font-bold text-primary">M</span>
+                            {paystackEnabled && (
+                              <button
+                                className={`p-4 border-2 rounded-xl text-left transition-colors ${
+                                  paymentProvider === "paystack"
+                                    ? "border-primary bg-primary/5"
+                                    : "border-border/50 hover:border-primary/50"
+                                }`}
+                                onClick={() => setPaymentProvider("paystack")}
+                              >
+                                <div className="flex items-center gap-3">
+                                  <div className="w-10 h-10 bg-muted rounded-lg flex items-center justify-center">
+                                    <span className="text-lg font-bold text-muted-foreground">P</span>
+                                  </div>
+                                  <div>
+                                    <p className="font-semibold">Paystack</p>
+                                    <p className="text-xs text-muted-foreground">
+                                      Mobile Money + Card
+                                    </p>
+                                  </div>
                                 </div>
-                                <div>
-                                  <p className="font-semibold">Mobile Money</p>
-                                  <p className="text-xs text-muted-foreground">
-                                    MTN, Vodafone, AirtelTigo
-                                  </p>
-                                </div>
-                              </div>
-                            </button>
-                            <button
-                              className={`p-4 border-2 rounded-xl text-left transition-colors ${
-                                paymentMethod === "card"
-                                  ? "border-primary bg-primary/5"
-                                  : "border-border/50 hover:border-primary/50"
-                              }`}
-                              onClick={() => setPaymentMethod("card")}
-                            >
-                              <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 bg-muted rounded-lg flex items-center justify-center">
-                                  <CreditCard className="w-5 h-5 text-muted-foreground" />
-                                </div>
-                                <div>
-                                  <p className="font-semibold">Card Payment</p>
-                                  <p className="text-xs text-muted-foreground">
-                                    Visa, Mastercard
-                                  </p>
-                                </div>
-                              </div>
-                            </button>
+                              </button>
+                            )}
                           </div>
                         )}
 
@@ -508,6 +488,51 @@ const Cart = () => {
                             Stripe supports card payments only. You will be redirected to complete payment.
                           </div>
                         )}
+                        {(paymentProvider === "flutterwave" || paymentProvider === "paystack") &&
+                          (paymentProvider === "flutterwave" ? flutterwaveEnabled : paystackEnabled) && (
+                            <div className="grid sm:grid-cols-2 gap-4">
+                              <button
+                                className={`p-4 border-2 rounded-xl text-left transition-colors ${
+                                  paymentMethod === "mobile_money"
+                                    ? "border-primary bg-primary/5"
+                                    : "border-border/50 hover:border-primary/50"
+                                }`}
+                                onClick={() => setPaymentMethod("mobile_money")}
+                              >
+                                <div className="flex items-center gap-3">
+                                  <div className="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center">
+                                    <span className="text-lg font-bold text-primary">M</span>
+                                  </div>
+                                  <div>
+                                    <p className="font-semibold">Mobile Money</p>
+                                    <p className="text-xs text-muted-foreground">
+                                      MTN, Vodafone, AirtelTigo
+                                    </p>
+                                  </div>
+                                </div>
+                              </button>
+                              <button
+                                className={`p-4 border-2 rounded-xl text-left transition-colors ${
+                                  paymentMethod === "card"
+                                    ? "border-primary bg-primary/5"
+                                    : "border-border/50 hover:border-primary/50"
+                                }`}
+                                onClick={() => setPaymentMethod("card")}
+                              >
+                                <div className="flex items-center gap-3">
+                                  <div className="w-10 h-10 bg-muted rounded-lg flex items-center justify-center">
+                                    <CreditCard className="w-5 h-5 text-muted-foreground" />
+                                  </div>
+                                  <div>
+                                    <p className="font-semibold">Card Payment</p>
+                                    <p className="text-xs text-muted-foreground">
+                                      Visa, Mastercard
+                                    </p>
+                                  </div>
+                                </div>
+                              </button>
+                            </div>
+                          )}
                       </div>
 
                       {/* Escrow Notice */}
@@ -558,10 +583,10 @@ const Cart = () => {
                       <span className="text-muted-foreground">Subtotal</span>
                       <span className="font-medium">{formatPrice(getCartTotal())}</span>
                     </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">Platform fee (included)</span>
-                      <span className="font-medium">{formatPrice(getPlatformFee())}</span>
-                    </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Service fee included</span>
+                    <span className="font-medium text-muted-foreground">Included</span>
+                  </div>
                     <Separator />
                     <div className="flex justify-between">
                       <span className="font-semibold">Total</span>

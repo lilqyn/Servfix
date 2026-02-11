@@ -16,10 +16,14 @@ import { homeRouter } from "./routes/home.js";
 import { reportsRouter } from "./routes/reports.js";
 import { paymentsRouter } from "./routes/payments.js";
 import { payoutsRouter } from "./routes/payouts.js";
+import { boostsRouter } from "./routes/boosts.js";
+import { subscriptionsRouter } from "./routes/subscriptions.js";
 import { webhooksRouter } from "./routes/webhooks.js";
 import { settingsRouter } from "./routes/settings.js";
 import { supportRouter } from "./routes/support.js";
 import { pagesRouter } from "./routes/pages.js";
+import { businessRouter } from "./routes/business.js";
+import { quotesRouter } from "./routes/quotes.js";
 import { errorHandler } from "./middleware/error.js";
 
 export const app = express();
@@ -55,8 +59,12 @@ app.use("/api/admin", adminRouter);
 app.use("/api/reports", reportsRouter);
 app.use("/api/payments", paymentsRouter);
 app.use("/api/payouts", payoutsRouter);
+app.use("/api/boosts", boostsRouter);
+app.use("/api/subscriptions", subscriptionsRouter);
 app.use("/api/webhooks", webhooksRouter);
 app.use("/api/support", supportRouter);
+app.use("/api/business", businessRouter);
+app.use("/api", quotesRouter);
 
 app.use("/api", (_req, res) => {
   res.status(404).json({ error: "Not found" });

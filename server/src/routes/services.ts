@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { OrderStatus, Prisma } from "@prisma/client";
+import { BoostType, OrderStatus, Prisma } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "../db.js";
 import { asyncHandler } from "../utils/async-handler.js";
@@ -7,6 +7,7 @@ import { authRequired, requireRole } from "../middleware/auth.js";
 import { normalizeS3Key, signS3Key } from "../utils/s3.js";
 import { createNotification } from "../utils/notifications.js";
 import { getPlatformSettings } from "../utils/platform-settings.js";
+import { getProviderPlanMap } from "../utils/subscriptions.js";
 
 export const servicesRouter = Router();
 
@@ -143,6 +144,8 @@ const updateProviderRating = async (providerId: string) => {
 type ServiceMediaItem = { url: string; [key: string]: unknown };
 type ServiceProvider = { avatarKey?: string | null; [key: string]: unknown };
 type ServiceWithMedia = {
+  id: string;
+  providerId: string;
   media?: ServiceMediaItem[];
   coverMedia?: ServiceMediaItem | null;
   provider?: ServiceProvider | null;
@@ -188,10 +191,62 @@ const attachSignedMedia = async (service: ServiceWithMedia) => {
   };
 };
 
+const getActiveBoostTypes = async (
+  services: Array<{ id: string; category?: string | null }>,
+  boostsEnabled: boolean,
+) => {
+  const boostMap = new Map<string, BoostType[]>();
+  if (!boostsEnabled || services.length === 0) {
+    return boostMap;
+  }
+
+  const now = new Date();
+  const serviceIds = services.map((service) => service.id);
+
+  const boosts = await prisma.boostPurchase.findMany({
+    where: {
+      serviceId: { in: serviceIds },
+      status: "active",
+      startsAt: { lte: now },
+      endsAt: { gt: now },
+    },
+    select: {
+      serviceId: true,
+      type: true,
+      metadata: true,
+    },
+  });
+
+  const categoryByService = new Map(
+    services.map((service) => [service.id, service.category ?? null]),
+  );
+
+  boosts.forEach((boost) => {
+    if (!boost.serviceId) {
+      return;
+    }
+    if (boost.type === "category_top") {
+      const meta = (boost.metadata as { category?: string } | null) ?? null;
+      const category = categoryByService.get(boost.serviceId);
+      if (meta?.category && category && meta.category !== category) {
+        return;
+      }
+    }
+    const current = boostMap.get(boost.serviceId) ?? [];
+    if (!current.includes(boost.type)) {
+      current.push(boost.type);
+    }
+    boostMap.set(boost.serviceId, current);
+  });
+
+  return boostMap;
+};
+
 servicesRouter.get(
   "/",
   asyncHandler(async (req, res) => {
     const query = querySchema.parse(req.query);
+    const { settings } = await getPlatformSettings();
     const where = {
       status: query.status ?? "published",
       category: query.category,
@@ -218,7 +273,22 @@ servicesRouter.get(
 
     const signed = await Promise.all(services.map((service) => attachSignedMedia(service)));
 
-    res.json({ services: signed });
+    const boostMap = await getActiveBoostTypes(services, settings.featureFlags.boosts);
+    const planMap = await getProviderPlanMap(
+      services.map((service) => service.providerId),
+    );
+
+    const withBoosts = signed.map((service) => ({
+      ...service,
+      boosts: { types: boostMap.get(service.id as string) ?? [] },
+      providerPlan: planMap.get(service.providerId as string) ?? {
+        tier: "free",
+        badgeLabel: null,
+        rankingWeight: 0,
+      },
+    }));
+
+    res.json({ services: withBoosts });
   }),
 );
 
@@ -350,7 +420,7 @@ servicesRouter.get(
 servicesRouter.post(
   "/:id/reviews",
   authRequired,
-  requireRole("buyer", "admin"),
+  requireRole("buyer", "provider", "admin"),
   asyncHandler(async (req, res) => {
     const data = reviewSchema.parse(req.body);
     const userId = req.user!.id;
@@ -377,7 +447,7 @@ servicesRouter.post(
       return res.status(403).json({ error: "You cannot review your own service" });
     }
 
-    if (req.user!.role === "buyer") {
+    if (req.user!.role === "buyer" || req.user!.role === "provider") {
       const allowedStatuses: OrderStatus[] = ["delivered", "approved", "released"];
       const order = await prisma.order.findFirst({
         where: {
@@ -469,6 +539,7 @@ servicesRouter.post(
 servicesRouter.get(
   "/:id",
   asyncHandler(async (req, res) => {
+    const { settings } = await getPlatformSettings();
     const service = await prisma.service.findUnique({
       where: { id: req.params.id },
       include: {
@@ -491,10 +562,53 @@ servicesRouter.get(
     }
 
     const signed = await attachSignedMedia(service);
+    const boostMap = await getActiveBoostTypes(
+      [{ id: service.id, category: service.category }],
+      settings.featureFlags.boosts,
+    );
+    const planMap = await getProviderPlanMap([service.providerId]);
+    const providerPlan = planMap.get(service.providerId) ?? {
+      tier: "free",
+      badgeLabel: null,
+      rankingWeight: 0,
+    };
 
-    res.json({ service: signed });
+    res.json({
+      service: {
+        ...signed,
+        boosts: { types: boostMap.get(service.id) ?? [] },
+        providerPlan,
+      },
+    });
   }),
 );
+
+const tierSchema = z
+  .object({
+    name: z.enum(["basic", "standard", "premium"]),
+    price: z.coerce.number().positive(),
+    currency: z.enum(["GHS", "USD", "EUR"]).optional(),
+    deliveryDays: z.coerce.number().int().positive(),
+    revisionCount: z.coerce.number().int().min(0).optional(),
+    pricingType: z.enum(["flat", "per_unit"]).optional(),
+    unitLabel: z.string().min(1).optional(),
+    pricingModel: z.enum(["fixed", "negotiable", "market"]).optional(),
+    priceMax: z.coerce.number().positive().optional(),
+    priceNote: z.string().trim().min(1).max(140).optional(),
+  })
+  .superRefine((value, ctx) => {
+    const pricingModel = value.pricingModel ?? "fixed";
+    if (pricingModel === "fixed") {
+      return;
+    }
+    if (!value.priceMax || value.priceMax <= value.price) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Maximum price must be greater than minimum price",
+        path: ["priceMax"],
+      });
+    }
+  });
 
 const createSchema = z.object({
   title: z.string().min(3),
@@ -505,19 +619,7 @@ const createSchema = z.object({
   images: imagesSchema,
   location: locationSchema,
   availability: availabilitySchema,
-  tiers: z
-    .array(
-      z.object({
-        name: z.enum(["basic", "standard", "premium"]),
-        price: z.coerce.number().positive(),
-        currency: z.enum(["GHS", "USD", "EUR"]).optional(),
-        deliveryDays: z.coerce.number().int().positive(),
-        revisionCount: z.coerce.number().int().min(0).optional(),
-        pricingType: z.enum(["flat", "per_unit"]).optional(),
-        unitLabel: z.string().min(1).optional(),
-      }),
-    )
-    .min(1),
+  tiers: z.array(tierSchema).min(1),
 });
 
 servicesRouter.post(
@@ -564,6 +666,12 @@ servicesRouter.post(
             revisionCount: tier.revisionCount ?? 0,
             pricingType: tier.pricingType ?? "flat",
             unitLabel: tier.unitLabel ?? null,
+            pricingModel: tier.pricingModel ?? "fixed",
+            priceMax:
+              tier.priceMax && Number.isFinite(tier.priceMax)
+                ? new Prisma.Decimal(tier.priceMax)
+                : null,
+            priceNote: tier.priceNote?.trim() || null,
           })),
         },
         media: mediaCreate ? { create: mediaCreate } : undefined,
@@ -707,6 +815,12 @@ servicesRouter.put(
               revisionCount: tier.revisionCount ?? 0,
               pricingType: tier.pricingType ?? "flat",
               unitLabel: tier.unitLabel ?? null,
+              pricingModel: tier.pricingModel ?? "fixed",
+              priceMax:
+                tier.priceMax && Number.isFinite(tier.priceMax)
+                  ? new Prisma.Decimal(tier.priceMax)
+                  : null,
+              priceNote: tier.priceNote?.trim() || null,
             },
             update: {
               price: new Prisma.Decimal(tier.price),
@@ -715,6 +829,12 @@ servicesRouter.put(
               revisionCount: tier.revisionCount ?? 0,
               pricingType: tier.pricingType ?? "flat",
               unitLabel: tier.unitLabel ?? null,
+              pricingModel: tier.pricingModel ?? "fixed",
+              priceMax:
+                tier.priceMax && Number.isFinite(tier.priceMax)
+                  ? new Prisma.Decimal(tier.priceMax)
+                  : null,
+              priceNote: tier.priceNote?.trim() || null,
             },
           })),
         },

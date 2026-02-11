@@ -66,6 +66,9 @@ export type ApiServiceTier = {
   currency: "GHS" | "USD" | "EUR";
   pricingType?: "flat" | "per_unit";
   unitLabel?: string | null;
+  pricingModel?: "fixed" | "negotiable" | "market";
+  priceMax?: string | null;
+  priceNote?: string | null;
   deliveryDays: number;
   revisionCount: number;
 };
@@ -129,6 +132,16 @@ export type ApiService = {
     username?: string | null;
     providerProfile?: ApiProviderProfile | null;
   };
+  providerPlan?: {
+    tier: "free" | "pro" | "business";
+    badgeLabel?: string | null;
+    rankingWeight?: number;
+    planId?: string;
+    planName?: string;
+  };
+  boosts?: {
+    types: BoostType[];
+  };
   _count?: {
     orders: number;
   };
@@ -159,33 +172,161 @@ export type ApiOrder = {
   platformFee: string;
   taxAmount: string;
   amountNetProvider: string;
+  amountPaid?: string;
+  amountPaidNet?: string;
+  amountReleasedNet?: string;
+  depositPercent?: number | null;
+  depositAmount?: string | null;
+  balanceAmount?: string | null;
+  quoteId?: string | null;
   currency: "GHS" | "USD" | "EUR";
   service: {
     id: string;
     title: string;
     locationCity?: string | null;
   };
-  tier: ApiServiceTier;
+  tier?: ApiServiceTier | null;
   buyer?: ApiOrderUser | null;
   provider?: ApiOrderUser | null;
   createdAt: string;
   updatedAt: string;
 };
 
-export type CheckoutProvider = "flutterwave" | "stripe";
+export type CheckoutProvider = "flutterwave" | "stripe" | "paystack";
 export type CheckoutMethod = "card" | "mobile_money";
+
+export type BoostType = "featured" | "feed_boost" | "category_top";
+
+export type BoostOption = {
+  type: BoostType;
+  label: string;
+  description: string;
+  price: number;
+  currency: "GHS" | "USD" | "EUR";
+  durationHours: number;
+};
+
+export type ProviderBoost = {
+  id: string;
+  type: BoostType;
+  status: "scheduled" | "active" | "ended" | "cancelled";
+  startsAt: string;
+  endsAt: string;
+  price: string;
+  currency: "GHS" | "USD" | "EUR";
+  metadata?: Record<string, unknown> | null;
+  service?: { id: string; title: string; category: string } | null;
+};
+
+export type PlanTier = "free" | "pro" | "business";
+
+export type PlanBenefits = {
+  tier: PlanTier;
+  badgeLabel?: string | null;
+  rankingWeight?: number;
+  payoutMinAmount?: number;
+  payoutFeeBps?: number;
+  features?: string[];
+};
+
+export type SubscriptionPlan = {
+  id: string;
+  name: string;
+  monthlyPrice: string;
+  currency: "GHS" | "USD" | "EUR";
+  benefits: PlanBenefits;
+  isActive: boolean;
+};
+
+export type ProviderSubscription = {
+  id: string;
+  status: "active" | "past_due" | "cancelled" | "expired";
+  renewsAt?: string | null;
+  endsAt?: string | null;
+  plan: SubscriptionPlan;
+};
+
+export type BusinessAccountMembership = {
+  role: "owner" | "admin" | "member";
+  status: "active" | "invited" | "removed";
+};
+
+export type BusinessAccount = {
+  id: string;
+  name: string;
+  slug: string;
+  status: "active" | "suspended";
+  industry?: string | null;
+  size?: string | null;
+  notes?: string | null;
+  memberCount?: number;
+  jobCount?: number;
+  membership?: BusinessAccountMembership | null;
+  createdAt?: string;
+  updatedAt?: string;
+  members?: BusinessMember[];
+  jobs?: BusinessJob[];
+};
+
+export type BusinessMember = {
+  id: string;
+  role: "owner" | "admin" | "member";
+  status: "active" | "invited" | "removed";
+  user: {
+    id: string;
+    email?: string | null;
+    phone?: string | null;
+    username?: string | null;
+    role: UserRole;
+  };
+};
+
+export type BusinessJob = {
+  id: string;
+  title: string;
+  description: string;
+  category: string;
+  budget?: string | null;
+  currency: "GHS" | "USD" | "EUR";
+  status: "open" | "assigned" | "closed" | "cancelled";
+  assignedProviderId?: string | null;
+  orderId?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export type BusinessInvoice = {
+  id: string;
+  accountId: string;
+  periodStart: string;
+  periodEnd: string;
+  total: string;
+  currency: "GHS" | "USD" | "EUR";
+  status: "draft" | "issued" | "paid" | "void";
+  issuedAt?: string | null;
+  paidAt?: string | null;
+  orderCount?: number;
+  createdAt?: string;
+  updatedAt?: string;
+};
 
 export type PaymentCheckoutResponse = {
   checkoutUrl: string;
   paymentIntentId: string;
   provider: CheckoutProvider;
-  orderIds: string[];
+  orderIds?: string[];
+  orderId?: string;
+  orderPaymentId?: string;
 };
 
 export type PaymentVerifyResponse = {
   status: "success" | "failed";
   paymentIntentId?: string;
   orders?: ApiOrder[];
+  purpose?: "orders" | "boost" | "subscription" | "invoice";
+  boost?: ProviderBoost | null;
+  subscription?: ProviderSubscription | null;
+  invoice?: BusinessInvoice | null;
 };
 
 export type ApiCommunityAuthor = {
@@ -393,9 +534,80 @@ export type ApiConversation = {
   }[];
   serviceId?: string | null;
   serviceName?: string | null;
+  orderId?: string | null;
   lastMessage?: ApiConversationMessage | null;
   unreadCount: number;
   createdAt: string;
+};
+
+export type QuoteStatus = "sent" | "accepted" | "rejected" | "cancelled" | "expired";
+
+export type ApiQuote = {
+  id: string;
+  threadId: string;
+  serviceId: string;
+  tierId?: string | null;
+  providerId: string;
+  buyerId: string;
+  status: QuoteStatus;
+  amount: string;
+  currency: "GHS" | "USD" | "EUR";
+  quantity: number;
+  depositPercent: number;
+  depositAmount: string;
+  balanceAmount: string;
+  message?: string | null;
+  expiresAt?: string | null;
+  acceptedAt?: string | null;
+  rejectedAt?: string | null;
+  cancelledAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type OrderPaymentStage = "deposit" | "balance";
+export type OrderPaymentStatus = "pending" | "paid" | "cancelled" | "refunded";
+
+export type ApiOrderPayment = {
+  id: string;
+  orderId: string;
+  stage: OrderPaymentStage;
+  status: OrderPaymentStatus;
+  amount: string;
+  platformFee: string;
+  taxAmount: string;
+  amountNetProvider: string;
+  currency: "GHS" | "USD" | "EUR";
+  paymentIntentId?: string | null;
+  paidAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type OrderProgressReport = {
+  id: string;
+  orderId: string;
+  providerId: string;
+  title: string;
+  body?: string | null;
+  percentComplete: number;
+  createdAt: string;
+};
+
+export type OrderReleaseRequestStatus = "pending" | "approved" | "rejected" | "cancelled";
+
+export type OrderReleaseRequest = {
+  id: string;
+  orderId: string;
+  paymentId?: string | null;
+  requestedById: string;
+  approvedById?: string | null;
+  amount: string;
+  currency: "GHS" | "USD" | "EUR";
+  status: OrderReleaseRequestStatus;
+  note?: string | null;
+  createdAt: string;
+  decidedAt?: string | null;
 };
 
 export type ApiReviewSummary = {
@@ -479,13 +691,40 @@ export type HomeContent = HomeContentPayload & {
 
 export type StaticPageKey = "about" | "blog";
 
+export type BlogPost = {
+  title: string;
+  summary?: string | null;
+  body: string;
+  imageUrl?: string | null;
+  publishedAt: string;
+};
+
+export type BlogPostView = BlogPost & {
+  imageSignedUrl?: string | null;
+};
+
+export type StaffProfile = {
+  name: string;
+  role: string;
+  bio?: string | null;
+  photoUrl?: string | null;
+};
+
+export type StaffProfileView = StaffProfile & {
+  photoSignedUrl?: string | null;
+};
+
 export type StaticPagePayload = {
   title: string;
   body: string;
+  posts?: BlogPost[];
+  staff?: StaffProfile[];
 };
 
-export type StaticPage = StaticPagePayload & {
+export type StaticPage = Omit<StaticPagePayload, "posts" | "staff"> & {
   slug: StaticPageKey;
+  posts?: BlogPostView[];
+  staff?: StaffProfileView[];
   updatedAt?: string | null;
 };
 
@@ -501,6 +740,7 @@ export type PublicSettings = {
     enabledProviders: PaymentIntegrationProvider[];
     defaultProvider: PaymentIntegrationProvider;
   };
+  socialLinks?: SocialLink[];
   updatedAt?: string | null;
 };
 
@@ -733,6 +973,38 @@ export type AdminOrder = {
   };
 };
 
+export type AdminReleaseRequest = {
+  id: string;
+  orderId: string;
+  amount: string;
+  currency: "GHS" | "USD" | "EUR";
+  status: OrderReleaseRequestStatus;
+  note?: string | null;
+  createdAt: string;
+  requestedBy: {
+    id: string;
+    email?: string | null;
+    phone?: string | null;
+    username?: string | null;
+    providerProfile?: { displayName?: string | null } | null;
+  };
+  order?: {
+    id: string;
+    amountPaidNet: string;
+    amountReleasedNet: string;
+    currency: "GHS" | "USD" | "EUR";
+    service: { id: string; title: string };
+    buyer: { id: string; email?: string | null; phone?: string | null; username?: string | null };
+    provider: {
+      id: string;
+      email?: string | null;
+      phone?: string | null;
+      username?: string | null;
+      providerProfile?: { displayName?: string | null } | null;
+    };
+  } | null;
+};
+
 export type AdminReview = {
   id: string;
   rating: number;
@@ -815,6 +1087,7 @@ export type AdminPayoutRequest = {
   destinationMomo: string;
   momoNetwork?: "mtn" | "vodafone" | "airteltigo" | null;
   reference?: string | null;
+  failureReason?: string | null;
   createdAt: string;
   provider: AdminProvider;
 };
@@ -871,6 +1144,7 @@ export type PayoutRules = {
   feeBps: number;
   schedule: PayoutSchedule;
   supportedMomoNetworks: Array<"mtn" | "vodafone" | "airteltigo">;
+  provider: "flutterwave" | "paystack";
 };
 
 export type DisputePolicy = {
@@ -1071,6 +1345,7 @@ export type AdminPageKey =
   | "providers"
   | "services"
   | "orders"
+  | "business"
   | "disputes"
   | "reviews"
   | "community"
@@ -1100,7 +1375,19 @@ export type SmsIntegrationProvider =
   | "termii"
   | "custom";
 
-export type PaymentIntegrationProvider = "flutterwave" | "stripe";
+export type PaymentIntegrationProvider = "flutterwave" | "stripe" | "paystack";
+
+export type SocialLinkPlatform =
+  | "facebook"
+  | "instagram"
+  | "twitter"
+  | "youtube"
+  | "linkedin";
+
+export type SocialLink = {
+  platform: SocialLinkPlatform;
+  url: string;
+};
 
 export type Integrations = {
   email: {
@@ -1117,6 +1404,7 @@ export type Integrations = {
     enabledProviders: PaymentIntegrationProvider[];
     defaultProvider: PaymentIntegrationProvider;
     flutterwaveSecretKey: string;
+    paystackSecretKey: string;
     stripeSecretKey: string;
   };
   webhooks: {
@@ -1124,6 +1412,7 @@ export type Integrations = {
     flutterwaveWebhookHash: string;
     outboundSigningKey: string;
   };
+  socialLinks: SocialLink[];
 };
 
 export type LocalizationSettings = {
@@ -1140,6 +1429,7 @@ export type AdminSettings = {
   payoutRules: PayoutRules;
   disputePolicy: DisputePolicy;
   orderRules: OrderRules;
+  boostCatalog: BoostOption[];
   providerVerification: ProviderVerificationRules;
   reviewModeration: ReviewModeration;
   communityModeration: CommunityModeration;
@@ -1389,6 +1679,16 @@ export async function uploadCommunityVideo(file: File): Promise<UploadImageRespo
   });
 }
 
+export async function uploadPageImage(file: File): Promise<UploadImageResponse> {
+  const form = new FormData();
+  form.append("file", file);
+
+  return apiFetch<UploadImageResponse>("/api/uploads/page-image", {
+    method: "POST",
+    body: form,
+  });
+}
+
 export async function uploadProfileAvatar(file: File): Promise<UploadImageResponse> {
   const form = new FormData();
   form.append("file", file);
@@ -1575,6 +1875,19 @@ export async function fetchAdminOrders(params?: {
   if (params?.limit) searchParams.set("limit", String(params.limit));
   const query = searchParams.toString();
   return apiFetch(`/api/admin/orders${query ? `?${query}` : ""}`);
+}
+
+export async function fetchAdminReleaseRequests(params?: {
+  status?: OrderReleaseRequestStatus;
+  cursor?: string;
+  limit?: number;
+}): Promise<{ requests: AdminReleaseRequest[]; nextCursor?: string | null }> {
+  const searchParams = new URLSearchParams();
+  if (params?.status) searchParams.set("status", params.status);
+  if (params?.cursor) searchParams.set("cursor", params.cursor);
+  if (params?.limit) searchParams.set("limit", String(params.limit));
+  const query = searchParams.toString();
+  return apiFetch(`/api/admin/orders/release-requests${query ? `?${query}` : ""}`);
 }
 
 export async function updateAdminOrderStatus(id: string, status: ApiOrderStatus, note?: string): Promise<void> {
@@ -1775,6 +2088,243 @@ export async function requestProviderPayout(amount: number): Promise<void> {
   });
 }
 
+export async function fetchBoostOptions(): Promise<BoostOption[]> {
+  const response = await apiFetch<{ options: BoostOption[] }>("/api/boosts/options");
+  return response.options;
+}
+
+export async function fetchProviderBoosts(): Promise<ProviderBoost[]> {
+  const response = await apiFetch<{ boosts: ProviderBoost[] }>("/api/boosts/mine");
+  return response.boosts;
+}
+
+export async function purchaseBoost(payload: {
+  serviceId: string;
+  type: BoostType;
+}): Promise<ProviderBoost> {
+  const response = await apiFetch<{ boost: ProviderBoost }>("/api/boosts/purchase", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  return response.boost;
+}
+
+export async function createBoostCheckout(payload: {
+  serviceId: string;
+  type: BoostType;
+  provider: CheckoutProvider;
+  method?: CheckoutMethod;
+}): Promise<PaymentCheckoutResponse> {
+  return apiFetch("/api/boosts/checkout", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function fetchSubscriptionPlans(): Promise<SubscriptionPlan[]> {
+  const response = await apiFetch<{ plans: SubscriptionPlan[] }>("/api/subscriptions/plans");
+  return response.plans;
+}
+
+export async function fetchMySubscription(): Promise<ProviderSubscription | null> {
+  const response = await apiFetch<{ subscription: ProviderSubscription | null }>(
+    "/api/subscriptions/mine",
+  );
+  return response.subscription ?? null;
+}
+
+export async function createSubscriptionCheckout(payload: {
+  planId: string;
+  provider: CheckoutProvider;
+  method?: CheckoutMethod;
+}): Promise<PaymentCheckoutResponse> {
+  return apiFetch("/api/subscriptions/checkout", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function cancelSubscription(): Promise<void> {
+  await apiFetch("/api/subscriptions/cancel", { method: "POST" });
+}
+
+export async function fetchMyBusinessAccounts(): Promise<BusinessAccount[]> {
+  const response = await apiFetch<{ accounts: BusinessAccount[] }>("/api/business/accounts/mine");
+  return response.accounts;
+}
+
+export async function fetchAdminBusinessAccounts(): Promise<BusinessAccount[]> {
+  const response = await apiFetch<{ accounts: BusinessAccount[] }>("/api/business/accounts");
+  return response.accounts;
+}
+
+export async function createBusinessAccount(payload: {
+  name: string;
+  industry?: string;
+  size?: string;
+  notes?: string;
+}): Promise<BusinessAccount> {
+  const response = await apiFetch<{ account: BusinessAccount }>("/api/business/accounts", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  return response.account;
+}
+
+export async function fetchBusinessAccount(id: string): Promise<BusinessAccount> {
+  const response = await apiFetch<{ account: BusinessAccount }>(`/api/business/accounts/${id}`);
+  return response.account;
+}
+
+export async function addBusinessMember(payload: {
+  accountId: string;
+  identifier: string;
+  role?: "owner" | "admin" | "member";
+}): Promise<BusinessMember> {
+  const response = await apiFetch<{ member: BusinessMember }>(
+    `/api/business/accounts/${payload.accountId}/members`,
+    {
+      method: "POST",
+      body: JSON.stringify({ identifier: payload.identifier, role: payload.role }),
+    },
+  );
+  return response.member;
+}
+
+export async function updateBusinessMember(payload: {
+  accountId: string;
+  memberId: string;
+  role?: "owner" | "admin" | "member";
+  status?: "active" | "invited" | "removed";
+}): Promise<BusinessMember> {
+  const response = await apiFetch<{ member: BusinessMember }>(
+    `/api/business/accounts/${payload.accountId}/members/${payload.memberId}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({ role: payload.role, status: payload.status }),
+    },
+  );
+  return response.member;
+}
+
+export async function removeBusinessMember(payload: {
+  accountId: string;
+  memberId: string;
+}): Promise<void> {
+  await apiFetch(`/api/business/accounts/${payload.accountId}/members/${payload.memberId}`, {
+    method: "DELETE",
+  });
+}
+
+export async function fetchBusinessJobs(accountId: string): Promise<BusinessJob[]> {
+  const response = await apiFetch<{ jobs: BusinessJob[] }>(
+    `/api/business/accounts/${accountId}/jobs`,
+  );
+  return response.jobs;
+}
+
+export async function fetchBusinessInvoices(accountId: string): Promise<BusinessInvoice[]> {
+  const response = await apiFetch<{ invoices: BusinessInvoice[] }>(
+    `/api/business/accounts/${accountId}/invoices`,
+  );
+  return response.invoices;
+}
+
+export async function createBusinessInvoice(payload: {
+  accountId: string;
+  periodStart: string;
+  periodEnd: string;
+  status?: "draft" | "issued";
+}): Promise<BusinessInvoice> {
+  const response = await apiFetch<{ invoice: BusinessInvoice }>(
+    `/api/business/accounts/${payload.accountId}/invoices`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        periodStart: payload.periodStart,
+        periodEnd: payload.periodEnd,
+        status: payload.status,
+      }),
+    },
+  );
+  return response.invoice;
+}
+
+export async function createBusinessInvoiceCheckout(payload: {
+  invoiceId: string;
+  provider: CheckoutProvider;
+  method?: CheckoutMethod;
+}): Promise<PaymentCheckoutResponse> {
+  return apiFetch(`/api/business/invoices/${payload.invoiceId}/checkout`, {
+    method: "POST",
+    body: JSON.stringify({ provider: payload.provider, method: payload.method }),
+  });
+}
+
+export async function createBusinessJob(payload: {
+  accountId: string;
+  title: string;
+  description: string;
+  category: string;
+  budget?: number;
+  currency?: "GHS" | "USD" | "EUR";
+}): Promise<BusinessJob> {
+  const response = await apiFetch<{ job: BusinessJob }>(
+    `/api/business/accounts/${payload.accountId}/jobs`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        title: payload.title,
+        description: payload.description,
+        category: payload.category,
+        budget: payload.budget,
+        currency: payload.currency,
+      }),
+    },
+  );
+  return response.job;
+}
+
+export async function updateBusinessJob(payload: {
+  accountId: string;
+  jobId: string;
+  status?: "open" | "assigned" | "closed" | "cancelled";
+  assignedProviderId?: string;
+}): Promise<BusinessJob> {
+  const response = await apiFetch<{ job: BusinessJob }>(
+    `/api/business/accounts/${payload.accountId}/jobs/${payload.jobId}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({
+        status: payload.status,
+        assignedProviderId: payload.assignedProviderId,
+      }),
+    },
+  );
+  return response.job;
+}
+
+export async function createBusinessJobOrder(payload: {
+  accountId: string;
+  jobId: string;
+  serviceId: string;
+  tierId: string;
+  quantity?: number;
+}): Promise<ApiOrder> {
+  const response = await apiFetch<{ order: ApiOrder }>(
+    `/api/business/accounts/${payload.accountId}/jobs/${payload.jobId}/order`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        serviceId: payload.serviceId,
+        tierId: payload.tierId,
+        quantity: payload.quantity,
+      }),
+    },
+  );
+  return response.order;
+}
+
 export async function fetchAdminPayouts(): Promise<{ payouts: AdminPayoutSummary[] }> {
   return apiFetch("/api/admin/payouts");
 }
@@ -1819,6 +2369,7 @@ export async function updateAdminSettings(
     | "payoutRules"
     | "disputePolicy"
     | "orderRules"
+    | "boostCatalog"
     | "providerVerification"
     | "reviewModeration"
     | "communityModeration"
@@ -1914,6 +2465,7 @@ export async function verifyPayment(params: {
   transactionId?: string | null;
   txRef?: string | null;
   sessionId?: string | null;
+  reference?: string | null;
 }): Promise<PaymentVerifyResponse> {
   const query = new URLSearchParams();
   query.set("provider", params.provider);
@@ -1926,6 +2478,113 @@ export async function verifyPayment(params: {
   if (params.sessionId) {
     query.set("session_id", params.sessionId);
   }
+  if (params.reference) {
+    query.set("reference", params.reference);
+  }
 
   return apiFetch(`/api/payments/verify?${query.toString()}`);
+}
+
+export async function createOrderPaymentCheckout(payload: {
+  orderPaymentId: string;
+  provider: CheckoutProvider;
+  method?: CheckoutMethod;
+}): Promise<PaymentCheckoutResponse> {
+  return apiFetch("/api/payments/order-payment", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function fetchThreadQuotes(threadId: string): Promise<ApiQuote[]> {
+  const response = await apiFetch<{ quotes: ApiQuote[] }>(`/api/threads/${threadId}/quotes`);
+  return response.quotes;
+}
+
+export async function createThreadQuote(
+  threadId: string,
+  payload: {
+    serviceId?: string;
+    tierId?: string;
+    amount: number;
+    currency?: "GHS" | "USD" | "EUR";
+    quantity?: number;
+    depositPercent?: number;
+    message?: string;
+    expiresAt?: string;
+  },
+): Promise<ApiQuote> {
+  const response = await apiFetch<{ quote: ApiQuote }>(`/api/threads/${threadId}/quotes`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  return response.quote;
+}
+
+export async function acceptQuote(quoteId: string): Promise<{
+  order: ApiOrder;
+  orderPayment: ApiOrderPayment;
+}> {
+  return apiFetch(`/api/quotes/${quoteId}/accept`, { method: "POST" });
+}
+
+export async function rejectQuote(quoteId: string): Promise<{ quote: ApiQuote }> {
+  return apiFetch(`/api/quotes/${quoteId}/reject`, { method: "POST" });
+}
+
+export async function fetchOrderProgressReports(orderId: string): Promise<OrderProgressReport[]> {
+  const response = await apiFetch<{ reports: OrderProgressReport[] }>(
+    `/api/orders/${orderId}/progress-reports`,
+  );
+  return response.reports;
+}
+
+export async function fetchOrderPayments(orderId: string): Promise<ApiOrderPayment[]> {
+  const response = await apiFetch<{ payments: ApiOrderPayment[] }>(
+    `/api/orders/${orderId}/payments`,
+  );
+  return response.payments;
+}
+
+export async function createOrderProgressReport(
+  orderId: string,
+  payload: { title: string; body?: string; percentComplete?: number },
+): Promise<{ report: OrderProgressReport; balancePayment?: ApiOrderPayment | null }> {
+  return apiFetch(`/api/orders/${orderId}/progress-reports`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function fetchOrderReleaseRequests(orderId: string): Promise<OrderReleaseRequest[]> {
+  const response = await apiFetch<{ requests: OrderReleaseRequest[] }>(
+    `/api/orders/${orderId}/release-requests`,
+  );
+  return response.requests;
+}
+
+export async function requestOrderRelease(
+  orderId: string,
+  payload: { percent: number; note?: string },
+): Promise<{ request: OrderReleaseRequest }> {
+  return apiFetch(`/api/orders/${orderId}/release-requests`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function approveOrderReleaseRequest(
+  requestId: string,
+): Promise<{ status: "approved" }> {
+  return apiFetch(`/api/orders/release-requests/${requestId}/approve`, {
+    method: "POST",
+  });
+}
+
+export async function rejectOrderReleaseRequest(
+  requestId: string,
+): Promise<{ status: "rejected" }> {
+  return apiFetch(`/api/orders/release-requests/${requestId}/reject`, {
+    method: "POST",
+  });
 }

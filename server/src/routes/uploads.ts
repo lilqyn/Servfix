@@ -4,6 +4,7 @@ import sharp from "sharp";
 import { randomUUID } from "crypto";
 import { asyncHandler } from "../utils/async-handler.js";
 import { authRequired, requireRole } from "../middleware/auth.js";
+import { requirePermission } from "../middleware/permissions.js";
 import { isS3Configured, signS3Key, uploadToS3 } from "../utils/s3.js";
 
 export const uploadsRouter = Router();
@@ -124,7 +125,7 @@ const convertToWebp = async (buffer: Buffer) => {
 };
 
 const createUploadHandler =
-  (prefix: "services" | "community" | "avatars" | "banners") =>
+  (prefix: "services" | "community" | "avatars" | "banners" | "pages") =>
   asyncHandler(async (req, res) => {
     if (!isS3Configured()) {
       return res.status(500).json({
@@ -230,4 +231,12 @@ uploadsRouter.post(
   authRequired,
   handleUpload,
   createUploadHandler("banners"),
+);
+
+uploadsRouter.post(
+  "/page-image",
+  authRequired,
+  requirePermission("settings.update"),
+  handleUpload,
+  createUploadHandler("pages"),
 );

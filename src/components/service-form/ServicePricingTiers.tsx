@@ -59,6 +59,8 @@ const ServicePricingTiers = ({ form }: ServicePricingTiersProps) => {
         {fields.map((field, tierIndex) => {
           const isPopular = form.watch(`pricingTiers.${tierIndex}.popular`);
           const features = form.watch(`pricingTiers.${tierIndex}.features`) || [];
+          const pricingModel =
+            form.watch(`pricingTiers.${tierIndex}.pricingModel`) ?? "fixed";
 
           return (
             <Card
@@ -108,13 +110,38 @@ const ServicePricingTiers = ({ form }: ServicePricingTiersProps) => {
               </CardHeader>
 
               <CardContent className="space-y-4">
+                {/* Pricing Model */}
+                <FormField
+                  control={form.control}
+                  name={`pricingTiers.${tierIndex}.pricingModel`}
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Pricing Model</FormLabel>
+                      <FormControl>
+                        <Select value={field.value ?? "fixed"} onValueChange={field.onChange}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select pricing model" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="fixed">Fixed price</SelectItem>
+                            <SelectItem value="negotiable">Negotiable range</SelectItem>
+                            <SelectItem value="market">Market-based range</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
                 {/* Price */}
                 <FormField
                   control={form.control}
                   name={`pricingTiers.${tierIndex}.price`}
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Price (GH₵)</FormLabel>
+                      <FormLabel>
+                        {pricingModel === "fixed" ? "Price (GH₵)" : "Min Price (GH₵)"}
+                      </FormLabel>
                       <FormControl>
                         <div className="relative">
                           <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">
@@ -133,6 +160,52 @@ const ServicePricingTiers = ({ form }: ServicePricingTiersProps) => {
                     </FormItem>
                   )}
                 />
+
+                {pricingModel !== "fixed" && (
+                  <FormField
+                    control={form.control}
+                    name={`pricingTiers.${tierIndex}.priceMax`}
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Max Price (GH₵)</FormLabel>
+                        <FormControl>
+                          <div className="relative">
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">
+                              GH₵
+                            </span>
+                            <Input
+                              type="number"
+                              placeholder="0"
+                              className="pl-12 text-2xl font-bold"
+                              {...field}
+                              onChange={(e) => field.onChange(Number(e.target.value))}
+                            />
+                          </div>
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
+
+                {pricingModel !== "fixed" && (
+                  <FormField
+                    control={form.control}
+                    name={`pricingTiers.${tierIndex}.priceNote`}
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Price Note</FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder="e.g., final price depends on market rate"
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
 
                 {/* Pricing Type */}
                 <FormField

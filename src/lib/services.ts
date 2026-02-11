@@ -1,4 +1,4 @@
-import type { ApiService } from "./api";
+import type { ApiService, BoostType } from "./api";
 
 export type ServiceSummary = {
   id: string;
@@ -15,18 +15,25 @@ export type ServiceSummary = {
   image: string;
   verified: boolean;
   topRated: boolean;
+  boostTypes?: BoostType[];
+  planTier?: "free" | "pro" | "business";
+  planBadge?: string | null;
+  planWeight?: number;
 };
 
 export type ServiceDetailPackage = {
   id: string;
   name: string;
   price: number;
+  priceMax?: number | null;
   description: string;
   features: string[];
   deliveryTime: string;
   popular: boolean;
   pricingType?: "flat" | "per_unit";
   unitLabel?: string | null;
+  pricingModel?: "fixed" | "negotiable" | "market";
+  priceNote?: string | null;
 };
 
 export type ServiceDetailProvider = {
@@ -87,6 +94,8 @@ function formatPrice(
   currency: "GHS" | "USD" | "EUR",
   pricingType?: "flat" | "per_unit",
   unitLabel?: string | null,
+  pricingModel?: "fixed" | "negotiable" | "market",
+  priceMax?: number | null,
 ) {
   if (!Number.isFinite(amount) || amount <= 0) {
     return "Contact for pricing";
@@ -98,6 +107,28 @@ function formatPrice(
     currencyDisplay: "code",
     maximumFractionDigits: 0,
   }).format(amount);
+
+  if (pricingModel && pricingModel !== "fixed") {
+    const maxValue =
+      typeof priceMax === "number" && Number.isFinite(priceMax) && priceMax > amount
+        ? priceMax
+        : null;
+    const formattedMax = maxValue
+      ? new Intl.NumberFormat("en-GH", {
+          style: "currency",
+          currency,
+          currencyDisplay: "code",
+          maximumFractionDigits: 0,
+        }).format(maxValue)
+      : null;
+    const rangeLabel = formattedMax ? `${formatted} - ${formattedMax}` : formatted;
+    const modelLabel = pricingModel === "market" ? "Market range" : "Negotiable range";
+    if (pricingType === "per_unit") {
+      const label = unitLabel?.trim() || "unit";
+      return `${modelLabel} ${rangeLabel} / ${label}`;
+    }
+    return `${modelLabel} ${rangeLabel}`;
+  }
 
   if (pricingType === "per_unit") {
     const label = unitLabel?.trim() || "unit";
@@ -126,15 +157,35 @@ export function mapServiceToSummary(service: ApiService): ServiceSummary {
   const reviews = providerProfile?.ratingCount ?? 0;
   const verified = providerProfile?.verificationStatus === "verified";
   const topRated = rating >= 4.8 && reviews >= 10;
+  const boostTypes = service.boosts?.types ?? [];
+  const providerPlan = service.providerPlan ?? {
+    tier: "free" as const,
+    badgeLabel: null,
+    rankingWeight: 0,
+  };
+  const planTier = providerPlan.tier ?? "free";
+  const planBadge =
+    planTier !== "free"
+      ? providerPlan.badgeLabel ?? `${planTier.charAt(0).toUpperCase()}${planTier.slice(1)}`
+      : null;
+  const planWeight = providerPlan.rankingWeight ?? 0;
 
   const tiersWithPrice = service.tiers.map((tier) => ({
     tier,
     price: toNumber(tier.price),
+    priceMax: toNumber(tier.priceMax ?? tier.price),
+    pricingModel: tier.pricingModel ?? "fixed",
   }));
   const sortedByPrice = tiersWithPrice.sort((a, b) => a.price - b.price);
   const cheapest = sortedByPrice[0]?.tier;
   const minPrice = sortedByPrice[0]?.price ?? 0;
+  const maxPrice = tiersWithPrice.length
+    ? Math.max(...tiersWithPrice.map((entry) => entry.priceMax))
+    : null;
   const currency = cheapest?.currency ?? "GHS";
+  const hasMarket = tiersWithPrice.some((tier) => tier.pricingModel === "market");
+  const hasNegotiable = tiersWithPrice.some((tier) => tier.pricingModel === "negotiable");
+  const pricingModel = hasMarket ? "market" : hasNegotiable ? "negotiable" : "fixed";
 
   const name = providerProfile?.displayName ?? service.title;
   const providerName =
@@ -154,7 +205,14 @@ export function mapServiceToSummary(service: ApiService): ServiceSummary {
     reviews,
     avatar: service.provider.avatarUrl ?? FALLBACK_AVATAR,
     price: minPrice,
-    priceDisplay: formatPrice(minPrice, currency, cheapest?.pricingType, cheapest?.unitLabel ?? null),
+    priceDisplay: formatPrice(
+      minPrice,
+      currency,
+      cheapest?.pricingType,
+      cheapest?.unitLabel ?? null,
+      pricingModel,
+      maxPrice,
+    ),
     image:
       service.coverMedia?.signedUrl ??
       service.coverMedia?.url ??
@@ -163,6 +221,10 @@ export function mapServiceToSummary(service: ApiService): ServiceSummary {
       FALLBACK_IMAGE,
     verified,
     topRated,
+    boostTypes,
+    planTier,
+    planBadge,
+    planWeight,
   };
 }
 
@@ -217,12 +279,15 @@ export function mapServiceToDetail(service: ApiService): ServiceDetailData {
             id: tier.id,
             name: tierName,
             price: toNumber(tier.price),
+            priceMax: toNumber(tier.priceMax ?? tier.price),
             description: `${tierName} package`,
             features: [`Delivery in ${deliveryTime}`, revisionsLabel],
             deliveryTime,
             popular: tier.name === "standard",
             pricingType: tier.pricingType ?? "flat",
             unitLabel: tier.unitLabel ?? null,
+            pricingModel: tier.pricingModel ?? "fixed",
+            priceNote: tier.priceNote ?? null,
           };
         })
       : [
@@ -236,6 +301,9 @@ export function mapServiceToDetail(service: ApiService): ServiceDetailData {
             popular: false,
             pricingType: "flat",
             unitLabel: null,
+            pricingModel: "negotiable",
+            priceMax: null,
+            priceNote: null,
           },
         ];
 

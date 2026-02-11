@@ -11,7 +11,15 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "@/components/ui/use-toast";
-import { fetchAdminOrders, updateAdminOrderStatus, type AdminOrder } from "@/lib/api";
+import {
+  approveOrderReleaseRequest,
+  fetchAdminOrders,
+  fetchAdminReleaseRequests,
+  rejectOrderReleaseRequest,
+  updateAdminOrderStatus,
+  type AdminOrder,
+  type AdminReleaseRequest,
+} from "@/lib/api";
 import { hasPermission } from "@/lib/permissions";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -47,6 +55,17 @@ const AdminOrders = () => {
     queryFn: () => fetchAdminOrders(queryParams),
   });
 
+  const {
+    data: releaseData,
+    isLoading: releaseLoading,
+    isError: releaseError,
+    error: releaseErrorMessage,
+    refetch: refetchReleaseRequests,
+  } = useQuery({
+    queryKey: ["admin-release-requests"],
+    queryFn: () => fetchAdminReleaseRequests({ status: "pending", limit: 50 }),
+  });
+
   const canUpdate = hasPermission(user?.role ?? null, "orders.update");
 
   const handleStatusChange = async (id: string, status: AdminOrder["status"]) => {
@@ -57,6 +76,41 @@ const AdminOrders = () => {
       await refetch();
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unable to update order.";
+      toast({ title: message });
+    }
+  };
+
+  const formatUserName = (user?: {
+    username?: string | null;
+    email?: string | null;
+    phone?: string | null;
+    providerProfile?: { displayName?: string | null } | null;
+  }) => {
+    if (!user) return "-";
+    return (
+      user.providerProfile?.displayName ??
+      user.username ??
+      user.email ??
+      user.phone ??
+      "-"
+    );
+  };
+
+  const handleReleaseDecision = async (
+    request: AdminReleaseRequest,
+    action: "approve" | "reject",
+  ) => {
+    if (!canUpdate) return;
+    try {
+      if (action === "approve") {
+        await approveOrderReleaseRequest(request.id);
+      } else {
+        await rejectOrderReleaseRequest(request.id);
+      }
+      toast({ title: `Release request ${action}d.` });
+      await Promise.all([refetchReleaseRequests(), refetch()]);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unable to update release request.";
       toast({ title: message });
     }
   };
@@ -86,6 +140,87 @@ const AdminOrders = () => {
           <Button variant="outline" onClick={() => refetch()}>
             Refresh
           </Button>
+        </CardContent>
+      </Card>
+
+      <Card className="border-border/60">
+        <CardContent className="p-0">
+          <div className="px-4 py-3 border-b border-border">
+            <h3 className="text-sm font-semibold text-foreground">Pending Release Requests</h3>
+            <p className="text-xs text-muted-foreground">
+              Provider requests awaiting admin approval.
+            </p>
+          </div>
+          {releaseLoading ? (
+            <div className="p-6 text-sm text-muted-foreground">Loading release requests...</div>
+          ) : releaseError ? (
+            <div className="p-6 text-sm text-muted-foreground">
+              {releaseErrorMessage instanceof Error
+                ? releaseErrorMessage.message
+                : "Unable to load release requests."}
+            </div>
+          ) : releaseData?.requests.length ? (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Order</TableHead>
+                  <TableHead>Provider</TableHead>
+                  <TableHead>Buyer</TableHead>
+                  <TableHead>Amount</TableHead>
+                  <TableHead>Reason</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {releaseData.requests.map((request) => (
+                  <TableRow key={request.id}>
+                    <TableCell>
+                      <div className="font-medium text-foreground">
+                        {request.order?.service?.title ?? "Service"}
+                      </div>
+                      <div className="text-xs text-muted-foreground">{request.orderId}</div>
+                    </TableCell>
+                    <TableCell>{formatUserName(request.order?.provider)}</TableCell>
+                    <TableCell>{formatUserName(request.order?.buyer)}</TableCell>
+                    <TableCell>
+                      {request.currency} {Number(request.amount).toLocaleString()}
+                    </TableCell>
+                    <TableCell className="max-w-[220px]">
+                      <span className="text-xs text-muted-foreground">{request.note ?? "-"}</span>
+                    </TableCell>
+                    <TableCell className="capitalize text-sm">{request.status}</TableCell>
+                    <TableCell>
+                      {canUpdate && request.status === "pending" ? (
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleReleaseDecision(request, "reject")}
+                          >
+                            Reject
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="gold"
+                            onClick={() => handleReleaseDecision(request, "approve")}
+                          >
+                            Approve
+                          </Button>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">-</span>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          ) : (
+            <div className="p-6 text-sm text-muted-foreground">
+              No pending release requests.
+            </div>
+          )}
         </CardContent>
       </Card>
 

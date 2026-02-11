@@ -27,6 +27,7 @@ export type PayoutRules = {
   feeBps: number;
   schedule: PayoutSchedule;
   supportedMomoNetworks: Array<"mtn" | "vodafone" | "airteltigo">;
+  provider: "flutterwave" | "paystack";
 };
 
 export type DisputePolicy = {
@@ -75,6 +76,15 @@ export type FeatureFlags = {
   subscriptions: boolean;
 };
 
+export type BoostCatalogItem = {
+  type: "featured" | "feed_boost" | "category_top";
+  label: string;
+  description: string;
+  price: number;
+  currency: "GHS" | "USD" | "EUR";
+  durationHours: number;
+};
+
 export type SecurityControls = {
   adminIpAllowlist: string[];
   adminSessionTimeoutHours: number;
@@ -87,6 +97,7 @@ export const ADMIN_PAGE_KEYS = [
   "providers",
   "services",
   "orders",
+  "business",
   "disputes",
   "reviews",
   "community",
@@ -119,7 +130,19 @@ export type SmsIntegrationProvider =
   | "termii"
   | "custom";
 
-export type PaymentIntegrationProvider = "flutterwave" | "stripe";
+export type PaymentIntegrationProvider = "flutterwave" | "stripe" | "paystack";
+
+export type SocialLinkPlatform =
+  | "facebook"
+  | "instagram"
+  | "twitter"
+  | "youtube"
+  | "linkedin";
+
+export type SocialLink = {
+  platform: SocialLinkPlatform;
+  url: string;
+};
 
 export type Integrations = {
   email: {
@@ -136,6 +159,7 @@ export type Integrations = {
     enabledProviders: PaymentIntegrationProvider[];
     defaultProvider: PaymentIntegrationProvider;
     flutterwaveSecretKey: string;
+    paystackSecretKey: string;
     stripeSecretKey: string;
   };
   webhooks: {
@@ -143,6 +167,7 @@ export type Integrations = {
     flutterwaveWebhookHash: string;
     outboundSigningKey: string;
   };
+  socialLinks: SocialLink[];
 };
 
 export type LocalizationSettings = {
@@ -158,6 +183,7 @@ export type PlatformSettings = {
   payoutRules: PayoutRules;
   disputePolicy: DisputePolicy;
   orderRules: OrderRules;
+  boostCatalog: BoostCatalogItem[];
   providerVerification: ProviderVerificationRules;
   reviewModeration: ReviewModeration;
   communityModeration: CommunityModeration;
@@ -203,6 +229,7 @@ const payoutRulesSchema = z.object({
   supportedMomoNetworks: z
     .array(z.enum(["mtn", "vodafone", "airteltigo"]))
     .min(1),
+  provider: z.enum(["flutterwave", "paystack"]),
 });
 
 const disputePolicySchema = z
@@ -284,6 +311,32 @@ const featureFlagsSchema = z.object({
   subscriptions: z.boolean(),
 });
 
+const boostCatalogItemSchema = z.object({
+  type: z.enum(["featured", "feed_boost", "category_top"]),
+  label: z.string().trim().min(1).max(60),
+  description: z.string().trim().min(1).max(160),
+  price: z.coerce.number().min(0),
+  currency: z.enum(["GHS", "USD", "EUR"]),
+  durationHours: z.coerce.number().int().min(1).max(24 * 365),
+});
+
+const boostCatalogSchema = z
+  .array(boostCatalogItemSchema)
+  .min(1)
+  .superRefine((items, ctx) => {
+    const seen = new Set<string>();
+    items.forEach((item, index) => {
+      if (seen.has(item.type)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Duplicate boost types are not allowed.",
+          path: [index, "type"],
+        });
+      }
+      seen.add(item.type);
+    });
+  });
+
 const securityControlsSchema = z.object({
   adminIpAllowlist: z.array(z.string().trim().min(1)).max(200),
   adminSessionTimeoutHours: z.coerce.number().int().min(0).max(720),
@@ -323,9 +376,10 @@ const smsIntegrationSchema = z.object({
 
 const paymentsIntegrationSchema = z
   .object({
-    enabledProviders: z.array(z.enum(["flutterwave", "stripe"])).min(1),
-    defaultProvider: z.enum(["flutterwave", "stripe"]),
+    enabledProviders: z.array(z.enum(["flutterwave", "stripe", "paystack"])).min(1),
+    defaultProvider: z.enum(["flutterwave", "stripe", "paystack"]),
     flutterwaveSecretKey: z.string().trim().max(200),
+    paystackSecretKey: z.string().trim().max(200).optional().default(""),
     stripeSecretKey: z.string().trim().max(200),
   })
   .superRefine((value, ctx) => {
@@ -344,11 +398,17 @@ const webhooksIntegrationSchema = z.object({
   outboundSigningKey: z.string().trim().max(200),
 });
 
+const socialLinkSchema = z.object({
+  platform: z.enum(["facebook", "instagram", "twitter", "youtube", "linkedin"]),
+  url: z.string().trim().url().max(2048),
+});
+
 const integrationsSchema = z.object({
   email: emailIntegrationSchema,
   sms: smsIntegrationSchema,
   payments: paymentsIntegrationSchema,
   webhooks: webhooksIntegrationSchema,
+  socialLinks: z.array(socialLinkSchema).max(12).optional().default([]),
 });
 
 const localizationSchema = z.object({
@@ -364,6 +424,7 @@ const platformSettingsSchema = z.object({
   payoutRules: payoutRulesSchema,
   disputePolicy: disputePolicySchema,
   orderRules: orderRulesSchema,
+  boostCatalog: boostCatalogSchema,
   providerVerification: providerVerificationSchema,
   reviewModeration: reviewModerationSchema,
   communityModeration: communityModerationSchema,
@@ -387,6 +448,7 @@ const defaultPayoutRules: PayoutRules = {
   feeBps: 0,
   schedule: "manual",
   supportedMomoNetworks: ["mtn", "vodafone", "airteltigo"],
+  provider: "flutterwave",
 };
 
 const defaultDisputePolicy: DisputePolicy = {
@@ -435,6 +497,33 @@ const defaultFeatureFlags: FeatureFlags = {
   subscriptions: false,
 };
 
+const defaultBoostCatalog: BoostCatalogItem[] = [
+  {
+    type: "category_top",
+    label: "Category Boost",
+    description: "Appear at the top of your category for 7 days.",
+    price: 15,
+    currency: "GHS",
+    durationHours: 24 * 7,
+  },
+  {
+    type: "featured",
+    label: "Homepage Feature",
+    description: "Get featured on the homepage for 7 days.",
+    price: 50,
+    currency: "GHS",
+    durationHours: 24 * 7,
+  },
+  {
+    type: "feed_boost",
+    label: "Search Priority",
+    description: "Get priority placement for 24 hours.",
+    price: 5,
+    currency: "GHS",
+    durationHours: 24,
+  },
+];
+
 const defaultSecurityControls: SecurityControls = {
   adminIpAllowlist: [],
   adminSessionTimeoutHours: 0,
@@ -461,6 +550,7 @@ const defaultIntegrations: Integrations = {
     enabledProviders: ["flutterwave"],
     defaultProvider: "flutterwave",
     flutterwaveSecretKey: "",
+    paystackSecretKey: "",
     stripeSecretKey: "",
   },
   webhooks: {
@@ -468,6 +558,7 @@ const defaultIntegrations: Integrations = {
     flutterwaveWebhookHash: "",
     outboundSigningKey: "",
   },
+  socialLinks: [],
 };
 
 const defaultLocalization: LocalizationSettings = {
@@ -493,8 +584,13 @@ const normalizePayoutRules = (input: PayoutRules): PayoutRules => {
     input.supportedMomoNetworks.filter((network) => allowed.includes(network)),
   );
   const supported = allowed.filter((network) => networkSet.has(network));
+  const payoutProviders = ["flutterwave", "paystack"] as const;
+  const provider = payoutProviders.includes(input.provider)
+    ? input.provider
+    : defaultPayoutRules.provider;
   return {
     ...input,
+    provider,
     supportedMomoNetworks: supported.length > 0 ? supported : [...defaultPayoutRules.supportedMomoNetworks],
   };
 };
@@ -579,6 +675,36 @@ const normalizeFeatureFlags = (input: FeatureFlags): FeatureFlags => {
   };
 };
 
+const normalizeBoostCatalog = (input: BoostCatalogItem[]): BoostCatalogItem[] => {
+  const allowedTypes = ["category_top", "featured", "feed_boost"] as const;
+  const byType = new Map<string, BoostCatalogItem>();
+  input.forEach((item) => {
+    if (!allowedTypes.includes(item.type)) {
+      return;
+    }
+    if (byType.has(item.type)) {
+      return;
+    }
+    byType.set(item.type, {
+      ...item,
+      label: item.label?.toString().trim() || "Boost",
+      description: item.description?.toString().trim() || "",
+      price: Number.isFinite(item.price) ? Math.max(0, item.price) : 0,
+      durationHours:
+        Number.isFinite(item.durationHours) && item.durationHours > 0
+          ? Math.floor(item.durationHours)
+          : 24,
+      currency: item.currency ?? "GHS",
+    });
+  });
+
+  const normalized = allowedTypes
+    .map((type) => byType.get(type))
+    .filter(Boolean) as BoostCatalogItem[];
+
+  return normalized.length > 0 ? normalized : [...defaultBoostCatalog];
+};
+
 const normalizeSecurityControls = (input: SecurityControls): SecurityControls => {
   const allowlist = Array.from(new Set(input.adminIpAllowlist.map((value) => value.trim()).filter(Boolean)));
   return {
@@ -597,7 +723,7 @@ const normalizeAdminAccess = (input: AdminAccessSettings): AdminAccessSettings =
 };
 
 const normalizeIntegrations = (input: Integrations): Integrations => {
-  const paymentProviders: PaymentIntegrationProvider[] = ["flutterwave", "stripe"];
+  const paymentProviders: PaymentIntegrationProvider[] = ["flutterwave", "stripe", "paystack"];
   const enabledSet = new Set(
     (input.payments.enabledProviders ?? []).filter((provider) => paymentProviders.includes(provider)),
   );
@@ -623,6 +749,7 @@ const normalizeIntegrations = (input: Integrations): Integrations => {
       enabledProviders: normalizedEnabled,
       defaultProvider,
       flutterwaveSecretKey: input.payments.flutterwaveSecretKey?.toString().trim() ?? "",
+      paystackSecretKey: input.payments.paystackSecretKey?.toString().trim() ?? "",
       stripeSecretKey: input.payments.stripeSecretKey?.toString().trim() ?? "",
     },
     webhooks: {
@@ -630,6 +757,17 @@ const normalizeIntegrations = (input: Integrations): Integrations => {
       flutterwaveWebhookHash: input.webhooks.flutterwaveWebhookHash?.toString().trim() ?? "",
       outboundSigningKey: input.webhooks.outboundSigningKey?.toString().trim() ?? "",
     },
+    socialLinks: Array.from(
+      new Map(
+        (input.socialLinks ?? [])
+          .map((link) => ({
+            platform: link.platform,
+            url: link.url?.toString().trim() ?? "",
+          }))
+          .filter((link) => Boolean(link.url))
+          .map((link) => [link.platform, link]),
+      ).values(),
+    ),
   };
 };
 
@@ -650,6 +788,7 @@ const normalizePlatformSettings = (input: PlatformSettings): PlatformSettings =>
     payoutRules: normalizePayoutRules(input.payoutRules),
     disputePolicy: normalizeDisputePolicy(input.disputePolicy),
     orderRules: normalizeOrderRules(input.orderRules),
+    boostCatalog: normalizeBoostCatalog(input.boostCatalog),
     providerVerification: normalizeProviderVerification(input.providerVerification),
     reviewModeration: normalizeReviewModeration(input.reviewModeration),
     communityModeration: normalizeCommunityModeration(input.communityModeration),
@@ -669,6 +808,7 @@ const buildSettingsPayload = (record: {
   payoutRules: unknown | null;
   disputePolicy: unknown | null;
   orderRules: unknown | null;
+  boostCatalog: unknown | null;
   providerVerification: unknown | null;
   reviewModeration: unknown | null;
   communityModeration: unknown | null;
@@ -679,15 +819,17 @@ const buildSettingsPayload = (record: {
   integrations: unknown | null;
   localization: unknown | null;
 } | null): PlatformSettings => {
+  const payoutOverrides = (record?.payoutRules as Partial<PayoutRules> | undefined) ?? {};
   return {
     platformFeeBps: record?.platformFeeBps ?? env.PLATFORM_FEE_BPS,
     taxBps: record?.taxBps ?? env.TAX_BPS,
     businessFunctions:
       (record?.businessFunctions as BusinessFunctionSettings | undefined) ??
       defaultBusinessFunctions,
-    payoutRules: (record?.payoutRules as PayoutRules | undefined) ?? defaultPayoutRules,
+    payoutRules: { ...defaultPayoutRules, ...payoutOverrides },
     disputePolicy: (record?.disputePolicy as DisputePolicy | undefined) ?? defaultDisputePolicy,
     orderRules: (record?.orderRules as OrderRules | undefined) ?? defaultOrderRules,
+    boostCatalog: (record?.boostCatalog as BoostCatalogItem[] | undefined) ?? defaultBoostCatalog,
     providerVerification:
       (record?.providerVerification as ProviderVerificationRules | undefined) ??
       defaultProviderVerification,
@@ -735,6 +877,7 @@ export const getPlatformSettings = async () => {
         payoutRules: defaultPayoutRules,
         disputePolicy: defaultDisputePolicy,
         orderRules: defaultOrderRules,
+        boostCatalog: defaultBoostCatalog,
         providerVerification: defaultProviderVerification,
         reviewModeration: defaultReviewModeration,
         communityModeration: defaultCommunityModeration,
@@ -764,6 +907,7 @@ export const getPlatformSettings = async () => {
         payoutRules: fallback.payoutRules,
         disputePolicy: fallback.disputePolicy,
         orderRules: fallback.orderRules,
+        boostCatalog: fallback.boostCatalog,
         providerVerification: fallback.providerVerification,
         reviewModeration: fallback.reviewModeration,
         communityModeration: fallback.communityModeration,
@@ -795,6 +939,7 @@ export const updatePlatformSettings = async (payload: PlatformSettings) => {
       payoutRules: normalized.payoutRules,
       disputePolicy: normalized.disputePolicy,
       orderRules: normalized.orderRules,
+      boostCatalog: normalized.boostCatalog,
       providerVerification: normalized.providerVerification,
       reviewModeration: normalized.reviewModeration,
       communityModeration: normalized.communityModeration,
@@ -813,6 +958,7 @@ export const updatePlatformSettings = async (payload: PlatformSettings) => {
       payoutRules: normalized.payoutRules,
       disputePolicy: normalized.disputePolicy,
       orderRules: normalized.orderRules,
+      boostCatalog: normalized.boostCatalog,
       providerVerification: normalized.providerVerification,
       reviewModeration: normalized.reviewModeration,
       communityModeration: normalized.communityModeration,

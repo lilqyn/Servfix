@@ -47,13 +47,18 @@ const formatPriceRange = (tiers: ApiService["tiers"]) => {
     return "—";
   }
 
-  const prices = tiers.map((tier) => toNumber(tier.price)).filter((price) => price > 0);
-  if (prices.length === 0) {
+  const ranges = tiers
+    .map((tier) => ({
+      min: toNumber(tier.price),
+      max: toNumber(tier.priceMax ?? tier.price),
+    }))
+    .filter((range) => range.min > 0);
+  if (ranges.length === 0) {
     return "—";
   }
 
-  const minPrice = Math.min(...prices);
-  const maxPrice = Math.max(...prices);
+  const minPrice = Math.min(...ranges.map((range) => range.min));
+  const maxPrice = Math.max(...ranges.map((range) => range.max));
   const currency = tiers[0]?.currency ?? "GHS";
   const formatter = new Intl.NumberFormat("en-GH", {
     style: "currency",

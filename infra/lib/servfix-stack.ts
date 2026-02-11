@@ -53,6 +53,10 @@ export class ServfixStack extends Stack {
         ? `${config.subdomain}.${config.domainName}`
         : config.domainName;
     const appUrl = `https://${appDomain}`;
+    const googleMapsApiKey =
+      process.env[`SERVFIX_${config.name.toUpperCase()}_GOOGLE_MAPS_API_KEY`] ??
+      process.env.SERVFIX_GOOGLE_MAPS_API_KEY ??
+      "";
 
     const zone = route53.HostedZone.fromHostedZoneAttributes(this, "HostedZone", {
       hostedZoneId: config.hostedZoneId,
@@ -66,7 +70,7 @@ export class ServfixStack extends Stack {
 
     const vpc = new ec2.Vpc(this, "Vpc", {
       maxAzs: 2,
-      natGateways: 0,
+      natGateways: 1,
       ipAddresses: ec2.IpAddresses.cidr(config.vpcCidr),
       subnetConfiguration: [
         {
@@ -79,8 +83,17 @@ export class ServfixStack extends Stack {
           subnetType: ec2.SubnetType.PRIVATE_ISOLATED,
           cidrMask: 24,
         },
+        {
+          name: "app",
+          subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS,
+          cidrMask: 24,
+        },
       ],
     });
+
+    const natEips = vpc.node
+      .findAll()
+      .filter((child): child is ec2.CfnEIP => child instanceof ec2.CfnEIP);
 
     const bucket = new s3.Bucket(this, "UploadsBucket", {
       bucketName: config.s3BucketName,
@@ -143,6 +156,7 @@ export class ServfixStack extends Stack {
       file: "Dockerfile",
       buildArgs: {
         VITE_API_BASE: appUrl,
+        VITE_GOOGLE_MAPS_API_KEY: googleMapsApiKey,
         PRISMA_SCHEMA_HASH: prismaSchemaHash,
       },
     });
@@ -201,7 +215,8 @@ export class ServfixStack extends Stack {
         taskDefinition,
         desiredCount: config.desiredCount,
         publicLoadBalancer: true,
-        assignPublicIp: true,
+        assignPublicIp: false,
+        taskSubnets: { subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS },
         listenerPort: 443,
         protocol: elbv2.ApplicationProtocol.HTTPS,
         certificate,
@@ -238,6 +253,12 @@ export class ServfixStack extends Stack {
       value: dbUrlSecret.secretArn,
     });
     new CfnOutput(this, "JwtSecretArn", { value: jwtSecret.secretArn });
+
+    natEips.forEach((eip, index) => {
+      new CfnOutput(this, `NatEgressIp${index + 1}`, {
+        value: eip.attrPublicIp,
+      });
+    });
   }
 }
 

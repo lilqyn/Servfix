@@ -30,12 +30,10 @@ interface CartContextType {
   getLineTotal: (item: CartItem) => number;
   getCartTotal: () => number;
   getEscrowAmount: () => number;
-  getPlatformFee: () => number;
 }
 
 const CartContext = createContext<CartContextType | undefined>(undefined);
 
-const PLATFORM_FEE_PERCENT = 5; // 5% platform fee
 const ESCROW_HOLD_PERCENT = 100; // Hold 100% until service completion
 const CART_KEY = "servfix-cart";
 const LEGACY_CART_KEY = "serveghana-cart";
@@ -131,10 +129,6 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
     return cart.reduce((total, item) => total + getLineTotal(item), 0);
   };
 
-  const getPlatformFee = () => {
-    return (getCartTotal() * PLATFORM_FEE_PERCENT) / 100;
-  };
-
   const getEscrowAmount = () => {
     return (getCartTotal() * ESCROW_HOLD_PERCENT) / 100;
   };
@@ -151,7 +145,6 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
         getLineTotal,
         getCartTotal,
         getEscrowAmount,
-        getPlatformFee,
       }}
     >
       {children}

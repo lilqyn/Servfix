@@ -1,10 +1,20 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { Calendar, Users, MapPin, MessageSquare, Send, AlertCircle } from "lucide-react";
+import { Calendar, Users, MapPin, MessageSquare, Send, AlertCircle, Package } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { useMessages } from "@/contexts/MessagesContext";
 import { useAuth } from "@/contexts/AuthContext";
+
+const googleMapsApiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY?.trim() ?? "";
+
+type SelectedPlace = {
+  address: string;
+  placeId?: string;
+  lat?: number;
+  lng?: number;
+};
 
 interface ServiceInquiryFormProps {
   serviceName: string;
@@ -25,14 +35,128 @@ const ServiceInquiryForm = ({
   const location = useLocation();
   const { startConversation, sendMessage } = useMessages();
   const { isAuthenticated } = useAuth();
+  const locationInputRef = useRef<HTMLInputElement>(null);
+  const autocompleteRef = useRef<any>(null);
   const [formData, setFormData] = useState({
     eventDate: "",
-    guestCount: "",
+    quantityType: "guests",
+    quantityCount: "",
     location: "",
     message: "",
   });
+  const [selectedPlace, setSelectedPlace] = useState<SelectedPlace | null>(null);
+  const [placesStatus, setPlacesStatus] = useState<"idle" | "loading" | "ready" | "error">(
+    googleMapsApiKey ? "loading" : "idle",
+  );
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
+
+  useEffect(() => {
+    if (!googleMapsApiKey) {
+      return;
+    }
+
+    let cancelled = false;
+    const existingScript = document.querySelector<HTMLScriptElement>(
+      'script[data-google-maps="places"]',
+    );
+
+    if (existingScript) {
+      if ((window as any).google?.maps?.places) {
+        setPlacesStatus("ready");
+        return;
+      }
+      const handleLoad = () => {
+        if (!cancelled) {
+          setPlacesStatus("ready");
+        }
+      };
+      const handleError = () => {
+        if (!cancelled) {
+          setPlacesStatus("error");
+        }
+      };
+      existingScript.addEventListener("load", handleLoad);
+      existingScript.addEventListener("error", handleError);
+      return () => {
+        cancelled = true;
+        existingScript.removeEventListener("load", handleLoad);
+        existingScript.removeEventListener("error", handleError);
+      };
+    }
+
+    setPlacesStatus("loading");
+    const script = document.createElement("script");
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(
+      googleMapsApiKey,
+    )}&libraries=places`;
+    script.async = true;
+    script.defer = true;
+    script.dataset.googleMaps = "places";
+    script.onload = () => {
+      if (!cancelled) {
+        setPlacesStatus("ready");
+      }
+    };
+    script.onerror = () => {
+      if (!cancelled) {
+        setPlacesStatus("error");
+      }
+    };
+    document.head.appendChild(script);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [googleMapsApiKey]);
+
+  useEffect(() => {
+    if (placesStatus !== "ready") {
+      return;
+    }
+    const input = locationInputRef.current;
+    if (!input) {
+      return;
+    }
+    if (autocompleteRef.current) {
+      return;
+    }
+    const googleMaps = (window as any).google;
+    if (!googleMaps?.maps?.places) {
+      return;
+    }
+
+    const autocomplete = new googleMaps.maps.places.Autocomplete(input, {
+      fields: ["formatted_address", "place_id", "geometry", "name"],
+    });
+    autocompleteRef.current = autocomplete;
+
+    const listener = autocomplete.addListener("place_changed", () => {
+      const place = autocomplete.getPlace();
+      const address = place?.formatted_address || place?.name || "";
+      if (!address) {
+        return;
+      }
+      const lat = place?.geometry?.location?.lat?.();
+      const lng = place?.geometry?.location?.lng?.();
+      const latValue = typeof lat === "number" && Number.isFinite(lat) ? lat : undefined;
+      const lngValue = typeof lng === "number" && Number.isFinite(lng) ? lng : undefined;
+      setSelectedPlace({
+        address,
+        placeId: place?.place_id,
+        lat: latValue,
+        lng: lngValue,
+      });
+      setFormData((prev) => ({ ...prev, location: address }));
+      setErrors((prev) => ({ ...prev, location: "" }));
+    });
+
+    return () => {
+      if (listener && typeof listener.remove === "function") {
+        listener.remove();
+      }
+    };
+  }, [placesStatus]);
 
   const validateForm = () => {
     const newErrors: { [key: string]: string } = {};
@@ -48,15 +172,22 @@ const ServiceInquiryForm = ({
       }
     }
     
-    if (!formData.guestCount) {
-      newErrors.guestCount = "Please enter guest count";
-    } else if (parseInt(formData.guestCount) < 1) {
-      newErrors.guestCount = "Guest count must be at least 1";
+    if (!formData.quantityCount) {
+      newErrors.quantityCount = "Please enter a quantity";
+    } else if (parseInt(formData.quantityCount) < 1) {
+      newErrors.quantityCount = "Quantity must be at least 1";
     }
     
+    const hasPlacesKey = Boolean(googleMapsApiKey);
     if (!formData.location.trim()) {
       newErrors.location = "Please enter a location";
-    } else if (formData.location.trim().length < 5) {
+    } else if (hasPlacesKey && placesStatus === "loading") {
+      newErrors.location = "Address search is still loading. Please wait.";
+    } else if (hasPlacesKey && placesStatus === "ready" && !selectedPlace) {
+      newErrors.location = "Select an address from the suggestions for accuracy.";
+    } else if (hasPlacesKey && placesStatus === "error" && formData.location.trim().length < 5) {
+      newErrors.location = "Location must be at least 5 characters";
+    } else if (!hasPlacesKey && formData.location.trim().length < 5) {
       newErrors.location = "Location must be at least 5 characters";
     }
     
@@ -95,12 +226,25 @@ const ServiceInquiryForm = ({
         serviceName
       );
       
-      // Format the inquiry message
-      const inquiryMessage = `📋 **New Inquiry for ${serviceName}**
+      const quantityLabel = formData.quantityType === "items" ? "Items" : "Guests";
+      const locationLines = [
+        `Location: ${selectedPlace?.address ?? formData.location}`,
+        selectedPlace?.placeId ? `Place ID: ${selectedPlace.placeId}` : null,
+        selectedPlace?.lat != null && selectedPlace?.lng != null
+          ? `Coordinates: ${selectedPlace.lat.toFixed(6)}, ${selectedPlace.lng.toFixed(6)}`
+          : null,
+      ].filter(Boolean);
 
-📅 Event Date: ${new Date(formData.eventDate).toLocaleDateString('en-GB', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-👥 Number of Guests: ${formData.guestCount}
-📍 Location: ${formData.location}
+      const inquiryMessage = `New Inquiry for ${serviceName}
+
+Event Date: ${new Date(formData.eventDate).toLocaleDateString("en-GB", {
+        weekday: "long",
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      })}
+Number of ${quantityLabel}: ${formData.quantityCount}
+${locationLines.join("\n")}
 
 ${formData.message}`;
       
@@ -108,7 +252,14 @@ ${formData.message}`;
       await sendMessage(conversationId, inquiryMessage);
       
       setIsSubmitting(false);
-      setFormData({ eventDate: "", guestCount: "", location: "", message: "" });
+      setFormData({
+        eventDate: "",
+        quantityType: "guests",
+        quantityCount: "",
+        location: "",
+        message: "",
+      });
+      setSelectedPlace(null);
       
       toast.success("Inquiry sent successfully!", {
         description: "Redirecting you to the conversation...",
@@ -128,6 +279,16 @@ ${formData.message}`;
     // Clear error when user starts typing
     if (errors[field]) {
       setErrors(prev => ({ ...prev, [field]: "" }));
+    }
+  };
+
+  const handleLocationChange = (value: string) => {
+    setFormData(prev => ({ ...prev, location: value }));
+    if (selectedPlace) {
+      setSelectedPlace(null);
+    }
+    if (errors.location) {
+      setErrors(prev => ({ ...prev, location: "" }));
     }
   };
 
@@ -168,28 +329,46 @@ ${formData.message}`;
           )}
         </div>
 
-        {/* Guest Count */}
+        {/* Quantity */}
         <div>
           <label className="block text-sm font-medium text-foreground mb-1.5">
-            Number of Guests
+            Quantity
           </label>
-          <div className="relative">
-            <Users className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <input
-              type="number"
-              value={formData.guestCount}
-              onChange={(e) => handleChange("guestCount", e.target.value)}
-              placeholder="e.g., 50"
-              min="1"
-              className={`w-full pl-10 pr-4 py-2.5 bg-background border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors ${
-                errors.guestCount ? "border-destructive" : "border-input"
-              }`}
-            />
+          <div className="grid gap-2 sm:grid-cols-[150px,1fr]">
+            <Select
+              value={formData.quantityType}
+              onValueChange={(value) => handleChange("quantityType", value)}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Type" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="guests">Guests</SelectItem>
+                <SelectItem value="items">Items</SelectItem>
+              </SelectContent>
+            </Select>
+            <div className="relative">
+              {formData.quantityType === "items" ? (
+                <Package className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              ) : (
+                <Users className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              )}
+              <input
+                type="number"
+                value={formData.quantityCount}
+                onChange={(e) => handleChange("quantityCount", e.target.value)}
+                placeholder={formData.quantityType === "items" ? "e.g., 200" : "e.g., 50"}
+                min="1"
+                className={`w-full pl-10 pr-4 py-2.5 bg-background border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors ${
+                  errors.quantityCount ? "border-destructive" : "border-input"
+                }`}
+              />
+            </div>
           </div>
-          {errors.guestCount && (
+          {errors.quantityCount && (
             <p className="mt-1 text-xs text-destructive flex items-center gap-1">
               <AlertCircle className="w-3 h-3" />
-              {errors.guestCount}
+              {errors.quantityCount}
             </p>
           )}
         </div>
@@ -203,8 +382,9 @@ ${formData.message}`;
             <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <input
               type="text"
+              ref={locationInputRef}
               value={formData.location}
-              onChange={(e) => handleChange("location", e.target.value)}
+              onChange={(e) => handleLocationChange(e.target.value)}
               placeholder="e.g., East Legon, Accra"
               maxLength={100}
               className={`w-full pl-10 pr-4 py-2.5 bg-background border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors ${
@@ -216,6 +396,21 @@ ${formData.message}`;
             <p className="mt-1 text-xs text-destructive flex items-center gap-1">
               <AlertCircle className="w-3 h-3" />
               {errors.location}
+            </p>
+          )}
+          {!errors.location && googleMapsApiKey && placesStatus === "ready" && (
+            <p className="mt-1 text-xs text-muted-foreground">
+              Select an address from the suggestions for an exact location.
+            </p>
+          )}
+          {!errors.location && googleMapsApiKey && placesStatus === "loading" && (
+            <p className="mt-1 text-xs text-muted-foreground">
+              Loading address suggestions...
+            </p>
+          )}
+          {!errors.location && googleMapsApiKey && placesStatus === "error" && (
+            <p className="mt-1 text-xs text-muted-foreground">
+              Address search is unavailable right now. Enter the full address.
             </p>
           )}
         </div>
@@ -280,3 +475,4 @@ ${formData.message}`;
 };
 
 export default ServiceInquiryForm;
+

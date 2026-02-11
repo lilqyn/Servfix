@@ -83,11 +83,14 @@ const AccountSettingsContent = ({ showHeader = true }: AccountSettingsContentPro
       }
     | null
     | undefined;
+  const profileLocation = isProvider
+    ? providerProfile?.location ?? ""
+    : user?.location ?? "";
 
   const [form, setForm] = useState({
     displayName: providerProfile?.displayName ?? "",
     bio: providerProfile?.bio ?? "",
-    location: providerProfile?.location ?? "",
+    location: profileLocation,
     categories: providerProfile?.categories?.join(", ") ?? "",
     momoNumber: providerProfile?.momoNumber ?? "",
     momoNetwork: providerProfile?.momoNetwork ?? "",
@@ -106,7 +109,7 @@ const AccountSettingsContent = ({ showHeader = true }: AccountSettingsContentPro
     setForm({
       displayName: providerProfile?.displayName ?? "",
       bio: providerProfile?.bio ?? "",
-      location: providerProfile?.location ?? "",
+      location: isProvider ? providerProfile?.location ?? "" : user?.location ?? "",
       categories: providerProfile?.categories?.join(", ") ?? "",
       momoNumber: providerProfile?.momoNumber ?? "",
       momoNetwork: providerProfile?.momoNetwork ?? "",
@@ -195,11 +198,11 @@ const AccountSettingsContent = ({ showHeader = true }: AccountSettingsContentPro
       email: form.email.trim() || undefined,
       phone: form.phone.trim() || undefined,
       username: form.username.trim(),
+      location: form.location.trim() || undefined,
       ...(isProvider
         ? {
             displayName: form.displayName.trim(),
             bio: form.bio.trim(),
-            location: form.location.trim(),
             categories: form.categories
               .split(",")
               .map((value) => value.trim())
@@ -562,9 +565,20 @@ const AccountSettingsContent = ({ showHeader = true }: AccountSettingsContentPro
                   </div>
                 </>
               ) : (
-                <p className="text-sm text-muted-foreground">
-                  More profile details for buyers are coming soon.
-                </p>
+                <div className="space-y-2">
+                  <Label htmlFor="location">Location</Label>
+                  <Input
+                    id="location"
+                    value={form.location}
+                    onChange={(event) =>
+                      setForm((prev) => ({ ...prev, location: event.target.value }))
+                    }
+                    placeholder="City or service area"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    We use your location to show nearby providers first.
+                  </p>
+                </div>
               )}
             </CardContent>
           </Card>

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { NavLink, Navigate, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
+import { Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -26,6 +27,7 @@ import {
   fetchAdminSettings,
   updateAdminSettings,
   type AdminSettings,
+  type BoostOption,
   type BusinessFunctionKey,
   type BusinessFunctionSettings,
   type CommunityModeration,
@@ -39,6 +41,8 @@ import {
   type OrderRules,
   type PayoutRules,
   type PaymentIntegrationProvider,
+  type SocialLink,
+  type SocialLinkPlatform,
   type ProviderVerificationRules,
   type ReviewModeration,
   type SecurityControls,
@@ -136,7 +140,21 @@ const SMS_PROVIDERS = [
 
 const PAYMENT_PROVIDERS: Array<{ value: PaymentIntegrationProvider; label: string }> = [
   { value: "flutterwave", label: "Flutterwave" },
+  { value: "paystack", label: "Paystack" },
   { value: "stripe", label: "Stripe" },
+];
+
+const PAYOUT_PROVIDERS: Array<{ value: PayoutRules["provider"]; label: string }> = [
+  { value: "flutterwave", label: "Flutterwave" },
+  { value: "paystack", label: "Paystack" },
+];
+
+const SOCIAL_PLATFORMS: Array<{ value: SocialLinkPlatform; label: string }> = [
+  { value: "facebook", label: "Facebook" },
+  { value: "instagram", label: "Instagram" },
+  { value: "twitter", label: "X (Twitter)" },
+  { value: "youtube", label: "YouTube" },
+  { value: "linkedin", label: "LinkedIn" },
 ];
 
 const CURRENCY_OPTIONS = [
@@ -207,6 +225,7 @@ const DEFAULT_PAYOUT_RULES: PayoutRules = {
   feeBps: 0,
   schedule: "manual",
   supportedMomoNetworks: ["mtn", "vodafone", "airteltigo"],
+  provider: "flutterwave",
 };
 
 const DEFAULT_DISPUTE_POLICY: DisputePolicy = {
@@ -255,6 +274,33 @@ const DEFAULT_FEATURE_FLAGS: FeatureFlags = {
   subscriptions: false,
 };
 
+const DEFAULT_BOOST_CATALOG: BoostOption[] = [
+  {
+    type: "category_top",
+    label: "Category Boost",
+    description: "Appear at the top of your category for 7 days.",
+    price: 15,
+    currency: "GHS",
+    durationHours: 24 * 7,
+  },
+  {
+    type: "featured",
+    label: "Homepage Feature",
+    description: "Get featured on the homepage for 7 days.",
+    price: 50,
+    currency: "GHS",
+    durationHours: 24 * 7,
+  },
+  {
+    type: "feed_boost",
+    label: "Search Priority",
+    description: "Get priority placement for 24 hours.",
+    price: 5,
+    currency: "GHS",
+    durationHours: 24,
+  },
+];
+
 const DEFAULT_SECURITY_CONTROLS: SecurityControls = {
   adminIpAllowlist: [],
   adminSessionTimeoutHours: 0,
@@ -271,6 +317,7 @@ const ADMIN_PAGE_ACCESS: Array<{
   { key: "providers", title: "Providers", description: "Provider onboarding and status." },
   { key: "services", title: "Services", description: "Service catalog and approvals." },
   { key: "orders", title: "Orders", description: "Order management and fulfillment." },
+  { key: "business", title: "Business accounts", description: "Corporate accounts and invoices." },
   { key: "disputes", title: "Disputes", description: "Dispute cases and resolutions." },
   { key: "reviews", title: "Reviews", description: "Review moderation and replies." },
   { key: "community", title: "Community", description: "Community posts and engagement." },
@@ -303,6 +350,7 @@ const DEFAULT_INTEGRATIONS: Integrations = {
     enabledProviders: ["flutterwave"],
     defaultProvider: "flutterwave",
     flutterwaveSecretKey: "",
+    paystackSecretKey: "",
     stripeSecretKey: "",
   },
   webhooks: {
@@ -310,6 +358,7 @@ const DEFAULT_INTEGRATIONS: Integrations = {
     flutterwaveWebhookHash: "",
     outboundSigningKey: "",
   },
+  socialLinks: [],
 };
 
 const DEFAULT_LOCALIZATION: LocalizationSettings = {
@@ -322,6 +371,7 @@ const DEFAULT_SECRET_DRAFTS = {
   emailApiKey: "",
   smsApiKey: "",
   flutterwaveSecretKey: "",
+  paystackSecretKey: "",
   stripeSecretKey: "",
   stripeWebhookSecret: "",
   flutterwaveWebhookHash: "",
@@ -336,6 +386,7 @@ type SettingsDraft = Pick<
   | "payoutRules"
   | "disputePolicy"
   | "orderRules"
+  | "boostCatalog"
   | "providerVerification"
   | "reviewModeration"
   | "communityModeration"
@@ -354,6 +405,7 @@ const DEFAULT_SETTINGS: SettingsDraft = {
   payoutRules: DEFAULT_PAYOUT_RULES,
   disputePolicy: DEFAULT_DISPUTE_POLICY,
   orderRules: DEFAULT_ORDER_RULES,
+  boostCatalog: DEFAULT_BOOST_CATALOG,
   providerVerification: DEFAULT_PROVIDER_VERIFICATION,
   reviewModeration: DEFAULT_REVIEW_MODERATION,
   communityModeration: DEFAULT_COMMUNITY_MODERATION,
@@ -373,6 +425,7 @@ const SETTINGS_NAV = [
       { slug: "payout-rules", label: "Payout rules" },
       { slug: "order-rules", label: "Order rules" },
       { slug: "dispute-policy", label: "Dispute policy" },
+      { slug: "boosts", label: "Boost pricing" },
     ],
   },
   {
@@ -437,6 +490,7 @@ const AdminSettings = () => {
         payoutRules: data.payoutRules ?? DEFAULT_PAYOUT_RULES,
         disputePolicy: data.disputePolicy ?? DEFAULT_DISPUTE_POLICY,
         orderRules: data.orderRules ?? DEFAULT_ORDER_RULES,
+        boostCatalog: data.boostCatalog ?? DEFAULT_BOOST_CATALOG,
         providerVerification: data.providerVerification ?? DEFAULT_PROVIDER_VERIFICATION,
         reviewModeration: data.reviewModeration ?? DEFAULT_REVIEW_MODERATION,
         communityModeration: data.communityModeration ?? DEFAULT_COMMUNITY_MODERATION,
@@ -465,6 +519,15 @@ const AdminSettings = () => {
 
   const updateOrderRules = (updates: Partial<OrderRules>) => {
     setDraft((prev) => ({ ...prev, orderRules: { ...prev.orderRules, ...updates } }));
+  };
+
+  const updateBoostCatalog = (type: BoostOption["type"], updates: Partial<BoostOption>) => {
+    setDraft((prev) => ({
+      ...prev,
+      boostCatalog: prev.boostCatalog.map((item) =>
+        item.type === type ? { ...item, ...updates } : item,
+      ),
+    }));
   };
 
   const updateProviderVerification = (updates: Partial<ProviderVerificationRules>) => {
@@ -560,6 +623,52 @@ const AdminSettings = () => {
       integrations: {
         ...prev.integrations,
         payments: { ...prev.integrations.payments, ...updates },
+      },
+    }));
+  };
+
+  const handleSocialLinkChange = (index: number, updates: Partial<SocialLink>) => {
+    setDraft((prev) => {
+      const next = [...(prev.integrations.socialLinks ?? [])];
+      next[index] = { ...next[index], ...updates };
+      return {
+        ...prev,
+        integrations: {
+          ...prev.integrations,
+          socialLinks: next,
+        },
+      };
+    });
+  };
+
+  const handleAddSocialLink = () => {
+    if (!canUpdate) return;
+    setDraft((prev) => {
+      const existing = prev.integrations.socialLinks ?? [];
+      const used = new Set(existing.map((link) => link.platform));
+      const nextPlatform = SOCIAL_PLATFORMS.find((platform) => !used.has(platform.value))?.value;
+      if (!nextPlatform) {
+        return prev;
+      }
+      return {
+        ...prev,
+        integrations: {
+          ...prev.integrations,
+          socialLinks: [...existing, { platform: nextPlatform, url: "" }],
+        },
+      };
+    });
+  };
+
+  const handleRemoveSocialLink = (index: number) => {
+    if (!canUpdate) return;
+    setDraft((prev) => ({
+      ...prev,
+      integrations: {
+        ...prev.integrations,
+        socialLinks: (prev.integrations.socialLinks ?? []).filter(
+          (_, itemIndex) => itemIndex !== index,
+        ),
       },
     }));
   };
@@ -780,6 +889,9 @@ const AdminSettings = () => {
             flutterwaveSecretKey: secretDrafts.flutterwaveSecretKey.trim()
               ? secretDrafts.flutterwaveSecretKey.trim()
               : draft.integrations.payments.flutterwaveSecretKey,
+            paystackSecretKey: secretDrafts.paystackSecretKey.trim()
+              ? secretDrafts.paystackSecretKey.trim()
+              : draft.integrations.payments.paystackSecretKey,
             stripeSecretKey: secretDrafts.stripeSecretKey.trim()
               ? secretDrafts.stripeSecretKey.trim()
               : draft.integrations.payments.stripeSecretKey,
@@ -854,6 +966,7 @@ const AdminSettings = () => {
   if (!data) return null;
 
   const enabledPaymentProviders = new Set(draft.integrations.payments.enabledProviders);
+  const socialLinks = draft.integrations.socialLinks ?? [];
   const navItems = SETTINGS_NAV.flatMap((group) => group.items);
   const defaultSection = navItems[0]?.slug ?? "";
   const sectionParam = section ?? "";
@@ -979,9 +1092,9 @@ const AdminSettings = () => {
               Control payout thresholds, fees, and supported networks.
             </p>
           </div>
-          <div className="grid gap-4 md:grid-cols-3">
-            <div className="space-y-2">
-              <Label htmlFor="payout-min">Minimum payout</Label>
+            <div className="grid gap-4 md:grid-cols-4">
+              <div className="space-y-2">
+                <Label htmlFor="payout-min">Minimum payout</Label>
               <Input
                 id="payout-min"
                 type="number"
@@ -1010,28 +1123,52 @@ const AdminSettings = () => {
               />
               <p className="text-xs text-muted-foreground">100 bps = 1%.</p>
             </div>
-            <div className="space-y-2">
-              <Label>Payout schedule</Label>
-              <Select
-                value={draft.payoutRules.schedule}
-                onValueChange={(value) =>
-                  updatePayoutRules({ schedule: value as PayoutRules["schedule"] })
-                }
-                disabled={!canUpdate}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select schedule" />
-                </SelectTrigger>
-                <SelectContent>
-                  {PAYOUT_SCHEDULES.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="space-y-2">
+                <Label>Payout schedule</Label>
+                <Select
+                  value={draft.payoutRules.schedule}
+                  onValueChange={(value) =>
+                    updatePayoutRules({ schedule: value as PayoutRules["schedule"] })
+                  }
+                  disabled={!canUpdate}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select schedule" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PAYOUT_SCHEDULES.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Payout provider</Label>
+                <Select
+                  value={draft.payoutRules.provider}
+                  onValueChange={(value) =>
+                    updatePayoutRules({ provider: value as PayoutRules["provider"] })
+                  }
+                  disabled={!canUpdate}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select provider" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PAYOUT_PROVIDERS.map((provider) => (
+                      <SelectItem key={provider.value} value={provider.value}>
+                        {provider.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Used for provider payouts only (separate from checkout gateway).
+                </p>
+              </div>
             </div>
-          </div>
           <div className="space-y-2">
             <p className="text-xs text-muted-foreground">Supported MoMo networks</p>
             <div className="flex flex-wrap gap-3">
@@ -1202,6 +1339,118 @@ const AdminSettings = () => {
           <p className="text-xs text-muted-foreground">
             Auto-release and refund windows require automated workflows to be enabled.
           </p>
+        </CardContent>
+        </Card>
+      )}
+
+      {activeSection === "boosts" && (
+        <Card className="border-border/60" id="settings-boosts">
+        <CardContent className="p-6 space-y-6">
+          <div>
+            <h3 className="text-lg font-semibold text-foreground">Boost pricing</h3>
+            <p className="text-sm text-muted-foreground">
+              Configure boost labels, pricing, and durations shown to providers.
+            </p>
+          </div>
+
+          <div className="space-y-4">
+            {draft.boostCatalog.map((boost) => (
+              <div
+                key={boost.type}
+                className="rounded-xl border border-border/60 bg-card p-4 space-y-4"
+              >
+                <div>
+                  <p className="text-sm font-semibold text-foreground">{boost.label}</p>
+                  <p className="text-xs text-muted-foreground">{boost.description}</p>
+                  <p className="text-xs text-muted-foreground uppercase">{boost.type}</p>
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label>Label</Label>
+                    <Input
+                      value={boost.label}
+                      onChange={(event) =>
+                        updateBoostCatalog(boost.type, { label: event.target.value })
+                      }
+                      disabled={!canUpdate}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Description</Label>
+                    <Textarea
+                      value={boost.description}
+                      onChange={(event) =>
+                        updateBoostCatalog(boost.type, { description: event.target.value })
+                      }
+                      rows={2}
+                      disabled={!canUpdate}
+                    />
+                  </div>
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-3">
+                  <div className="space-y-2">
+                    <Label>Price</Label>
+                    <Input
+                      type="number"
+                      min={0}
+                      step={1}
+                      value={boost.price}
+                      onChange={(event) =>
+                        updateBoostCatalog(boost.type, { price: Number(event.target.value || 0) })
+                      }
+                      disabled={!canUpdate}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Currency</Label>
+                    <Select
+                      value={boost.currency}
+                      onValueChange={(value) =>
+                        updateBoostCatalog(boost.type, {
+                          currency: value as BoostOption["currency"],
+                        })
+                      }
+                      disabled={!canUpdate}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select currency" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {CURRENCY_OPTIONS.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Duration (hours)</Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      step={1}
+                      value={boost.durationHours}
+                      onChange={(event) =>
+                        updateBoostCatalog(boost.type, {
+                          durationHours: Number(event.target.value || 0),
+                        })
+                      }
+                      disabled={!canUpdate}
+                    />
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {!canUpdate && (
+            <div className="text-xs text-muted-foreground">
+              You do not have permission to update settings.
+            </div>
+          )}
         </CardContent>
         </Card>
       )}
@@ -1827,6 +2076,25 @@ const AdminSettings = () => {
                     disabled={!canUpdate}
                   />
                 </div>
+                <div className="space-y-2">
+                  <Label>Paystack secret key</Label>
+                  <Input
+                    type="password"
+                    value={secretDrafts.paystackSecretKey}
+                    onChange={(event) =>
+                      setSecretDrafts((prev) => ({
+                        ...prev,
+                        paystackSecretKey: event.target.value,
+                      }))
+                    }
+                    placeholder={
+                      draft.integrations.payments.paystackSecretKey
+                        ? "â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢ (saved)"
+                        : "sk_live_..."
+                    }
+                    disabled={!canUpdate}
+                  />
+                </div>
                 <div className="space-y-2 md:col-span-2">
                   <Label>Stripe secret key</Label>
                   <Input
@@ -1915,6 +2183,100 @@ const AdminSettings = () => {
                   />
                 </div>
               </div>
+            </div>
+
+            <div className="rounded-xl border border-border/60 bg-card p-4 space-y-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-foreground">Footer social links</p>
+                  <p className="text-xs text-muted-foreground">
+                    Add the social profiles that should appear in the public footer.
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleAddSocialLink}
+                  disabled={!canUpdate || socialLinks.length >= SOCIAL_PLATFORMS.length}
+                >
+                  <Plus className="w-4 h-4" />
+                  Add link
+                </Button>
+              </div>
+
+              {socialLinks.length === 0 ? (
+                <div className="rounded-lg border border-border/60 bg-muted/30 px-4 py-3 text-xs text-muted-foreground">
+                  No social links added yet.
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {socialLinks.map((link, index) => {
+                    const usedPlatforms = new Set(
+                      socialLinks
+                        .filter((_, itemIndex) => itemIndex !== index)
+                        .map((item) => item.platform),
+                    );
+                    const platformOptions = SOCIAL_PLATFORMS.filter(
+                      (platform) =>
+                        platform.value === link.platform || !usedPlatforms.has(platform.value),
+                    );
+                    return (
+                      <div
+                        key={`${link.platform}-${index}`}
+                        className="grid gap-3 md:grid-cols-[200px_1fr_auto] items-start"
+                      >
+                        <div className="space-y-2">
+                          <Label>Platform</Label>
+                          <Select
+                            value={link.platform}
+                            onValueChange={(value) =>
+                              handleSocialLinkChange(index, {
+                                platform: value as SocialLinkPlatform,
+                              })
+                            }
+                            disabled={!canUpdate}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select platform" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {platformOptions.map((platform) => (
+                                <SelectItem key={platform.value} value={platform.value}>
+                                  {platform.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Profile URL</Label>
+                          <Input
+                            value={link.url}
+                            onChange={(event) =>
+                              handleSocialLinkChange(index, { url: event.target.value })
+                            }
+                            placeholder="https://"
+                            disabled={!canUpdate}
+                          />
+                        </div>
+                        <div className="flex items-end">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleRemoveSocialLink(index)}
+                            disabled={!canUpdate}
+                            aria-label="Remove social link"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </div>
         </CardContent>

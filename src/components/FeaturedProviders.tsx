@@ -27,7 +27,11 @@ type FeaturedProvider = {
   image: string;
   verified: boolean;
   topRated: boolean;
+  isFeatured: boolean;
   serviceName: string;
+  planBadge?: string | null;
+  planTier?: "free" | "pro" | "business";
+  planWeight?: number;
 };
 
 const FeaturedProviders = () => {
@@ -35,12 +39,40 @@ const FeaturedProviders = () => {
   const location = useLocation();
   const { addToWishlist, removeFromWishlist, isInWishlist } = useWishlist();
   const { startConversation } = useMessages();
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
   const { data: services = [], isLoading, isError } = useServices();
 
   const providers = useMemo<FeaturedProvider[]>(() => {
+    const buyerLocationRaw =
+      user?.role === "buyer"
+        ? user?.location ?? ""
+        : (user?.providerProfile as { location?: string | null } | null | undefined)?.location ??
+          user?.location ??
+          "";
+    const buyerLocation = buyerLocationRaw.trim().toLowerCase();
+    const buyerCity = buyerLocation.split(",")[0]?.trim();
+    const getLocationScore = (value: string) => {
+      if (!buyerLocation) return 0;
+      const normalized = value.trim().toLowerCase();
+      if (!normalized) return 0;
+      if (normalized.includes(buyerLocation) || buyerLocation.includes(normalized)) {
+        return 1;
+      }
+      const city = normalized.split(",")[0]?.trim();
+      if (city && buyerCity && city === buyerCity) {
+        return 1;
+      }
+      return 0;
+    };
     return [...services]
       .sort((a, b) => {
+        const aFeatured = a.boostTypes?.includes("featured") ? 1 : 0;
+        const bFeatured = b.boostTypes?.includes("featured") ? 1 : 0;
+        if (bFeatured !== aFeatured) return bFeatured - aFeatured;
+        const locationDiff = getLocationScore(b.location) - getLocationScore(a.location);
+        if (locationDiff !== 0) return locationDiff;
+        const planDiff = (b.planWeight ?? 0) - (a.planWeight ?? 0);
+        if (planDiff !== 0) return planDiff;
         if (b.rating !== a.rating) return b.rating - a.rating;
         return b.reviews - a.reviews;
       })
@@ -58,9 +90,13 @@ const FeaturedProviders = () => {
         image: service.image,
         verified: service.verified,
         topRated: service.topRated,
+        isFeatured: service.boostTypes?.includes("featured") ?? false,
         serviceName: service.name,
+        planBadge: service.planBadge ?? null,
+        planTier: service.planTier,
+        planWeight: service.planWeight ?? 0,
       }));
-  }, [services]);
+  }, [services, user]);
 
   const handleWishlistToggle = (e: React.MouseEvent, provider: FeaturedProvider) => {
     e.preventDefault();
@@ -151,12 +187,17 @@ const FeaturedProviders = () => {
           </div>
         ) : (
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-8">
-            {providers.map((provider) => (
-              <Link
-                to={`/service/${provider.id}`}
-                key={provider.id}
-                className="group bg-card rounded-2xl overflow-hidden border border-border/50 service-card block"
-              >
+            {providers.map((provider) => {
+              const planBadgeClass =
+                provider.planTier === "business"
+                  ? "bg-gradient-gold text-primary-foreground"
+                  : "bg-primary/15 text-primary";
+              return (
+                <Link
+                  to={`/service/${provider.id}`}
+                  key={provider.id}
+                  className="group bg-card rounded-2xl overflow-hidden border border-border/50 service-card block"
+                >
                 {/* Image */}
                 <div className="relative h-48 overflow-hidden">
                   <img
@@ -166,6 +207,18 @@ const FeaturedProviders = () => {
                   />
                   {/* Badges */}
                   <div className="absolute top-3 left-3 flex gap-2">
+                    {provider.isFeatured && (
+                      <span className="flex items-center gap-1 px-2 py-1 bg-primary text-primary-foreground text-xs font-medium rounded-full">
+                        Featured
+                      </span>
+                    )}
+                    {provider.planBadge && (
+                      <span
+                        className={`flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-full ${planBadgeClass}`}
+                      >
+                        {provider.planBadge}
+                      </span>
+                    )}
                     {provider.verified && (
                       <span className="flex items-center gap-1 px-2 py-1 bg-secondary text-secondary-foreground text-xs font-medium rounded-full">
                         <BadgeCheck className="w-3 h-3" />
@@ -241,8 +294,9 @@ const FeaturedProviders = () => {
                     <span className="font-semibold text-primary">{provider.price}</span>
                   </div>
                 </div>
-              </Link>
-            ))}
+                </Link>
+              );
+            })}
           </div>
         )}
       </div>

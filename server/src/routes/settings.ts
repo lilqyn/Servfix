@@ -14,6 +14,7 @@ settingsRouter.get(
         enabledProviders: settings.integrations.payments.enabledProviders,
         defaultProvider: settings.integrations.payments.defaultProvider,
       },
+      socialLinks: settings.integrations.socialLinks,
       updatedAt: record.updatedAt,
     });
   }),

@@ -4,6 +4,16 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -20,6 +30,9 @@ const RATING_OPTIONS = [1, 2, 3, 4, 5];
 const AdminReviews = () => {
   const { user } = useAuth();
   const [ratingFilter, setRatingFilter] = useState<string>("all");
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteReviewId, setDeleteReviewId] = useState<string | null>(null);
+  const [deleteSubmitting, setDeleteSubmitting] = useState(false);
 
   const queryParams = useMemo(
     () => ({
@@ -35,17 +48,26 @@ const AdminReviews = () => {
 
   const canModerate = hasPermission(user?.role ?? null, "reviews.moderate");
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = (id: string) => {
     if (!canModerate) return;
-    const confirmed = window.confirm("Delete this review permanently?");
-    if (!confirmed) return;
+    setDeleteReviewId(id);
+    setDeleteDialogOpen(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!canModerate || !deleteReviewId || deleteSubmitting) return;
+    setDeleteSubmitting(true);
     try {
-      await deleteAdminReview(id);
+      await deleteAdminReview(deleteReviewId);
       toast({ title: "Review deleted." });
       await refetch();
+      setDeleteDialogOpen(false);
+      setDeleteReviewId(null);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unable to delete review.";
       toast({ title: message });
+    } finally {
+      setDeleteSubmitting(false);
     }
   };
 
@@ -129,6 +151,35 @@ const AdminReviews = () => {
           )}
         </CardContent>
       </Card>
+
+      <AlertDialog
+        open={deleteDialogOpen}
+        onOpenChange={(open) => {
+          setDeleteDialogOpen(open);
+          if (!open) {
+            setDeleteReviewId(null);
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete review?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. The review will be permanently removed.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteSubmitting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDelete}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={deleteSubmitting}
+            >
+              {deleteSubmitting ? "Deleting..." : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

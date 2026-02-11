@@ -67,6 +67,11 @@ const verifyFlutterwaveSignature = (rawBody: string, headers: Record<string, str
   return false;
 };
 
+const verifyPaystackSignature = (rawBody: string, signature: string, secret: string) => {
+  const expected = crypto.createHmac("sha512", secret).update(rawBody, "utf8").digest("hex");
+  return timingSafeEqual(signature, expected);
+};
+
 const markOrderRefunded = async (params: {
   orderId?: string | null;
   refundReference?: string | null;
@@ -356,6 +361,65 @@ webhooksRouter.post(
       orderId,
       refundReference,
       provider: "flutterwave",
+      payload: payload as Prisma.JsonValue,
+    });
+
+    res.json({ received: true });
+  }),
+);
+
+webhooksRouter.post(
+  "/paystack",
+  asyncHandler(async (req, res) => {
+    const { settings } = await getPlatformSettings();
+    const paystackSecret =
+      settings.integrations.payments.paystackSecretKey || env.PAYSTACK_SECRET_KEY;
+    if (!paystackSecret) {
+      return res.status(400).json({ error: "Paystack is not configured." });
+    }
+
+    const signature = req.headers["x-paystack-signature"];
+    if (!signature || typeof signature !== "string") {
+      return res.status(400).json({ error: "Missing Paystack signature." });
+    }
+
+    const rawBody = req.rawBody?.toString("utf8") ?? "";
+    if (!rawBody) {
+      return res.status(400).json({ error: "Missing webhook payload." });
+    }
+
+    const isValid = verifyPaystackSignature(rawBody, signature, paystackSecret);
+    if (!isValid) {
+      return res.status(400).json({ error: "Invalid Paystack signature." });
+    }
+
+    const payload = req.body as {
+      event?: string;
+      data?: Record<string, unknown>;
+    };
+
+    const eventName = String(payload.event ?? "").toLowerCase();
+    if (!eventName.includes("refund")) {
+      return res.json({ received: true });
+    }
+
+    const data = payload.data ?? {};
+    const status = String(data["status"] ?? data["refund_status"] ?? "").toLowerCase();
+    const isCompleted = ["processed", "success", "succeeded", "completed"].includes(status);
+
+    if (!isCompleted) {
+      return res.json({ received: true });
+    }
+
+    const refundId =
+      data["id"] ??
+      data["refund_id"] ??
+      data["refundId"];
+    const refundReference = refundId ? String(refundId) : undefined;
+
+    await markOrderRefunded({
+      refundReference,
+      provider: "paystack",
       payload: payload as Prisma.JsonValue,
     });
 

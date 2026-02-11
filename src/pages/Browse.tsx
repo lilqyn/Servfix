@@ -12,6 +12,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/co
 import { SlidersHorizontal, Grid3X3, List } from "lucide-react";
 import { useServices } from "@/hooks/useServices";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/contexts/AuthContext";
 
 const defaultFilters: Filters = {
   categories: [],
@@ -34,6 +35,7 @@ const Browse = () => {
   const [sortBy, setSortBy] = useState<SortOption>("relevance");
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
+  const { user } = useAuth();
 
   // Sync URL query param with search state
   useEffect(() => {
@@ -64,6 +66,26 @@ const Browse = () => {
 
   const filteredAndSortedServices = useMemo(() => {
     let result = [...services];
+    const buyerLocationRaw = user?.role === "buyer"
+      ? user?.location ?? ""
+      : (user?.providerProfile as { location?: string | null } | null | undefined)?.location ??
+        user?.location ??
+        "";
+    const buyerLocation = buyerLocationRaw.trim().toLowerCase();
+    const buyerCity = buyerLocation.split(",")[0]?.trim();
+    const getLocationScore = (value: string) => {
+      if (!buyerLocation) return 0;
+      const normalized = value.trim().toLowerCase();
+      if (!normalized) return 0;
+      if (normalized.includes(buyerLocation) || buyerLocation.includes(normalized)) {
+        return 1;
+      }
+      const city = normalized.split(",")[0]?.trim();
+      if (city && buyerCity && city === buyerCity) {
+        return 1;
+      }
+      return 0;
+    };
 
     // Search filter
     if (searchQuery) {
@@ -101,31 +123,68 @@ const Browse = () => {
       result = result.filter((p) => p.verified);
     }
 
-    // Sorting
-    switch (sortBy) {
-      case "rating-high":
-        result.sort((a, b) => b.rating - a.rating);
-        break;
-      case "price-low":
-        result.sort((a, b) => a.price - b.price);
-        break;
-      case "price-high":
-        result.sort((a, b) => b.price - a.price);
-        break;
-      case "reviews":
-        result.sort((a, b) => b.reviews - a.reviews);
-        break;
-      default:
-        // Relevance - prioritize top-rated and verified
-        result.sort((a, b) => {
-          const aScore = (a.topRated ? 2 : 0) + (a.verified ? 1 : 0) + a.rating / 5;
-          const bScore = (b.topRated ? 2 : 0) + (b.verified ? 1 : 0) + b.rating / 5;
+    const compareBySort = (a: (typeof result)[number], b: (typeof result)[number]) => {
+      const planDiff = (b.planWeight ?? 0) - (a.planWeight ?? 0);
+      const locationDiff = getLocationScore(b.location) - getLocationScore(a.location);
+      if (locationDiff !== 0) {
+        return locationDiff;
+      }
+      switch (sortBy) {
+        case "rating-high":
+          return b.rating - a.rating || planDiff || b.reviews - a.reviews;
+        case "price-low":
+          return a.price - b.price || planDiff;
+        case "price-high":
+          return b.price - a.price || planDiff;
+        case "reviews":
+          return b.reviews - a.reviews || planDiff;
+        default: {
+          const aScore =
+            (a.topRated ? 2 : 0) +
+            (a.verified ? 1 : 0) +
+            a.rating / 5 +
+            (a.planWeight ?? 0);
+          const bScore =
+            (b.topRated ? 2 : 0) +
+            (b.verified ? 1 : 0) +
+            b.rating / 5 +
+            (b.planWeight ?? 0);
           return bScore - aScore;
-        });
-    }
+        }
+      }
+    };
 
-    return result;
-  }, [searchQuery, filters, sortBy, services]);
+    const categorySet = new Set(filters.categories);
+    const scoreMap = new Map<string, number>(
+      result.map((service) => {
+        const types = service.boostTypes ?? [];
+        let score = 0;
+        if (types.includes("featured")) {
+          score = Math.max(score, 3);
+        }
+        if (types.includes("feed_boost")) {
+          score = Math.max(score, 1);
+        }
+        if (types.includes("category_top") && categorySet.size > 0 && categorySet.has(service.category)) {
+          score = Math.max(score, 2);
+        }
+        return [service.id, score];
+      }),
+    );
+
+    const boosted = result.filter((service) => (scoreMap.get(service.id) ?? 0) > 0);
+    const regular = result.filter((service) => (scoreMap.get(service.id) ?? 0) === 0);
+
+    boosted.sort((a, b) => {
+      const boostDiff = (scoreMap.get(b.id) ?? 0) - (scoreMap.get(a.id) ?? 0);
+      if (boostDiff !== 0) return boostDiff;
+      return compareBySort(a, b);
+    });
+
+    regular.sort(compareBySort);
+
+    return [...boosted, ...regular];
+  }, [searchQuery, filters, sortBy, services, user]);
 
   const handleRemoveFilter = (type: string, value?: string) => {
     switch (type) {

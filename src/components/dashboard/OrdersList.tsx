@@ -7,9 +7,19 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader as DialogHeaderUi,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Calendar, MapPin, MessageSquare, CheckCircle, Clock, AlertCircle } from "lucide-react";
 import { useOrders } from "@/hooks/useOrders";
-import { updateOrderStatus } from "@/lib/api";
+import { requestOrderRelease, updateOrderStatus } from "@/lib/api";
 import type { ApiOrderStatus, ApiOrderUser } from "@/lib/api";
 import { useMessages } from "@/contexts/MessagesContext";
 import { toast } from "sonner";
@@ -24,9 +34,17 @@ interface Order {
   date: string;
   location: string;
   amount: string;
+  gross: number;
+  fee: number;
+  tax: number;
+  net: number;
+  currency: "GHS" | "USD" | "EUR";
   status: OrderStatus;
   escrowStatus: "held" | "released" | "pending";
   rawStatus: ApiOrderStatus;
+  amountPaidNet: number;
+  amountReleasedNet: number;
+  depositPercent?: number | null;
 }
 
 const formatLocation = (location?: string | null) => {
@@ -98,11 +116,22 @@ const OrdersList = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [actionState, setActionState] = useState<{ id: string; action: "accepted" | "cancelled" | "delivered" } | null>(null);
+  const [releaseDialogOpen, setReleaseDialogOpen] = useState(false);
+  const [releaseOrder, setReleaseOrder] = useState<Order | null>(null);
+  const [releasePercent, setReleasePercent] = useState("20");
+  const [releaseReason, setReleaseReason] = useState("");
+  const [releaseError, setReleaseError] = useState<string | null>(null);
+  const [releaseSubmitting, setReleaseSubmitting] = useState(false);
 
   const mappedOrders = useMemo<Order[]>(() => {
     return orders.map((order) => {
       const client = order.buyer ?? order.provider;
-      const amount = toNumber(order.amountGross);
+      const gross = toNumber(order.amountGross);
+      const fee = toNumber(order.platformFee);
+      const tax = toNumber(order.taxAmount);
+      const net = toNumber(order.amountNetProvider);
+      const amountPaidNet = toNumber(order.amountPaidNet ?? order.amountNetProvider);
+      const amountReleasedNet = toNumber(order.amountReleasedNet ?? 0);
 
       return {
         id: order.id,
@@ -111,10 +140,18 @@ const OrdersList = () => {
         service: order.service?.title ?? "Service",
         date: order.createdAt ? format(new Date(order.createdAt), "MMM d, yyyy") : "—",
         location: formatLocation(order.service?.locationCity ?? null),
-        amount: formatCurrency(amount, order.currency),
+        amount: formatCurrency(gross, order.currency),
+        gross,
+        fee,
+        tax,
+        net,
+        currency: order.currency,
         status: mapStatus(order.status),
         escrowStatus: mapEscrowStatus(order.status),
         rawStatus: order.status,
+        amountPaidNet,
+        amountReleasedNet,
+        depositPercent: order.depositPercent ?? null,
       };
     });
   }, [orders]);
@@ -218,10 +255,53 @@ const OrdersList = () => {
     }
   };
 
+  const handleReleaseRequest = (order: Order) => {
+    setReleaseOrder(order);
+    setReleasePercent("20");
+    setReleaseReason("");
+    setReleaseError(null);
+    setReleaseDialogOpen(true);
+  };
+
+  const handleReleaseSubmit = async () => {
+    if (!releaseOrder) {
+      return;
+    }
+    const percent = Number(releasePercent);
+    if (!Number.isFinite(percent) || percent <= 0 || percent > 20) {
+      setReleaseError("Enter a valid percent between 1 and 20.");
+      return;
+    }
+    if (releaseReason.trim().length < 5) {
+      setReleaseError("Reason is required (min 5 characters).");
+      return;
+    }
+
+    setReleaseSubmitting(true);
+    setReleaseError(null);
+    try {
+      await requestOrderRelease(releaseOrder.id, { percent, note: releaseReason.trim() });
+      toast.success("Payment request sent to admin.");
+      setReleaseDialogOpen(false);
+      setReleaseOrder(null);
+      await queryClient.invalidateQueries({ queryKey: ["orders"] });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unable to request release.";
+      setReleaseError(message);
+    } finally {
+      setReleaseSubmitting(false);
+    }
+  };
+
   const OrderCard = ({ order }: { order: Order }) => {
     const canAccept = order.rawStatus === "paid_to_escrow";
     const canDecline = ["created", "paid_to_escrow"].includes(order.rawStatus);
     const isBusy = actionState?.id === order.id;
+    const feePercent =
+      order.gross > 0 ? Math.round((order.fee / order.gross) * 1000) / 10 : null;
+    const canRequestRelease =
+      order.amountPaidNet > order.amountReleasedNet &&
+      ["paid_to_escrow", "accepted", "in_progress", "delivered"].includes(order.rawStatus);
 
     return (
     <div className="flex items-start gap-4 p-4 border border-border/50 rounded-lg hover:bg-muted/50 transition-colors">
@@ -237,8 +317,20 @@ const OrdersList = () => {
             <h4 className="font-semibold text-foreground">{order.clientName}</h4>
             <p className="text-sm text-muted-foreground truncate">{order.service}</p>
           </div>
-          <div className="text-right">
+          <div className="text-right space-y-1">
             <p className="font-bold text-primary">{order.amount}</p>
+            <div className="text-xs text-muted-foreground space-y-0.5">
+              <div>
+                SERVFIX fee{feePercent !== null ? ` (${feePercent}%)` : ""}:{" "}
+                {formatCurrency(order.fee, order.currency)}
+              </div>
+              {order.tax > 0 && (
+                <div>Tax on fee: {formatCurrency(order.tax, order.currency)}</div>
+              )}
+              <div className="font-semibold text-foreground">
+                You earn: {formatCurrency(order.net, order.currency)}
+              </div>
+            </div>
             {getEscrowBadge(order.escrowStatus)}
           </div>
         </div>
@@ -264,6 +356,15 @@ const OrdersList = () => {
               <MessageSquare className="h-3 w-3" />
               Message
             </Button>
+            {canRequestRelease && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handleReleaseRequest(order)}
+              >
+                Request Payment
+              </Button>
+            )}
             {(canAccept || canDecline) && (
               <>
                 {canDecline && (
@@ -337,6 +438,96 @@ const OrdersList = () => {
             </TabsContent>
           ))}
         </Tabs>
+        <Dialog
+          open={releaseDialogOpen}
+          onOpenChange={(open) => {
+            setReleaseDialogOpen(open);
+            if (!open) {
+              setReleaseOrder(null);
+              setReleaseError(null);
+              setReleaseSubmitting(false);
+            }
+          }}
+        >
+          <DialogContent className="sm:max-w-md">
+            <DialogHeaderUi>
+              <DialogTitle>Request Payment</DialogTitle>
+              <DialogDescription>
+                Request up to 20% total of the escrow for this order. Admin will review the request.
+              </DialogDescription>
+            </DialogHeaderUi>
+            <div className="space-y-4">
+              {releaseOrder && (
+                <div className="rounded-md border border-border/60 bg-muted/40 p-3 text-xs text-muted-foreground space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span>Paid to escrow</span>
+                    <span className="font-semibold text-foreground">
+                      {formatCurrency(releaseOrder.amountPaidNet, releaseOrder.currency)}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span>Already released</span>
+                    <span className="font-semibold text-foreground">
+                      {formatCurrency(releaseOrder.amountReleasedNet, releaseOrder.currency)}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span>Remaining escrow</span>
+                    <span className="font-semibold text-foreground">
+                      {formatCurrency(
+                        Math.max(0, releaseOrder.amountPaidNet - releaseOrder.amountReleasedNet),
+                        releaseOrder.currency,
+                      )}
+                    </span>
+                  </div>
+                </div>
+              )}
+              <div className="space-y-2">
+                <label htmlFor="release-percent" className="text-sm font-medium text-foreground">
+                  Percent to request (1-20%)
+                </label>
+                <Input
+                  id="release-percent"
+                  type="number"
+                  inputMode="numeric"
+                  min={1}
+                  max={20}
+                  step={1}
+                  value={releasePercent}
+                  onChange={(event) => setReleasePercent(event.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <label htmlFor="release-reason" className="text-sm font-medium text-foreground">
+                  Reason
+                </label>
+                <Textarea
+                  id="release-reason"
+                  rows={3}
+                  placeholder="Briefly explain why you need the early release."
+                  value={releaseReason}
+                  onChange={(event) => setReleaseReason(event.target.value)}
+                />
+              </div>
+              {releaseError && (
+                <p className="text-sm text-destructive">{releaseError}</p>
+              )}
+            </div>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setReleaseDialogOpen(false)}
+                disabled={releaseSubmitting}
+              >
+                Cancel
+              </Button>
+              <Button type="button" onClick={handleReleaseSubmit} disabled={releaseSubmitting}>
+                {releaseSubmitting ? "Sending..." : "Send Request"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </CardContent>
     </Card>
   );

@@ -60,6 +60,7 @@ const publicUserSelect = {
   email: true,
   phone: true,
   username: true,
+  location: true,
   role: true,
   createdAt: true,
   avatarKey: true,
@@ -310,6 +311,10 @@ usersRouter.patch(
     if (data.bannerKey !== undefined) {
       const bannerKey = data.bannerKey.trim();
       userUpdates.bannerKey = bannerKey.length > 0 ? bannerKey : null;
+    }
+    if (data.location !== undefined) {
+      const location = data.location.trim();
+      userUpdates.location = location.length > 0 ? location : null;
     }
 
     const providerUpdates: Prisma.ProviderProfileUpdateInput = {};

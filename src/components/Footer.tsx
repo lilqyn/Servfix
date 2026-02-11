@@ -1,14 +1,32 @@
 ﻿import { Link } from "react-router-dom";
-import { Facebook, Twitter, Instagram, Youtube, Mail, Phone, MapPin } from "lucide-react";
+import { Facebook, Twitter, Instagram, Youtube, Linkedin, Mail, Phone, MapPin } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { usePublicSettings } from "@/hooks/usePublicSettings";
+import type { SocialLink } from "@/lib/api";
 
 const Footer = () => {
   const { data: publicSettings } = usePublicSettings();
   const communityEnabled = publicSettings?.featureFlags.community ?? true;
+  const socialLinks = publicSettings?.socialLinks ?? [];
   const baseUrl = import.meta.env.BASE_URL;
   const logoUrl = `${baseUrl}servfix-logo.png`;
   const iconUrl = `${baseUrl}servfix-icon.png`;
+
+  const socialIcons: Record<SocialLink["platform"], typeof Facebook> = {
+    facebook: Facebook,
+    instagram: Instagram,
+    twitter: Twitter,
+    youtube: Youtube,
+    linkedin: Linkedin,
+  };
+
+  const socialLabels: Record<SocialLink["platform"], string> = {
+    facebook: "Facebook",
+    instagram: "Instagram",
+    twitter: "X (Twitter)",
+    youtube: "YouTube",
+    linkedin: "LinkedIn",
+  };
 
   return (
     <footer className="bg-foreground text-background">
@@ -61,20 +79,25 @@ const Footer = () => {
               Connecting skilled service providers with clients across Ghana. 
               Secure payments, verified professionals, and a trusted community.
             </p>
-            <div className="flex items-center gap-4">
-              <a href="#" className="p-2 bg-background/10 rounded-lg hover:bg-background/20 transition-colors">
-                <Facebook className="w-5 h-5" />
-              </a>
-              <a href="#" className="p-2 bg-background/10 rounded-lg hover:bg-background/20 transition-colors">
-                <Twitter className="w-5 h-5" />
-              </a>
-              <a href="#" className="p-2 bg-background/10 rounded-lg hover:bg-background/20 transition-colors">
-                <Instagram className="w-5 h-5" />
-              </a>
-              <a href="#" className="p-2 bg-background/10 rounded-lg hover:bg-background/20 transition-colors">
-                <Youtube className="w-5 h-5" />
-              </a>
-            </div>
+            {socialLinks.length > 0 && (
+              <div className="flex items-center gap-4">
+                {socialLinks.map((link) => {
+                  const Icon = socialIcons[link.platform];
+                  return (
+                    <a
+                      key={`${link.platform}-${link.url}`}
+                      href={link.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      aria-label={socialLabels[link.platform]}
+                      className="p-2 bg-background/10 rounded-lg hover:bg-background/20 transition-colors"
+                    >
+                      <Icon className="w-5 h-5" />
+                    </a>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           {/* Quick Links */}
@@ -92,9 +115,9 @@ const Footer = () => {
               )}
               <li><Link to="/about" className="hover:text-primary transition-colors">About Us</Link></li>
               <li>
-                <a href="mailto:hello@servfix.com" className="hover:text-primary transition-colors">
+                <Link to="/support" className="hover:text-primary transition-colors">
                   Contact
-                </a>
+                </Link>
               </li>
             </ul>
           </div>
@@ -139,10 +162,13 @@ const Footer = () => {
                 </a>
               </li>
               <li>
-                <a href="mailto:hello@servfix.com" className="flex items-center gap-2 hover:text-background transition-colors">
+                <Link
+                  to="/support"
+                  className="flex items-center gap-2 hover:text-background transition-colors"
+                >
                   <Mail className="w-4 h-4 text-primary" />
-                  <span>hello@servfix.com</span>
-                </a>
+                  <span>Support Enquiry</span>
+                </Link>
               </li>
             </ul>
           </div>

@@ -23,6 +23,7 @@ import AccountSettings from "./pages/AccountSettings";
 import Notifications from "./pages/Notifications";
 import DashboardSettings from "./pages/DashboardSettings";
 import Support from "./pages/Support";
+import Business from "./pages/Business";
 import AdminLayout from "./pages/admin/AdminLayout";
 import AdminOverview from "./pages/admin/AdminOverview";
 import AdminUsers from "./pages/admin/AdminUsers";
@@ -30,6 +31,7 @@ import AdminProviders from "./pages/admin/AdminProviders";
 import AdminServices from "./pages/admin/AdminServices";
 import AdminOrders from "./pages/admin/AdminOrders";
 import AdminDisputes from "./pages/admin/AdminDisputes";
+import AdminBusiness from "./pages/admin/AdminBusiness";
 import AdminReviews from "./pages/admin/AdminReviews";
 import AdminCommunity from "./pages/admin/AdminCommunity";
 import AdminReports from "./pages/admin/AdminReports";
@@ -84,8 +86,16 @@ const App = () => (
                     <Route
                       path="/support"
                       element={
-                        <RequireAuth roles={["buyer", "provider", "admin"]}>
+                        <RequireAuth roles={["buyer", "provider", ...ADMIN_ROLES]}>
                           <Support />
+                        </RequireAuth>
+                      }
+                    />
+                    <Route
+                      path="/business"
+                      element={
+                        <RequireAuth roles={["buyer", "admin"]} redirectTo="/dashboard">
+                          <Business />
                         </RequireAuth>
                       }
                     />
@@ -127,6 +137,7 @@ const App = () => (
                       <Route path="providers" element={<AdminProviders />} />
                       <Route path="services" element={<AdminServices />} />
                       <Route path="orders" element={<AdminOrders />} />
+                      <Route path="business" element={<AdminBusiness />} />
                       <Route path="disputes" element={<AdminDisputes />} />
                       <Route path="reviews" element={<AdminReviews />} />
                       <Route path="community" element={<AdminCommunity />} />
@@ -158,7 +169,7 @@ const App = () => (
                     <Route
                       path="/wishlist"
                       element={
-                        <RequireAuth roles={["buyer", "admin"]} redirectTo="/dashboard">
+                        <RequireAuth roles={["buyer", "provider", "admin"]} redirectTo="/dashboard">
                           <Wishlist />
                         </RequireAuth>
                       }
@@ -166,7 +177,7 @@ const App = () => (
                     <Route
                       path="/cart"
                       element={
-                        <RequireAuth roles={["buyer", "admin"]} redirectTo="/dashboard">
+                        <RequireAuth roles={["buyer", "provider", "admin"]} redirectTo="/dashboard">
                           <Cart />
                         </RequireAuth>
                       }
