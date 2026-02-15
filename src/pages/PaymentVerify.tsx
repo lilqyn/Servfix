@@ -23,7 +23,13 @@ const PaymentVerify = () => {
     hasRequested.current = true;
 
     const provider = searchParams.get("provider");
-    if (provider !== "flutterwave" && provider !== "stripe" && provider !== "paystack") {
+    if (
+      provider !== "flutterwave" &&
+      provider !== "stripe" &&
+      provider !== "paystack" &&
+      provider !== "hubtel" &&
+      provider !== "expresspay"
+    ) {
       setStatus("error");
       setMessage("Missing or invalid payment provider.");
       return;
@@ -41,6 +47,8 @@ const PaymentVerify = () => {
       txRef: searchParams.get("tx_ref"),
       sessionId: searchParams.get("session_id"),
       reference: searchParams.get("reference") ?? searchParams.get("trxref"),
+      token: searchParams.get("token"),
+      orderId: searchParams.get("order_id") ?? searchParams.get("order-id"),
     })
       .then((result) => {
         const resolvedPurpose = result.purpose ?? requestedPurpose;

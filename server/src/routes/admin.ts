@@ -8,6 +8,7 @@ import { requirePermission } from "../middleware/permissions.js";
 import { ADMIN_ROLES } from "../utils/permissions.js";
 import { env } from "../config.js";
 import { createNotification } from "../utils/notifications.js";
+import { sendEmail } from "../utils/email.js";
 import { createSupportTicketEvent, formatTicketNumber } from "../utils/tickets.js";
 import { defaultHomeContent, HOME_CONTENT_KEY } from "../utils/home-content.js";
 import {
@@ -17,6 +18,9 @@ import {
   type StaticPageKey,
   type BlogPost,
   type StaffProfile,
+  type ProviderResourcesContent,
+  type ProviderResourceSection,
+  type ProviderLaunchChecklistItem,
 } from "../utils/pages.js";
 import { normalizeS3Key, signS3Key } from "../utils/s3.js";
 import {
@@ -206,9 +210,49 @@ const blogPageSchema = pageContentSchema.extend({
   posts: z.array(blogPostSchema).max(20).optional(),
 });
 
+const providerResourceBlockSchema = z.object({
+  heading: z.string().trim().min(1).max(160),
+  items: z.array(z.string().trim().min(1).max(260)).min(1).max(20),
+});
+
+const providerResourceSectionSchema = z.object({
+  id: z.string().trim().min(1).max(80),
+  title: z.string().trim().min(1).max(140),
+  description: z.string().trim().min(1).max(300),
+  blocks: z.array(providerResourceBlockSchema).min(1).max(12),
+});
+
+const providerChecklistKeySchema = z.enum([
+  "profile_completed",
+  "profile_photo_uploaded",
+  "service_photos_uploaded",
+  "pricing_calculated",
+  "service_description_optimized",
+  "payment_policy_understood",
+  "cancellation_rules_reviewed",
+  "tax_record_process_started",
+]);
+
+const providerChecklistItemSchema = z.object({
+  key: providerChecklistKeySchema,
+  label: z.string().trim().min(1).max(160),
+  editable: z.boolean(),
+});
+
+const providerResourcesContentSchema = z.object({
+  sections: z.array(providerResourceSectionSchema).min(1).max(24),
+  checklistItems: z.array(providerChecklistItemSchema).min(1).max(16),
+  advancedResources: z.array(z.string().trim().min(1).max(200)).max(20),
+});
+
+const providerResourcesPageSchema = pageContentSchema.extend({
+  resourcesConfig: providerResourcesContentSchema.optional(),
+});
+
 const pagesSchema = z.object({
   about: aboutPageSchema,
   blog: blogPageSchema,
+  providerResources: providerResourcesPageSchema,
 });
 
 const requireBusinessFunctionAccess = (key: BusinessFunctionKey) =>
@@ -1837,7 +1881,13 @@ adminRouter.post(
 
     const ticket = await prisma.supportTicket.findUnique({
       where: { id: params.id },
-      select: { id: true, status: true },
+      select: {
+        id: true,
+        status: true,
+        ticketNumber: true,
+        subject: true,
+        user: { select: { email: true, username: true } },
+      },
     });
 
     if (!ticket) {
@@ -1870,6 +1920,35 @@ adminRouter.post(
         },
       }),
     ]);
+
+    const recipientEmail = ticket.user?.email ?? null;
+    if (recipientEmail) {
+      const ticketNumber = formatTicketNumber(ticket.ticketNumber, ticket.id);
+      const recipientName = ticket.user?.username ?? "there";
+      const subject = `Update on your support ticket ${ticketNumber}`;
+      const text = [
+        `Hi ${recipientName},`,
+        "",
+        "Our support team replied to your ticket:",
+        "",
+        data.message,
+        "",
+        `Ticket: ${ticketNumber}`,
+        `Subject: ${ticket.subject}`,
+        "",
+        "You can view and reply in the app under Support.",
+      ].join("\n");
+
+      void sendEmail({
+        to: recipientEmail,
+        subject,
+        text,
+        tag: "support_ticket_reply",
+        metadata: { ticketId: ticket.id },
+      }).catch((error) => {
+        console.warn("Failed to send support ticket reply email.", error);
+      });
+    }
 
     res.json({ message, status: nextStatus });
   }),
@@ -2467,6 +2546,10 @@ adminRouter.get(
             ? legacyPosts
             : fallback.posts ?? [];
         const staff = Array.isArray(content.staff) ? content.staff : fallback.staff ?? [];
+        const resourcesConfig =
+          content.resourcesConfig && typeof content.resourcesConfig === "object"
+            ? (content.resourcesConfig as ProviderResourcesContent)
+            : fallback.resourcesConfig;
 
         return [
           slug,
@@ -2476,6 +2559,7 @@ adminRouter.get(
             body: existing?.body ?? fallback.body,
             posts: await resolvePosts(posts),
             staff: await resolveStaff(staff),
+            resourcesConfig,
             updatedAt: existing?.updatedAt ?? null,
           },
         ] as const;
@@ -2490,6 +2574,7 @@ adminRouter.get(
         body: string;
         posts: Array<BlogPost & { imageSignedUrl?: string | null }>;
         staff: Array<StaffProfile & { photoSignedUrl?: string | null }>;
+        resourcesConfig?: ProviderResourcesContent;
         updatedAt: Date | null;
       }
     >;
@@ -2535,12 +2620,73 @@ adminRouter.put(
           photoUrl: member.photoUrl || null,
         }));
 
+    const normalizeProviderResourcesContent = (
+      config: ProviderResourcesContent | undefined,
+    ): ProviderResourcesContent => {
+      const fallback = DEFAULT_PAGES.providerResources.resourcesConfig;
+      const source = config ?? fallback;
+
+      if (!source) {
+        return {
+          sections: [],
+          checklistItems: [],
+          advancedResources: [],
+        };
+      }
+
+      const sections: ProviderResourceSection[] = source.sections
+        .map((section) => ({
+          id: section.id.trim(),
+          title: section.title.trim(),
+          description: section.description.trim(),
+          blocks: section.blocks
+            .map((block) => ({
+              heading: block.heading.trim(),
+              items: block.items.map((item) => item.trim()).filter(Boolean),
+            }))
+            .filter((block) => block.heading && block.items.length > 0),
+        }))
+        .filter((section) => section.id && section.title && section.blocks.length > 0);
+
+      const checklistItems: ProviderLaunchChecklistItem[] = source.checklistItems
+        .map((item) => ({
+          key: item.key,
+          label: item.label.trim(),
+          editable: item.editable,
+        }))
+        .filter((item) => item.label);
+
+      const advancedResources = source.advancedResources
+        .map((item) => item.trim())
+        .filter(Boolean);
+
+      return {
+        sections,
+        checklistItems,
+        advancedResources,
+      };
+    };
+
     const aboutContent = {
       staff: normalizeStaff(payload.about.staff ?? []),
     };
 
     const blogContent = {
       posts: normalizePosts(payload.blog.posts ?? []),
+    };
+
+    const providerResourcesContent = {
+      resourcesConfig: normalizeProviderResourcesContent(payload.providerResources.resourcesConfig),
+    };
+
+    const resolvePageContent = (slug: StaticPageKey) => {
+      if (slug === "about") {
+        return aboutContent;
+      }
+      if (slug === "blog") {
+        return blogContent;
+      }
+      return providerResourcesContent;
     };
 
     await prisma.$transaction(
@@ -2550,13 +2696,13 @@ adminRouter.put(
           update: {
             title: payload[slug].title,
             body: payload[slug].body,
-            content: slug === "about" ? aboutContent : blogContent,
+            content: resolvePageContent(slug),
           },
           create: {
             slug,
             title: payload[slug].title,
             body: payload[slug].body,
-            content: slug === "about" ? aboutContent : blogContent,
+            content: resolvePageContent(slug),
           },
         }),
       ),

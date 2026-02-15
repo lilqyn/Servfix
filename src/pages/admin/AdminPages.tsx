@@ -11,19 +11,67 @@ import {
   uploadPageImage,
   type AdminPagesPayload,
   type BlogPostView,
+  type ProviderLaunchChecklistKey,
+  type ProviderResourcesContent,
   type StaffProfileView,
 } from "@/lib/api";
 import { DEFAULT_PAGES } from "@/lib/pageDefaults";
 import { useAuth } from "@/contexts/AuthContext";
 import { hasPermission } from "@/lib/permissions";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { defaultProviderResourcesContent } from "@/data/providerResources";
 
 const MAX_BLOG_POSTS = 12;
 const MAX_STAFF = 12;
+const PROVIDER_CHECKLIST_KEY_OPTIONS: Array<{
+  value: ProviderLaunchChecklistKey;
+  label: string;
+}> = [
+  { value: "profile_completed", label: "Profile completed" },
+  { value: "profile_photo_uploaded", label: "Profile photo uploaded" },
+  { value: "service_photos_uploaded", label: "3 service photos uploaded" },
+  { value: "pricing_calculated", label: "Pricing calculated correctly" },
+  { value: "service_description_optimized", label: "Service description optimized" },
+  { value: "payment_policy_understood", label: "Payment policy understood" },
+  { value: "cancellation_rules_reviewed", label: "Cancellation rules reviewed" },
+  { value: "tax_record_process_started", label: "Tax record process started" },
+];
 
 type DraftPages = {
   about: Omit<AdminPagesPayload["about"], "staff"> & { staff: StaffProfileView[] };
   blog: Omit<AdminPagesPayload["blog"], "posts"> & { posts: BlogPostView[] };
+  providerResources: AdminPagesPayload["providerResources"];
+};
+
+const cloneProviderResourcesConfig = (
+  value?: ProviderResourcesContent,
+): ProviderResourcesContent => {
+  const source = value ?? defaultProviderResourcesContent;
+  return {
+    sections: Array.isArray(source.sections)
+      ? source.sections.map((section) => ({
+          id: section.id ?? "",
+          title: section.title ?? "",
+          description: section.description ?? "",
+          blocks: Array.isArray(section.blocks)
+            ? section.blocks.map((block) => ({
+                heading: block.heading ?? "",
+                items: Array.isArray(block.items) ? block.items.map((item) => item ?? "") : [],
+              }))
+            : [],
+        }))
+      : [],
+    checklistItems: Array.isArray(source.checklistItems)
+      ? source.checklistItems.map((item) => ({
+          key: item.key,
+          label: item.label ?? "",
+          editable: Boolean(item.editable),
+        }))
+      : [],
+    advancedResources: Array.isArray(source.advancedResources)
+      ? source.advancedResources.map((item) => item ?? "")
+      : [],
+  };
 };
 
 const AdminPages = () => {
@@ -40,9 +88,17 @@ const AdminPages = () => {
       body: DEFAULT_PAGES.blog.body,
       posts: DEFAULT_PAGES.blog.posts ?? [],
     },
+    providerResources: {
+      title: DEFAULT_PAGES.providerResources.title,
+      body: DEFAULT_PAGES.providerResources.body,
+      resourcesConfig: cloneProviderResourcesConfig(
+        DEFAULT_PAGES.providerResources.resourcesConfig,
+      ),
+    },
   });
   const [isSavingAbout, setIsSavingAbout] = useState(false);
   const [isSavingBlog, setIsSavingBlog] = useState(false);
+  const [isSavingProviderResources, setIsSavingProviderResources] = useState(false);
   const [staffUploadIndex, setStaffUploadIndex] = useState<number | null>(null);
   const [postUploadIndex, setPostUploadIndex] = useState<number | null>(null);
 
@@ -64,6 +120,14 @@ const AdminPages = () => {
           body: data.pages.blog.body,
           posts: data.pages.blog.posts ?? [],
         },
+        providerResources: {
+          title: data.pages.providerResources.title,
+          body: data.pages.providerResources.body,
+          resourcesConfig: cloneProviderResourcesConfig(
+            data.pages.providerResources.resourcesConfig ??
+              DEFAULT_PAGES.providerResources.resourcesConfig,
+          ),
+        },
       });
     }
   }, [data]);
@@ -72,6 +136,156 @@ const AdminPages = () => {
     setDraft((prev) => ({
       ...prev,
       [key]: { ...prev[key], ...updates },
+    }));
+  };
+
+  const updateProviderResourcesConfig = (
+    updater: (config: ProviderResourcesContent) => ProviderResourcesContent,
+  ) => {
+    const next = updater(
+      cloneProviderResourcesConfig(
+        draft.providerResources.resourcesConfig ??
+          DEFAULT_PAGES.providerResources.resourcesConfig,
+      ),
+    );
+    updatePage("providerResources", { resourcesConfig: next });
+  };
+
+  const addProviderSection = () => {
+    updateProviderResourcesConfig((config) => ({
+      ...config,
+      sections: [
+        ...config.sections,
+        {
+          id: `section-${config.sections.length + 1}`,
+          title: "",
+          description: "",
+          blocks: [{ heading: "", items: [""] }],
+        },
+      ],
+    }));
+  };
+
+  const updateProviderSection = (
+    sectionIndex: number,
+    updates: Partial<ProviderResourcesContent["sections"][number]>,
+  ) => {
+    updateProviderResourcesConfig((config) => ({
+      ...config,
+      sections: config.sections.map((section, index) =>
+        index === sectionIndex ? { ...section, ...updates } : section,
+      ),
+    }));
+  };
+
+  const removeProviderSection = (sectionIndex: number) => {
+    updateProviderResourcesConfig((config) => ({
+      ...config,
+      sections: config.sections.filter((_, index) => index !== sectionIndex),
+    }));
+  };
+
+  const addProviderBlock = (sectionIndex: number) => {
+    updateProviderResourcesConfig((config) => ({
+      ...config,
+      sections: config.sections.map((section, index) =>
+        index === sectionIndex
+          ? {
+              ...section,
+              blocks: [...section.blocks, { heading: "", items: [""] }],
+            }
+          : section,
+      ),
+    }));
+  };
+
+  const updateProviderBlock = (
+    sectionIndex: number,
+    blockIndex: number,
+    updates: Partial<ProviderResourcesContent["sections"][number]["blocks"][number]>,
+  ) => {
+    updateProviderResourcesConfig((config) => ({
+      ...config,
+      sections: config.sections.map((section, index) =>
+        index === sectionIndex
+          ? {
+              ...section,
+              blocks: section.blocks.map((block, idx) =>
+                idx === blockIndex ? { ...block, ...updates } : block,
+              ),
+            }
+          : section,
+      ),
+    }));
+  };
+
+  const removeProviderBlock = (sectionIndex: number, blockIndex: number) => {
+    updateProviderResourcesConfig((config) => ({
+      ...config,
+      sections: config.sections.map((section, index) =>
+        index === sectionIndex
+          ? {
+              ...section,
+              blocks: section.blocks.filter((_, idx) => idx !== blockIndex),
+            }
+          : section,
+      ),
+    }));
+  };
+
+  const addProviderChecklistItem = () => {
+    updateProviderResourcesConfig((config) => ({
+      ...config,
+      checklistItems: [
+        ...config.checklistItems,
+        {
+          key: "payment_policy_understood",
+          label: "",
+          editable: true,
+        },
+      ],
+    }));
+  };
+
+  const updateProviderChecklistItem = (
+    itemIndex: number,
+    updates: Partial<ProviderResourcesContent["checklistItems"][number]>,
+  ) => {
+    updateProviderResourcesConfig((config) => ({
+      ...config,
+      checklistItems: config.checklistItems.map((item, index) =>
+        index === itemIndex ? { ...item, ...updates } : item,
+      ),
+    }));
+  };
+
+  const removeProviderChecklistItem = (itemIndex: number) => {
+    updateProviderResourcesConfig((config) => ({
+      ...config,
+      checklistItems: config.checklistItems.filter((_, index) => index !== itemIndex),
+    }));
+  };
+
+  const addAdvancedResource = () => {
+    updateProviderResourcesConfig((config) => ({
+      ...config,
+      advancedResources: [...config.advancedResources, ""],
+    }));
+  };
+
+  const updateAdvancedResource = (itemIndex: number, value: string) => {
+    updateProviderResourcesConfig((config) => ({
+      ...config,
+      advancedResources: config.advancedResources.map((item, index) =>
+        index === itemIndex ? value : item,
+      ),
+    }));
+  };
+
+  const removeAdvancedResource = (itemIndex: number) => {
+    updateProviderResourcesConfig((config) => ({
+      ...config,
+      advancedResources: config.advancedResources.filter((_, index) => index !== itemIndex),
     }));
   };
 
@@ -256,6 +470,26 @@ const AdminPages = () => {
     return draft.blog;
   };
 
+  const getSavedProviderResourcesDraft = (): DraftPages["providerResources"] => {
+    if (data?.pages?.providerResources) {
+      return {
+        title: data.pages.providerResources.title,
+        body: data.pages.providerResources.body,
+        resourcesConfig: cloneProviderResourcesConfig(
+          data.pages.providerResources.resourcesConfig ??
+            DEFAULT_PAGES.providerResources.resourcesConfig,
+        ),
+      };
+    }
+    return {
+      ...draft.providerResources,
+      resourcesConfig: cloneProviderResourcesConfig(
+        draft.providerResources.resourcesConfig ??
+          DEFAULT_PAGES.providerResources.resourcesConfig,
+      ),
+    };
+  };
+
   const handleSaveAbout = async () => {
     if (!canUpdate) {
       toast({ title: "You do not have permission to update settings." });
@@ -271,6 +505,11 @@ const AdminPages = () => {
         title: getSavedBlogDraft().title,
         body: getSavedBlogDraft().body,
         posts: buildPostPayload(getSavedBlogDraft().posts),
+      },
+      providerResources: {
+        title: getSavedProviderResourcesDraft().title,
+        body: getSavedProviderResourcesDraft().body,
+        resourcesConfig: getSavedProviderResourcesDraft().resourcesConfig,
       },
     };
 
@@ -303,6 +542,11 @@ const AdminPages = () => {
         body: draft.blog.body,
         posts: buildPostPayload(draft.blog.posts),
       },
+      providerResources: {
+        title: getSavedProviderResourcesDraft().title,
+        body: getSavedProviderResourcesDraft().body,
+        resourcesConfig: getSavedProviderResourcesDraft().resourcesConfig,
+      },
     };
 
     try {
@@ -315,6 +559,48 @@ const AdminPages = () => {
       toast({ title: message });
     } finally {
       setIsSavingBlog(false);
+    }
+  };
+
+  const handleSaveProviderResources = async () => {
+    if (!canUpdate) {
+      toast({ title: "You do not have permission to update settings." });
+      return;
+    }
+    const resourcesConfig = cloneProviderResourcesConfig(
+      draft.providerResources.resourcesConfig ??
+        DEFAULT_PAGES.providerResources.resourcesConfig,
+    );
+
+    const payload: AdminPagesPayload = {
+      about: {
+        title: getSavedAboutDraft().title,
+        body: getSavedAboutDraft().body,
+        staff: buildStaffPayload(getSavedAboutDraft().staff),
+      },
+      blog: {
+        title: getSavedBlogDraft().title,
+        body: getSavedBlogDraft().body,
+        posts: buildPostPayload(getSavedBlogDraft().posts),
+      },
+      providerResources: {
+        title: draft.providerResources.title,
+        body: draft.providerResources.body,
+        resourcesConfig,
+      },
+    };
+
+    try {
+      setIsSavingProviderResources(true);
+      await updateAdminPages(payload);
+      updatePage("providerResources", { resourcesConfig });
+      toast({ title: "Provider resources page updated." });
+      await refetch();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unable to update pages.";
+      toast({ title: message });
+    } finally {
+      setIsSavingProviderResources(false);
     }
   };
 
@@ -331,6 +617,14 @@ const AdminPages = () => {
           body: data.pages.blog.body,
           posts: data.pages.blog.posts ?? [],
         },
+        providerResources: {
+          title: data.pages.providerResources.title,
+          body: data.pages.providerResources.body,
+          resourcesConfig: cloneProviderResourcesConfig(
+            data.pages.providerResources.resourcesConfig ??
+              DEFAULT_PAGES.providerResources.resourcesConfig,
+          ),
+        },
       });
     } else {
       setDraft({
@@ -344,9 +638,21 @@ const AdminPages = () => {
           body: DEFAULT_PAGES.blog.body,
           posts: DEFAULT_PAGES.blog.posts ?? [],
         },
+        providerResources: {
+          title: DEFAULT_PAGES.providerResources.title,
+          body: DEFAULT_PAGES.providerResources.body,
+          resourcesConfig: cloneProviderResourcesConfig(
+            DEFAULT_PAGES.providerResources.resourcesConfig,
+          ),
+        },
       });
     }
   };
+
+  const providerResourcesConfig = cloneProviderResourcesConfig(
+    draft.providerResources.resourcesConfig ??
+      DEFAULT_PAGES.providerResources.resourcesConfig,
+  );
 
   if (isLoading) {
     return <div className="text-sm text-muted-foreground">Loading pages...</div>;
@@ -369,7 +675,7 @@ const AdminPages = () => {
         <div>
           <h2 className="text-2xl font-semibold text-foreground">Pages</h2>
           <p className="text-sm text-muted-foreground">
-            Update the About and Blog pages shown in the header.
+            Update About, Blog, and Provider Resources content.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -497,6 +803,289 @@ const AdminPages = () => {
                 })}
               </div>
             )}
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="border-border/60">
+        <CardContent className="p-6 space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h3 className="text-lg font-semibold text-foreground">Provider Resources</h3>
+              <p className="text-sm text-muted-foreground">
+                Intro copy plus structured sections/checklist shown on dashboard and website.
+              </p>
+            </div>
+            <Button
+              onClick={handleSaveProviderResources}
+              disabled={!canUpdate || isSavingProviderResources}
+              size="sm"
+            >
+              {isSavingProviderResources ? "Saving..." : "Save Provider Resources"}
+            </Button>
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Title</label>
+            <Input
+              value={draft.providerResources.title}
+              onChange={(e) =>
+                updatePage("providerResources", { title: e.target.value })
+              }
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Body</label>
+            <Textarea
+              value={draft.providerResources.body}
+              onChange={(e) =>
+                updatePage("providerResources", { body: e.target.value })
+              }
+              rows={5}
+            />
+          </div>
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <label className="text-sm font-medium">Guide sections</label>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    updatePage("providerResources", {
+                      resourcesConfig: cloneProviderResourcesConfig(
+                        DEFAULT_PAGES.providerResources.resourcesConfig,
+                      ),
+                    })
+                  }
+                >
+                  Reset template
+                </Button>
+                <Button type="button" variant="outline" size="sm" onClick={addProviderSection}>
+                  Add section
+                </Button>
+              </div>
+            </div>
+            {providerResourcesConfig.sections.length === 0 ? (
+              <p className="text-xs text-muted-foreground">No sections added yet.</p>
+            ) : (
+              <div className="space-y-3">
+                {providerResourcesConfig.sections.map((section, sectionIndex) => (
+                  <div
+                    key={`${section.id}-${sectionIndex}`}
+                    className="rounded-md border border-border/60 p-4 space-y-3"
+                  >
+                    <div className="grid gap-3 md:grid-cols-3">
+                      <div className="space-y-1">
+                        <label className="text-xs text-muted-foreground">Section ID</label>
+                        <Input
+                          value={section.id}
+                          onChange={(e) =>
+                            updateProviderSection(sectionIndex, { id: e.target.value })
+                          }
+                        />
+                      </div>
+                      <div className="space-y-1 md:col-span-2">
+                        <label className="text-xs text-muted-foreground">Title</label>
+                        <Input
+                          value={section.title}
+                          onChange={(e) =>
+                            updateProviderSection(sectionIndex, { title: e.target.value })
+                          }
+                        />
+                      </div>
+                      <div className="space-y-1 md:col-span-3">
+                        <label className="text-xs text-muted-foreground">Description</label>
+                        <Textarea
+                          value={section.description}
+                          onChange={(e) =>
+                            updateProviderSection(sectionIndex, { description: e.target.value })
+                          }
+                          rows={2}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <label className="text-xs text-muted-foreground">Blocks</label>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => addProviderBlock(sectionIndex)}
+                        >
+                          Add block
+                        </Button>
+                      </div>
+                      {section.blocks.length === 0 ? (
+                        <p className="text-xs text-muted-foreground">No blocks added yet.</p>
+                      ) : (
+                        <div className="space-y-2">
+                          {section.blocks.map((block, blockIndex) => (
+                            <div
+                              key={`${section.id}-block-${blockIndex}`}
+                              className="rounded-md border border-border/60 p-3 space-y-2"
+                            >
+                              <div className="space-y-1">
+                                <label className="text-xs text-muted-foreground">Heading</label>
+                                <Input
+                                  value={block.heading}
+                                  onChange={(e) =>
+                                    updateProviderBlock(sectionIndex, blockIndex, {
+                                      heading: e.target.value,
+                                    })
+                                  }
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <label className="text-xs text-muted-foreground">
+                                  Items (one per line)
+                                </label>
+                                <Textarea
+                                  value={block.items.join("\n")}
+                                  onChange={(e) =>
+                                    updateProviderBlock(sectionIndex, blockIndex, {
+                                      items: e.target.value
+                                        .split("\n")
+                                        .map((item) => item.trim())
+                                        .filter(Boolean),
+                                    })
+                                  }
+                                  rows={4}
+                                />
+                              </div>
+                              <div className="flex justify-end">
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => removeProviderBlock(sectionIndex, blockIndex)}
+                                >
+                                  Remove block
+                                </Button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex justify-end">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => removeProviderSection(sectionIndex)}
+                      >
+                        Remove section
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <label className="text-sm font-medium">Launch checklist</label>
+              <Button type="button" variant="outline" size="sm" onClick={addProviderChecklistItem}>
+                Add checklist item
+              </Button>
+            </div>
+            {providerResourcesConfig.checklistItems.length === 0 ? (
+              <p className="text-xs text-muted-foreground">No checklist items added yet.</p>
+            ) : (
+              <div className="space-y-2">
+                {providerResourcesConfig.checklistItems.map((item, itemIndex) => (
+                  <div
+                    key={`${item.key}-${itemIndex}`}
+                    className="rounded-md border border-border/60 p-3 grid gap-3 md:grid-cols-[1.3fr_2fr_auto_auto] md:items-center"
+                  >
+                    <select
+                      className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+                      value={item.key}
+                      onChange={(e) =>
+                        updateProviderChecklistItem(itemIndex, {
+                          key: e.target.value as ProviderLaunchChecklistKey,
+                        })
+                      }
+                    >
+                      {PROVIDER_CHECKLIST_KEY_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                    <Input
+                      value={item.label}
+                      onChange={(e) =>
+                        updateProviderChecklistItem(itemIndex, { label: e.target.value })
+                      }
+                      placeholder="Checklist label"
+                    />
+                    <label className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <input
+                        type="checkbox"
+                        checked={item.editable}
+                        onChange={(e) =>
+                          updateProviderChecklistItem(itemIndex, { editable: e.target.checked })
+                        }
+                      />
+                      Manual
+                    </label>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => removeProviderChecklistItem(itemIndex)}
+                    >
+                      Remove
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <label className="text-sm font-medium">Advanced resources</label>
+              <Button type="button" variant="outline" size="sm" onClick={addAdvancedResource}>
+                Add resource
+              </Button>
+            </div>
+            {providerResourcesConfig.advancedResources.length === 0 ? (
+              <p className="text-xs text-muted-foreground">No advanced resources added yet.</p>
+            ) : (
+              <div className="space-y-2">
+                {providerResourcesConfig.advancedResources.map((item, itemIndex) => (
+                  <div
+                    key={`advanced-resource-${itemIndex}`}
+                    className="rounded-md border border-border/60 p-3 flex flex-wrap items-center gap-2"
+                  >
+                    <Input
+                      className="flex-1 min-w-[240px]"
+                      value={item}
+                      onChange={(e) => updateAdvancedResource(itemIndex, e.target.value)}
+                      placeholder="Advanced resource item"
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => removeAdvancedResource(itemIndex)}
+                    >
+                      Remove
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <p className="text-xs text-muted-foreground">
+              This editor controls section titles, bullets, checklist labels, and advanced resources on dashboard and website.
+            </p>
           </div>
         </CardContent>
       </Card>

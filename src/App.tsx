@@ -43,12 +43,15 @@ import AdminHomeContent from "./pages/admin/AdminHomeContent";
 import AdminPages from "./pages/admin/AdminPages";
 import SignIn from "./pages/SignIn";
 import SignUp from "./pages/SignUp";
+import ForgotPassword from "./pages/ForgotPassword";
+import ResetPassword from "./pages/ResetPassword";
 import NotFound from "./pages/NotFound";
 import PaymentVerify from "./pages/PaymentVerify";
 import Cookies from "./pages/Cookies";
 import Privacy from "./pages/Privacy";
 import Terms from "./pages/Terms";
 import ProviderAddendum from "./pages/ProviderAddendum";
+import ProviderResources from "./pages/ProviderResources";
 import About from "./pages/About";
 import Blog from "./pages/Blog";
 import { ADMIN_ROLES } from "@/lib/roles";
@@ -73,6 +76,7 @@ const App = () => (
                     <Route path="/browse" element={<Browse />} />
                     <Route path="/about" element={<About />} />
                     <Route path="/blog" element={<Blog />} />
+                    <Route path="/provider-resources" element={<ProviderResources />} />
                     <Route path="/community" element={<Community />} />
                     <Route path="/profile/:id" element={<Profile />} />
                     <Route
@@ -195,6 +199,8 @@ const App = () => (
                     />
                     <Route path="/sign-in" element={<SignIn />} />
                     <Route path="/sign-up" element={<SignUp />} />
+                    <Route path="/forgot-password" element={<ForgotPassword />} />
+                    <Route path="/reset-password" element={<ResetPassword />} />
                     <Route path="/payment/verify" element={<PaymentVerify />} />
                     <Route path="/cookies" element={<Cookies />} />
                     <Route path="/privacy" element={<Privacy />} />

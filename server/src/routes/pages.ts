@@ -9,6 +9,7 @@ import {
   type StaticPageKey,
   type BlogPost,
   type StaffProfile,
+  type ProviderResourcesContent,
 } from "../utils/pages.js";
 import { signS3Key } from "../utils/s3.js";
 
@@ -49,6 +50,10 @@ pagesRouter.get(
         ? legacyPosts
         : fallback.posts ?? [];
     const staff = Array.isArray(content.staff) ? content.staff : fallback.staff ?? [];
+    const resourcesConfig =
+      content.resourcesConfig && typeof content.resourcesConfig === "object"
+        ? (content.resourcesConfig as ProviderResourcesContent)
+        : fallback.resourcesConfig;
 
     const resolvePosts = async (items: BlogPost[]) =>
       Promise.all(
@@ -73,6 +78,7 @@ pagesRouter.get(
         body: fallback.body,
         posts: await resolvePosts(fallback.posts ?? []),
         staff: await resolveStaff(fallback.staff ?? []),
+        resourcesConfig,
         updatedAt: null,
       });
     }
@@ -83,6 +89,7 @@ pagesRouter.get(
       body: page.body,
       posts: await resolvePosts(posts),
       staff: await resolveStaff(staff),
+      resourcesConfig,
       updatedAt: page.updatedAt,
     });
   }),

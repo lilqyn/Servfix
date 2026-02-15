@@ -2,6 +2,7 @@ import { prisma } from "../db.js";
 import { signS3Key } from "./s3.js";
 import { pushToUser } from "../websocket.js";
 import { getPlatformSettings } from "./platform-settings.js";
+import { sendEmail } from "./email.js";
 import type { NotificationType, Prisma } from "@prisma/client";
 
 type ActorSummary = {
@@ -44,6 +45,20 @@ const renderTemplate = (template: string, tokens: Record<string, string>) => {
   return template.replace(/\{(\w+)\}/g, (match, key) => {
     return Object.prototype.hasOwnProperty.call(tokens, key) ? tokens[key] : match;
   });
+};
+
+const EMAIL_NOTIFICATION_TYPES = new Set<NotificationType>([
+  "order_created",
+  "order_status",
+  "payout_update",
+]);
+
+const buildEmailText = (title: string, body?: string | null) => {
+  const trimmedBody = body?.trim();
+  if (trimmedBody) {
+    return `${title}\n\n${trimmedBody}`;
+  }
+  return title;
 };
 
 const formatNotification = async (notification: {
@@ -126,10 +141,34 @@ export const createNotification = async (params: {
           providerProfile: { select: { displayName: true } },
         },
       },
+      user: {
+        select: {
+          email: true,
+          username: true,
+        },
+      },
     },
   });
 
   const formatted = await formatNotification(notification);
   pushToUser(params.userId, { type: "notification", notification: formatted });
+
+  if (EMAIL_NOTIFICATION_TYPES.has(params.type)) {
+    const recipientEmail = notification.user?.email ?? null;
+    if (recipientEmail) {
+      const subject = title;
+      const text = buildEmailText(title, body);
+      void sendEmail({
+        to: recipientEmail,
+        subject,
+        text,
+        tag: params.type,
+        metadata: { notificationId: notification.id },
+      }).catch((error) => {
+        console.warn("Failed to send notification email.", error);
+      });
+    }
+  }
+
   return formatted;
 };

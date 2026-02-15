@@ -16,6 +16,7 @@ import { toast } from "sonner";
 import { apiFetch } from "@/lib/api";
 import { AuthResponse, getIdentifierPayload, identifierSchema, mapAuthErrorMessage } from "@/lib/auth";
 import { useAuth } from "@/contexts/AuthContext";
+import GoogleAuthButton from "@/components/auth/GoogleAuthButton";
 
 const signUpSchema = z
   .object({
@@ -59,6 +60,9 @@ const SignUp = () => {
   const location = useLocation();
   const [submitError, setSubmitError] = useState<string | null>(null);
   const { signIn, user, isAuthenticated, isHydrated } = useAuth();
+  const googleEnabled =
+    import.meta.env.VITE_GOOGLE_AUTH_ENABLED === "true" &&
+    Boolean(import.meta.env.VITE_GOOGLE_CLIENT_ID?.trim());
 
   const form = useForm<SignUpFormValues>({
     resolver: zodResolver(signUpSchema),
@@ -74,6 +78,26 @@ const SignUp = () => {
   });
 
   const role = form.watch("role");
+  const username = form.watch("username");
+  const displayName = form.watch("displayName");
+
+  const handleAuthSuccess = (response: AuthResponse) => {
+    signIn(response);
+    toast.success("Account created successfully!");
+
+    const next = new URLSearchParams(location.search).get("next");
+    if (next && next.startsWith("/")) {
+      navigate(next);
+      return;
+    }
+
+    navigate(response.user.role === "provider" ? "/dashboard" : "/browse");
+  };
+
+  const handleAuthError = (message: string) => {
+    setSubmitError(message);
+    toast.error(message);
+  };
 
   const onSubmit = async (values: SignUpFormValues) => {
     setSubmitError(null);
@@ -92,20 +116,10 @@ const SignUp = () => {
         body: JSON.stringify(payload),
       });
 
-      signIn(response);
-      toast.success("Account created successfully!");
-
-      const next = new URLSearchParams(location.search).get("next");
-      if (next && next.startsWith("/")) {
-        navigate(next);
-        return;
-      }
-
-      navigate(response.user.role === "provider" ? "/dashboard" : "/browse");
+      handleAuthSuccess(response);
     } catch (error) {
       const message = mapAuthErrorMessage(error instanceof Error ? error.message : "");
-      setSubmitError(message);
-      toast.error(message);
+      handleAuthError(message);
     }
   };
 
@@ -131,6 +145,24 @@ const SignUp = () => {
                 <Alert variant="destructive">
                   <AlertDescription>{submitError}</AlertDescription>
                 </Alert>
+              )}
+
+              {googleEnabled && (
+                <div className="space-y-4">
+                  <GoogleAuthButton
+                    mode="register"
+                    role={role}
+                    username={username}
+                    displayName={displayName}
+                    onAuth={handleAuthSuccess}
+                    onError={handleAuthError}
+                  />
+                  <div className="flex items-center gap-3 text-xs uppercase text-muted-foreground">
+                    <span className="h-px flex-1 bg-border/60" />
+                    <span>or sign up with email</span>
+                    <span className="h-px flex-1 bg-border/60" />
+                  </div>
+                </div>
               )}
 
               <Form {...form}>

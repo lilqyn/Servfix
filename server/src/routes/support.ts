@@ -4,6 +4,7 @@ import { prisma } from "../db.js";
 import { asyncHandler } from "../utils/async-handler.js";
 import { authRequired } from "../middleware/auth.js";
 import { createSupportTicketEvent, formatTicketNumber } from "../utils/tickets.js";
+import { sendEmail } from "../utils/email.js";
 
 export const supportRouter = Router();
 
@@ -117,8 +118,39 @@ supportRouter.post(
       },
     });
 
+    const ticketNumber = formatTicketNumber(ticket.ticketNumber, ticket.id);
+    const requesterEmail = req.user!.email ?? null;
+
+    if (requesterEmail) {
+      const requesterName = req.user!.username ?? "there";
+      const subject = `We received your support ticket ${ticketNumber}`;
+      const text = [
+        `Hi ${requesterName},`,
+        "",
+        "Thanks for contacting Servfix support. We have received your ticket and will reply soon.",
+        "",
+        `Ticket: ${ticketNumber}`,
+        `Subject: ${ticket.subject}`,
+        "",
+        "Message:",
+        data.message,
+        "",
+        "You can check your ticket status in the app under Support.",
+      ].join("\n");
+
+      void sendEmail({
+        to: requesterEmail,
+        subject,
+        text,
+        tag: "support_ticket_created",
+        metadata: { ticketId: ticket.id },
+      }).catch((error) => {
+        console.warn("Failed to send support ticket confirmation email.", error);
+      });
+    }
+
     res.status(201).json({
-      ticket: { ...ticket, ticketNumber: formatTicketNumber(ticket.ticketNumber, ticket.id) },
+      ticket: { ...ticket, ticketNumber },
     });
   }),
 );

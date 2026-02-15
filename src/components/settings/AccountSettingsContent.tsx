@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQueries, useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
 import {
+  createOrderPaymentCheckout,
+  fetchOrderPayments,
+  fetchOrders,
   fetchProviderPayouts,
   updateMyProfile,
   uploadProfileAvatar,
@@ -24,6 +27,7 @@ import { Switch } from "@/components/ui/switch";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { toast } from "@/components/ui/use-toast";
 import { getRoleLabel, isProviderRole } from "@/lib/roles";
+import { usePublicSettings } from "@/hooks/usePublicSettings";
 
 const PREFERENCES_KEY = "servfix-preferences";
 const LEGACY_PREFERENCES_KEY = "serveghana-preferences";
@@ -58,6 +62,17 @@ const loadPreferences = (): PreferencesState => {
   }
 };
 
+const toNumber = (value: unknown) => {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === "string") {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  return 0;
+};
+
 type AccountSettingsContentProps = {
   showHeader?: boolean;
 };
@@ -66,11 +81,38 @@ const AccountSettingsContent = ({ showHeader = true }: AccountSettingsContentPro
   const navigate = useNavigate();
   const { user, refreshUser } = useAuth();
   const isProvider = isProviderRole(user?.role);
+  const isBuyer = user?.role === "buyer";
+  const { data: publicSettings } = usePublicSettings();
   const { data: payoutData, isLoading: isLoadingPayouts } = useQuery({
     queryKey: ["provider-payouts"],
     queryFn: fetchProviderPayouts,
     enabled: isProvider,
   });
+  const {
+    data: buyerOrders = [],
+    isLoading: isLoadingBuyerOrders,
+    error: buyerOrdersError,
+  } = useQuery({
+    queryKey: ["orders"],
+    queryFn: fetchOrders,
+    enabled: isBuyer,
+  });
+  const paymentConfig = publicSettings?.payments;
+  const enabledProviders =
+    paymentConfig?.enabledProviders ?? [
+      "flutterwave",
+      "stripe",
+      "paystack",
+      "hubtel",
+      "expresspay",
+    ];
+  const defaultProvider = paymentConfig?.defaultProvider ?? "flutterwave";
+  const paymentProvider = enabledProviders.length
+    ? enabledProviders.includes(defaultProvider)
+      ? defaultProvider
+      : enabledProviders[0]
+    : "flutterwave";
+  const paymentMethod = paymentProvider === "stripe" ? "card" : "mobile_money";
 
   const providerProfile = user?.providerProfile as
     | {
@@ -104,6 +146,54 @@ const AccountSettingsContent = ({ showHeader = true }: AccountSettingsContentPro
   const [isSaving, setIsSaving] = useState(false);
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
   const [isUploadingBanner, setIsUploadingBanner] = useState(false);
+  const [payingOrderPaymentId, setPayingOrderPaymentId] = useState<string | null>(null);
+
+  const buyerOrdersWithPartialPayments = useMemo(() => {
+    if (!isBuyer) {
+      return [];
+    }
+    return buyerOrders.filter((order) => {
+      const gross = toNumber(order.amountGross);
+      const paid = toNumber(order.amountPaid);
+      return paid > 0 && paid < gross;
+    });
+  }, [buyerOrders, isBuyer]);
+
+  const buyerOrderPaymentQueries = useQueries({
+    queries: buyerOrdersWithPartialPayments.map((order) => ({
+      queryKey: ["order-payments", order.id],
+      queryFn: () => fetchOrderPayments(order.id),
+      enabled: isBuyer,
+      staleTime: 15_000,
+    })),
+  });
+
+  const buyerBalanceDueItems = useMemo(() => {
+    return buyerOrdersWithPartialPayments.flatMap((order, index) => {
+      const pendingBalancePayment = buyerOrderPaymentQueries[index]?.data?.find(
+        (payment) => payment.stage === "balance" && payment.status === "pending",
+      );
+      if (!pendingBalancePayment) {
+        return [];
+      }
+      return [
+        {
+          orderId: order.id,
+          serviceTitle: order.service?.title ?? "Service",
+          orderUpdatedAt: order.updatedAt,
+          paymentId: pendingBalancePayment.id,
+          amount: toNumber(pendingBalancePayment.amount),
+          currency: pendingBalancePayment.currency,
+        },
+      ];
+    });
+  }, [buyerOrderPaymentQueries, buyerOrdersWithPartialPayments]);
+
+  const isLoadingBuyerBalanceDue =
+    isBuyer &&
+    (isLoadingBuyerOrders || buyerOrderPaymentQueries.some((query) => query.isLoading));
+  const buyerBalanceDueError =
+    buyerOrdersError ?? buyerOrderPaymentQueries.find((query) => query.error)?.error;
 
   useEffect(() => {
     setForm({
@@ -119,7 +209,7 @@ const AccountSettingsContent = ({ showHeader = true }: AccountSettingsContentPro
     });
     setAvatarPreview(user?.avatarUrl ?? null);
     setBannerPreview(user?.bannerUrl ?? null);
-  }, [providerProfile, user]);
+  }, [isProvider, providerProfile, user]);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -171,6 +261,14 @@ const AccountSettingsContent = ({ showHeader = true }: AccountSettingsContentPro
       currency,
       currencyDisplay: "code",
       maximumFractionDigits: 0,
+    }).format(value);
+  const formatMoneyExact = (value: number, currency: "GHS" | "USD" | "EUR") =>
+    new Intl.NumberFormat("en-GH", {
+      style: "currency",
+      currency,
+      currencyDisplay: "code",
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
     }).format(value);
 
   const payoutCurrency = payoutData?.wallet?.currency ?? "GHS";
@@ -293,6 +391,26 @@ const AccountSettingsContent = ({ showHeader = true }: AccountSettingsContentPro
     }
   };
 
+  const handlePayBalance = async (orderPaymentId: string) => {
+    if (enabledProviders.length === 0) {
+      toast("No payment providers are currently available.");
+      return;
+    }
+    setPayingOrderPaymentId(orderPaymentId);
+    try {
+      const checkout = await createOrderPaymentCheckout({
+        orderPaymentId,
+        provider: paymentProvider,
+        method: paymentMethod,
+      });
+      window.location.href = checkout.checkoutUrl;
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "Unable to start balance payment.");
+    } finally {
+      setPayingOrderPaymentId(null);
+    }
+  };
+
   if (!user) {
     return null;
   }
@@ -355,6 +473,17 @@ const AccountSettingsContent = ({ showHeader = true }: AccountSettingsContentPro
               >
                 Contact info
               </button>
+              {isBuyer ? (
+                <button
+                  type="button"
+                  className="w-full text-left rounded-lg px-3 py-2 hover:bg-muted"
+                  onClick={() =>
+                    document.getElementById("payments-section")?.scrollIntoView({ behavior: "smooth" })
+                  }
+                >
+                  Payments due
+                </button>
+              ) : null}
               {isProvider ? (
                 <button
                   type="button"
@@ -619,6 +748,72 @@ const AccountSettingsContent = ({ showHeader = true }: AccountSettingsContentPro
             </CardContent>
           </Card>
 
+          {isBuyer ? (
+            <Card id="payments-section" className="border-border/60">
+              <CardContent className="p-6 space-y-4">
+                <div>
+                  <h2 className="text-lg font-semibold text-foreground">Payments due</h2>
+                  <p className="text-sm text-muted-foreground">
+                    When a provider requests your remaining balance, it appears here with the exact
+                    amount.
+                  </p>
+                </div>
+                {isLoadingBuyerBalanceDue ? (
+                  <div className="text-sm text-muted-foreground">Checking outstanding balances...</div>
+                ) : buyerBalanceDueError ? (
+                  <div className="text-sm text-destructive">
+                    {buyerBalanceDueError instanceof Error
+                      ? buyerBalanceDueError.message
+                      : "Unable to load balance payments."}
+                  </div>
+                ) : buyerBalanceDueItems.length === 0 ? (
+                  <div className="rounded-xl border border-border/60 bg-muted/20 p-4 text-sm text-muted-foreground">
+                    No balance payments are due right now.
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {buyerBalanceDueItems.map((item) => {
+                      const updatedAt = new Date(item.orderUpdatedAt);
+                      const dateLabel = Number.isNaN(updatedAt.getTime())
+                        ? null
+                        : updatedAt.toLocaleDateString("en-US", {
+                            month: "short",
+                            day: "numeric",
+                            year: "numeric",
+                          });
+                      const isPaying = payingOrderPaymentId === item.paymentId;
+                      return (
+                        <div
+                          key={item.paymentId}
+                          className="flex flex-col gap-3 rounded-xl border border-border/60 bg-card px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+                        >
+                          <div>
+                            <p className="text-sm font-medium text-foreground">{item.serviceTitle}</p>
+                            <p className="text-xs text-muted-foreground">
+                              Remaining balance: {formatMoneyExact(item.amount, item.currency)}
+                            </p>
+                            {dateLabel ? (
+                              <p className="text-xs text-muted-foreground">Updated {dateLabel}</p>
+                            ) : null}
+                          </div>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="gold"
+                            disabled={isPaying}
+                            onClick={() => void handlePayBalance(item.paymentId)}
+                          >
+                            {isPaying ? "Starting checkout..." : "Pay Balance"}
+                          </Button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          ) : null}
+
           {isProvider && (
             <Card id="payout-section" className="border-border/60">
               <CardContent className="p-6 space-y-4">
@@ -798,7 +993,7 @@ const AccountSettingsContent = ({ showHeader = true }: AccountSettingsContentPro
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={() => toast("Password reset is not available yet.")}
+                  onClick={() => navigate("/forgot-password")}
                 >
                   Request password reset
                 </Button>

@@ -142,6 +142,8 @@ const PAYMENT_PROVIDERS: Array<{ value: PaymentIntegrationProvider; label: strin
   { value: "flutterwave", label: "Flutterwave" },
   { value: "paystack", label: "Paystack" },
   { value: "stripe", label: "Stripe" },
+  { value: "hubtel", label: "Hubtel" },
+  { value: "expresspay", label: "ExpressPay" },
 ];
 
 const PAYOUT_PROVIDERS: Array<{ value: PayoutRules["provider"]; label: string }> = [
@@ -352,6 +354,12 @@ const DEFAULT_INTEGRATIONS: Integrations = {
     flutterwaveSecretKey: "",
     paystackSecretKey: "",
     stripeSecretKey: "",
+    hubtelClientId: "",
+    hubtelClientSecret: "",
+    hubtelBaseUrl: "",
+    expresspayMerchantId: "",
+    expresspayApiKey: "",
+    expresspayBaseUrl: "",
   },
   webhooks: {
     stripeWebhookSecret: "",
@@ -373,6 +381,10 @@ const DEFAULT_SECRET_DRAFTS = {
   flutterwaveSecretKey: "",
   paystackSecretKey: "",
   stripeSecretKey: "",
+  hubtelClientId: "",
+  hubtelClientSecret: "",
+  expresspayMerchantId: "",
+  expresspayApiKey: "",
   stripeWebhookSecret: "",
   flutterwaveWebhookHash: "",
   outboundSigningKey: "",
@@ -895,6 +907,18 @@ const AdminSettings = () => {
             stripeSecretKey: secretDrafts.stripeSecretKey.trim()
               ? secretDrafts.stripeSecretKey.trim()
               : draft.integrations.payments.stripeSecretKey,
+            hubtelClientId: secretDrafts.hubtelClientId.trim()
+              ? secretDrafts.hubtelClientId.trim()
+              : draft.integrations.payments.hubtelClientId,
+            hubtelClientSecret: secretDrafts.hubtelClientSecret.trim()
+              ? secretDrafts.hubtelClientSecret.trim()
+              : draft.integrations.payments.hubtelClientSecret,
+            expresspayMerchantId: secretDrafts.expresspayMerchantId.trim()
+              ? secretDrafts.expresspayMerchantId.trim()
+              : draft.integrations.payments.expresspayMerchantId,
+            expresspayApiKey: secretDrafts.expresspayApiKey.trim()
+              ? secretDrafts.expresspayApiKey.trim()
+              : draft.integrations.payments.expresspayApiKey,
           },
           webhooks: {
             ...draft.integrations.webhooks,
@@ -2111,6 +2135,104 @@ const AdminSettings = () => {
                         ? "•••••••• (saved)"
                         : "sk_live_..."
                     }
+                    disabled={!canUpdate}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Hubtel client ID</Label>
+                  <Input
+                    type="password"
+                    value={secretDrafts.hubtelClientId}
+                    onChange={(event) =>
+                      setSecretDrafts((prev) => ({
+                        ...prev,
+                        hubtelClientId: event.target.value,
+                      }))
+                    }
+                    placeholder={
+                      draft.integrations.payments.hubtelClientId
+                        ? "•••••••• (saved)"
+                        : "Enter Hubtel client ID"
+                    }
+                    disabled={!canUpdate}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Hubtel client secret</Label>
+                  <Input
+                    type="password"
+                    value={secretDrafts.hubtelClientSecret}
+                    onChange={(event) =>
+                      setSecretDrafts((prev) => ({
+                        ...prev,
+                        hubtelClientSecret: event.target.value,
+                      }))
+                    }
+                    placeholder={
+                      draft.integrations.payments.hubtelClientSecret
+                        ? "•••••••• (saved)"
+                        : "Enter Hubtel client secret"
+                    }
+                    disabled={!canUpdate}
+                  />
+                </div>
+                <div className="space-y-2 md:col-span-2">
+                  <Label>Hubtel base URL</Label>
+                  <Input
+                    value={draft.integrations.payments.hubtelBaseUrl}
+                    onChange={(event) =>
+                      updatePaymentIntegration({ hubtelBaseUrl: event.target.value })
+                    }
+                    placeholder="https://your-hubtel-base-url"
+                    disabled={!canUpdate}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>ExpressPay merchant ID</Label>
+                  <Input
+                    type="password"
+                    value={secretDrafts.expresspayMerchantId}
+                    onChange={(event) =>
+                      setSecretDrafts((prev) => ({
+                        ...prev,
+                        expresspayMerchantId: event.target.value,
+                      }))
+                    }
+                    placeholder={
+                      draft.integrations.payments.expresspayMerchantId
+                        ? "•••••••• (saved)"
+                        : "Enter ExpressPay merchant ID"
+                    }
+                    disabled={!canUpdate}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>ExpressPay API key</Label>
+                  <Input
+                    type="password"
+                    value={secretDrafts.expresspayApiKey}
+                    onChange={(event) =>
+                      setSecretDrafts((prev) => ({
+                        ...prev,
+                        expresspayApiKey: event.target.value,
+                      }))
+                    }
+                    placeholder={
+                      draft.integrations.payments.expresspayApiKey
+                        ? "•••••••• (saved)"
+                        : "Enter ExpressPay API key"
+                    }
+                    disabled={!canUpdate}
+                  />
+                </div>
+                <div className="space-y-2 md:col-span-2">
+                  <Label>ExpressPay base URL</Label>
+                  <Input
+                    value={draft.integrations.payments.expresspayBaseUrl}
+                    onChange={(event) =>
+                      updatePaymentIntegration({ expresspayBaseUrl: event.target.value })
+                    }
+                    placeholder="https://expresspaygh.com/api"
                     disabled={!canUpdate}
                   />
                 </div>

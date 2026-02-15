@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Search, Tag, ArrowRight } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
 import { useServices } from "@/hooks/useServices";
 
@@ -11,9 +12,16 @@ type ProviderSuggestion = {
   name: string;
   category: string;
   location: string;
-  avatar: string;
+  avatar?: string | null;
   rating: number;
   reviews: number;
+};
+
+const getInitials = (name: string) => {
+  const tokens = name.replace(/^@/, "").split(" ").filter(Boolean);
+  const first = tokens[0]?.[0] ?? "U";
+  const second = tokens[1]?.[0] ?? "";
+  return `${first}${second}`.toUpperCase();
 };
 
 interface SearchAutocompleteProps {
@@ -237,11 +245,14 @@ const SearchAutocomplete = ({ onClose, autoFocus, className }: SearchAutocomplet
                           : "hover:bg-muted"
                       )}
                     >
-                      <img
-                        src={provider.avatar}
-                        alt={provider.name}
-                        className="h-8 w-8 rounded-full object-cover"
-                      />
+                      <Avatar className="h-8 w-8">
+                        {provider.avatar ? (
+                          <AvatarImage src={provider.avatar} alt={provider.name} />
+                        ) : null}
+                        <AvatarFallback className="bg-primary/10 text-primary text-[10px] font-semibold">
+                          {getInitials(provider.name)}
+                        </AvatarFallback>
+                      </Avatar>
                       <div className="flex-1 text-left">
                         <p className="font-medium">{provider.name}</p>
                         <p className="text-xs text-muted-foreground">{provider.category} • {provider.location}</p>

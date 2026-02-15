@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { BadgeCheck, MapPin, Clock, Briefcase, Star, MessageCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import type { ServiceDetailData } from "@/lib/services";
 
 interface ServiceInfoProps {
@@ -10,6 +11,13 @@ interface ServiceInfoProps {
 
 const ServiceInfo = ({ service, onContact }: ServiceInfoProps) => {
   const canContact = Boolean(onContact);
+  const providerInitials = service.provider.name
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((token) => token[0])
+    .join("")
+    .toUpperCase();
 
   return (
     <div className="space-y-8">
@@ -36,11 +44,14 @@ const ServiceInfo = ({ service, onContact }: ServiceInfoProps) => {
             to={`/profile/${service.provider.username ? service.provider.username : service.provider.id}`}
             className="flex items-start gap-4 flex-1"
           >
-            <img
-              src={service.provider.avatar}
-              alt={service.provider.name}
-              className="w-16 h-16 rounded-full object-cover ring-2 ring-border"
-            />
+            <Avatar className="w-16 h-16 ring-2 ring-border">
+              {service.provider.avatar ? (
+                <AvatarImage src={service.provider.avatar} alt={service.provider.name} />
+              ) : null}
+              <AvatarFallback className="bg-primary/10 text-primary font-semibold">
+                {providerInitials || "U"}
+              </AvatarFallback>
+            </Avatar>
             <div className="flex-1">
               <div className="flex items-center gap-2 mb-1">
                 <h3 className="font-semibold text-foreground">{service.provider.name}</h3>

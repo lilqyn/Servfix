@@ -192,7 +192,12 @@ export type ApiOrder = {
   updatedAt: string;
 };
 
-export type CheckoutProvider = "flutterwave" | "stripe" | "paystack";
+export type CheckoutProvider =
+  | "flutterwave"
+  | "stripe"
+  | "paystack"
+  | "hubtel"
+  | "expresspay";
 export type CheckoutMethod = "card" | "mobile_money";
 
 export type BoostType = "featured" | "feed_boost" | "category_top";
@@ -689,7 +694,7 @@ export type HomeContent = HomeContentPayload & {
   updatedAt?: string;
 };
 
-export type StaticPageKey = "about" | "blog";
+export type StaticPageKey = "about" | "blog" | "providerResources";
 
 export type BlogPost = {
   title: string;
@@ -714,11 +719,46 @@ export type StaffProfileView = StaffProfile & {
   photoSignedUrl?: string | null;
 };
 
+export type ProviderLaunchChecklistKey =
+  | "profile_completed"
+  | "profile_photo_uploaded"
+  | "service_photos_uploaded"
+  | "pricing_calculated"
+  | "service_description_optimized"
+  | "payment_policy_understood"
+  | "cancellation_rules_reviewed"
+  | "tax_record_process_started";
+
+export type ProviderResourceBlock = {
+  heading: string;
+  items: string[];
+};
+
+export type ProviderResourceSection = {
+  id: string;
+  title: string;
+  description: string;
+  blocks: ProviderResourceBlock[];
+};
+
+export type ProviderLaunchChecklistItem = {
+  key: ProviderLaunchChecklistKey;
+  label: string;
+  editable: boolean;
+};
+
+export type ProviderResourcesContent = {
+  sections: ProviderResourceSection[];
+  checklistItems: ProviderLaunchChecklistItem[];
+  advancedResources: string[];
+};
+
 export type StaticPagePayload = {
   title: string;
   body: string;
   posts?: BlogPost[];
   staff?: StaffProfile[];
+  resourcesConfig?: ProviderResourcesContent;
 };
 
 export type StaticPage = Omit<StaticPagePayload, "posts" | "staff"> & {
@@ -1375,7 +1415,12 @@ export type SmsIntegrationProvider =
   | "termii"
   | "custom";
 
-export type PaymentIntegrationProvider = "flutterwave" | "stripe" | "paystack";
+export type PaymentIntegrationProvider =
+  | "flutterwave"
+  | "stripe"
+  | "paystack"
+  | "hubtel"
+  | "expresspay";
 
 export type SocialLinkPlatform =
   | "facebook"
@@ -1406,6 +1451,12 @@ export type Integrations = {
     flutterwaveSecretKey: string;
     paystackSecretKey: string;
     stripeSecretKey: string;
+    hubtelClientId: string;
+    hubtelClientSecret: string;
+    hubtelBaseUrl: string;
+    expresspayMerchantId: string;
+    expresspayApiKey: string;
+    expresspayBaseUrl: string;
   };
   webhooks: {
     stripeWebhookSecret: string;
@@ -2466,6 +2517,8 @@ export async function verifyPayment(params: {
   txRef?: string | null;
   sessionId?: string | null;
   reference?: string | null;
+  token?: string | null;
+  orderId?: string | null;
 }): Promise<PaymentVerifyResponse> {
   const query = new URLSearchParams();
   query.set("provider", params.provider);
@@ -2480,6 +2533,12 @@ export async function verifyPayment(params: {
   }
   if (params.reference) {
     query.set("reference", params.reference);
+  }
+  if (params.token) {
+    query.set("token", params.token);
+  }
+  if (params.orderId) {
+    query.set("order_id", params.orderId);
   }
 
   return apiFetch(`/api/payments/verify?${query.toString()}`);

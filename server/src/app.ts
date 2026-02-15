@@ -42,6 +42,12 @@ app.use(
     },
   }),
 );
+app.use(
+  express.urlencoded({
+    extended: true,
+    limit: "15mb",
+  }),
+);
 
 app.use("/api/health", healthRouter);
 app.use("/api/auth", authRouter);

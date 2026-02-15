@@ -75,8 +75,6 @@ export type ServiceDetailData = {
 
 export const FALLBACK_IMAGE =
   "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?w=600&h=400&fit=crop";
-export const FALLBACK_AVATAR =
-  "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=100&h=100&fit=crop";
 
 function toNumber(value: unknown): number {
   if (typeof value === "number" && Number.isFinite(value)) {
@@ -203,7 +201,7 @@ export function mapServiceToSummary(service: ApiService): ServiceSummary {
     location,
     rating: Math.round(rating * 10) / 10,
     reviews,
-    avatar: service.provider.avatarUrl ?? FALLBACK_AVATAR,
+    avatar: service.provider.avatarUrl ?? "",
     price: minPrice,
     priceDisplay: formatPrice(
       minPrice,
@@ -317,7 +315,7 @@ export function mapServiceToDetail(service: ApiService): ServiceDetailData {
     provider: {
       id: service.provider.id,
       name: providerName,
-      avatar: service.provider.avatarUrl ?? FALLBACK_AVATAR,
+      avatar: service.provider.avatarUrl ?? "",
       username: service.provider.username ?? null,
       verified,
       topRated,

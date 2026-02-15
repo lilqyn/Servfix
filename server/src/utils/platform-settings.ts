@@ -130,7 +130,12 @@ export type SmsIntegrationProvider =
   | "termii"
   | "custom";
 
-export type PaymentIntegrationProvider = "flutterwave" | "stripe" | "paystack";
+export type PaymentIntegrationProvider =
+  | "flutterwave"
+  | "stripe"
+  | "paystack"
+  | "hubtel"
+  | "expresspay";
 
 export type SocialLinkPlatform =
   | "facebook"
@@ -161,6 +166,12 @@ export type Integrations = {
     flutterwaveSecretKey: string;
     paystackSecretKey: string;
     stripeSecretKey: string;
+    hubtelClientId: string;
+    hubtelClientSecret: string;
+    hubtelBaseUrl: string;
+    expresspayMerchantId: string;
+    expresspayApiKey: string;
+    expresspayBaseUrl: string;
   };
   webhooks: {
     stripeWebhookSecret: string;
@@ -376,11 +387,19 @@ const smsIntegrationSchema = z.object({
 
 const paymentsIntegrationSchema = z
   .object({
-    enabledProviders: z.array(z.enum(["flutterwave", "stripe", "paystack"])).min(1),
-    defaultProvider: z.enum(["flutterwave", "stripe", "paystack"]),
+    enabledProviders: z
+      .array(z.enum(["flutterwave", "stripe", "paystack", "hubtel", "expresspay"]))
+      .min(1),
+    defaultProvider: z.enum(["flutterwave", "stripe", "paystack", "hubtel", "expresspay"]),
     flutterwaveSecretKey: z.string().trim().max(200),
     paystackSecretKey: z.string().trim().max(200).optional().default(""),
     stripeSecretKey: z.string().trim().max(200),
+    hubtelClientId: z.string().trim().max(200).optional().default(""),
+    hubtelClientSecret: z.string().trim().max(200).optional().default(""),
+    hubtelBaseUrl: z.string().trim().max(200).optional().default(""),
+    expresspayMerchantId: z.string().trim().max(200).optional().default(""),
+    expresspayApiKey: z.string().trim().max(200).optional().default(""),
+    expresspayBaseUrl: z.string().trim().max(200).optional().default(""),
   })
   .superRefine((value, ctx) => {
     if (!value.enabledProviders.includes(value.defaultProvider)) {
@@ -538,7 +557,7 @@ const defaultAdminAccess: AdminAccessSettings = ADMIN_PAGE_KEYS.reduce((acc, key
 const defaultIntegrations: Integrations = {
   email: {
     provider: "disabled",
-    fromAddress: "",
+    fromAddress: "support@servfixgh.com",
     apiKey: "",
   },
   sms: {
@@ -552,6 +571,12 @@ const defaultIntegrations: Integrations = {
     flutterwaveSecretKey: "",
     paystackSecretKey: "",
     stripeSecretKey: "",
+    hubtelClientId: "",
+    hubtelClientSecret: "",
+    hubtelBaseUrl: "",
+    expresspayMerchantId: "",
+    expresspayApiKey: "",
+    expresspayBaseUrl: "",
   },
   webhooks: {
     stripeWebhookSecret: "",
@@ -723,7 +748,13 @@ const normalizeAdminAccess = (input: AdminAccessSettings): AdminAccessSettings =
 };
 
 const normalizeIntegrations = (input: Integrations): Integrations => {
-  const paymentProviders: PaymentIntegrationProvider[] = ["flutterwave", "stripe", "paystack"];
+  const paymentProviders: PaymentIntegrationProvider[] = [
+    "flutterwave",
+    "stripe",
+    "paystack",
+    "hubtel",
+    "expresspay",
+  ];
   const enabledSet = new Set(
     (input.payments.enabledProviders ?? []).filter((provider) => paymentProviders.includes(provider)),
   );
@@ -751,6 +782,12 @@ const normalizeIntegrations = (input: Integrations): Integrations => {
       flutterwaveSecretKey: input.payments.flutterwaveSecretKey?.toString().trim() ?? "",
       paystackSecretKey: input.payments.paystackSecretKey?.toString().trim() ?? "",
       stripeSecretKey: input.payments.stripeSecretKey?.toString().trim() ?? "",
+      hubtelClientId: input.payments.hubtelClientId?.toString().trim() ?? "",
+      hubtelClientSecret: input.payments.hubtelClientSecret?.toString().trim() ?? "",
+      hubtelBaseUrl: input.payments.hubtelBaseUrl?.toString().trim() ?? "",
+      expresspayMerchantId: input.payments.expresspayMerchantId?.toString().trim() ?? "",
+      expresspayApiKey: input.payments.expresspayApiKey?.toString().trim() ?? "",
+      expresspayBaseUrl: input.payments.expresspayBaseUrl?.toString().trim() ?? "",
     },
     webhooks: {
       stripeWebhookSecret: input.webhooks.stripeWebhookSecret?.toString().trim() ?? "",

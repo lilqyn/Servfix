@@ -1,4 +1,5 @@
 import type { AdminPagesPayload } from "@/lib/api";
+import { defaultProviderResourcesContent } from "@/data/providerResources";
 
 export const DEFAULT_PAGES: AdminPagesPayload = {
   about: {
@@ -14,5 +15,12 @@ export const DEFAULT_PAGES: AdminPagesPayload = {
       "News, tips, and updates from the SERVFIX team will appear here. " +
       "Check back soon for new posts.",
     posts: [],
+  },
+  providerResources: {
+    title: "Provider Resources",
+    body:
+      "Use this resource center to onboard faster, price services correctly, prevent disputes, " +
+      "and grow sustainably on SERVFIX.",
+    resourcesConfig: defaultProviderResourcesContent,
   },
 };

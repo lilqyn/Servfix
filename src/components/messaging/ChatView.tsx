@@ -59,7 +59,13 @@ const ChatView = ({ onBack, isMobile }: ChatViewProps) => {
   const { data: publicSettings } = usePublicSettings();
   const paymentConfig = publicSettings?.payments;
   const enabledProviders =
-    paymentConfig?.enabledProviders ?? ["flutterwave", "stripe", "paystack"];
+    paymentConfig?.enabledProviders ?? [
+      "flutterwave",
+      "stripe",
+      "paystack",
+      "hubtel",
+      "expresspay",
+    ];
   const defaultProvider = paymentConfig?.defaultProvider ?? "flutterwave";
   const paymentProvider = enabledProviders.length
     ? enabledProviders.includes(defaultProvider)
@@ -67,6 +73,14 @@ const ChatView = ({ onBack, isMobile }: ChatViewProps) => {
       : enabledProviders[0]
     : "flutterwave";
   const paymentMethod = paymentProvider === "stripe" ? "card" : "mobile_money";
+  const formatMoneyExact = (amount: number, currency: "GHS" | "USD" | "EUR") =>
+    new Intl.NumberFormat("en-GH", {
+      style: "currency",
+      currency,
+      currencyDisplay: "code",
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(amount);
 
   const [isQuoteOpen, setIsQuoteOpen] = useState(false);
   const [quoteAmount, setQuoteAmount] = useState("");
@@ -92,6 +106,9 @@ const ChatView = ({ onBack, isMobile }: ChatViewProps) => {
   const pendingBalancePayment = orderPayments.find(
     (payment) => payment.stage === "balance" && payment.status === "pending",
   );
+  const pendingBalanceAmount = pendingBalancePayment
+    ? Number(pendingBalancePayment.amount)
+    : 0;
   const amountPaid = order?.amountPaid ? Number(order.amountPaid) : 0;
   const amountGross = order?.amountGross ? Number(order.amountGross) : 0;
   const balanceDue = amountGross > 0 && amountPaid < amountGross;
@@ -428,7 +445,8 @@ const ChatView = ({ onBack, isMobile }: ChatViewProps) => {
               <div>
                 <p className="text-sm font-semibold">Balance payment due</p>
                 <p className="text-xs text-muted-foreground">
-                  Remaining balance is ready for payment.
+                  Remaining balance:{" "}
+                  {formatMoneyExact(pendingBalanceAmount, pendingBalancePayment.currency)}
                 </p>
               </div>
               <Button size="sm" variant="gold" onClick={handlePayBalance}>

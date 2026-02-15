@@ -135,7 +135,7 @@ const Footer = () => {
                   </Link>
                 </li>
               )}
-              <li><Link to="/dashboard" className="hover:text-primary transition-colors">Provider Resources</Link></li>
+              <li><Link to="/provider-resources" className="hover:text-primary transition-colors">Provider Resources</Link></li>
               <li><Link to="/sign-up" className="hover:text-primary transition-colors">Join as Provider</Link></li>
             </ul>
           </div>

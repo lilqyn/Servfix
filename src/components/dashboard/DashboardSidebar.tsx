@@ -30,6 +30,7 @@ import {
   Users,
   Zap,
   Crown,
+  BookOpen,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
@@ -97,6 +98,7 @@ const DashboardSidebar = () => {
     { title: "Orders", url: "/dashboard/orders", icon: ShoppingCart, badge: orderCount > 0 ? `${orderCount}` : undefined },
     { title: "Earnings", url: "/dashboard/earnings", icon: Wallet },
     { title: "Payouts", url: "/dashboard/payouts", icon: ArrowUpRight },
+    { title: "Resources", url: "/dashboard/resources", icon: BookOpen },
     ...(boostsEnabled ? [{ title: "Boosts", url: "/dashboard/boosts", icon: Zap }] : []),
     ...(subscriptionsEnabled ? [{ title: "Subscription", url: "/dashboard/subscription", icon: Crown }] : []),
     { title: "Messages", url: "/messages", icon: MessageSquare, badge: unreadMessages > 0 ? `${unreadMessages}` : undefined },

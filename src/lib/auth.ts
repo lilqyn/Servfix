@@ -73,6 +73,22 @@ export function mapAuthErrorMessage(message: string) {
       return "Incorrect email/phone or password.";
     case "Account is not active":
       return "Your account is not active yet.";
+    case "Google authentication is not configured":
+      return "Google sign-in is not configured yet.";
+    case "Invalid Google token":
+      return "Google sign-in failed. Please try again.";
+    case "Google account email not verified":
+      return "Your Google account email is not verified.";
+    case "Email already linked to another Google account":
+      return "That email is already linked to another Google account.";
+    case "Account not found. Please sign up first.":
+      return "We couldn’t find an account for that Google profile. Please sign up first.";
+    case "Password reset token is invalid or expired":
+      return "That reset link is invalid or has expired.";
+    case "Username already taken":
+      return "That username is already taken.";
+    case "Username cannot be a UUID.":
+      return "Choose a username that is not a UUID.";
     case "Unique constraint failed":
       return "An account with that email or phone already exists.";
     case "Validation error":

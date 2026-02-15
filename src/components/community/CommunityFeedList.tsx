@@ -74,7 +74,7 @@ type FeedPost = {
     username?: string | null;
     name: string;
     handle?: string | null;
-    avatar: string;
+    avatar?: string | null;
     verified: boolean;
     isBusiness: boolean;
   };
@@ -109,9 +109,6 @@ type CommunityFeedListProps = {
   focusedPostId?: string | null;
   className?: string;
 };
-
-const FALLBACK_AVATAR =
-  "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=100&h=100&fit=crop";
 
 const buildPostLink = (postId: string) => `/community?post=${postId}`;
 
@@ -194,7 +191,7 @@ const mapPostToFeed = (post: ApiCommunityPost): FeedPost => {
       username: author.username ?? null,
       name,
       handle,
-      avatar: author.avatarUrl ?? FALLBACK_AVATAR,
+      avatar: author.avatarUrl ?? null,
       verified,
       isBusiness,
     },
@@ -696,11 +693,14 @@ const CommunityFeedList = ({
                   to={`/profile/${post.author.username ? post.author.username : post.author.id}`}
                   className="flex items-center gap-3"
                 >
-                  <img
-                    src={post.author.avatar}
-                    alt={post.author.name}
-                    className="w-12 h-12 rounded-full object-cover ring-2 ring-border"
-                  />
+                  <Avatar className="w-12 h-12 ring-2 ring-border">
+                    {post.author.avatar ? (
+                      <AvatarImage src={post.author.avatar} alt={post.author.name} />
+                    ) : null}
+                    <AvatarFallback className="bg-primary/10 text-primary font-semibold">
+                      {getInitials(post.author.name)}
+                    </AvatarFallback>
+                  </Avatar>
                   <div>
                     <div className="flex items-center gap-1">
                       <span className="font-semibold text-foreground">{post.author.name}</span>

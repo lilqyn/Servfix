@@ -57,6 +57,10 @@ export class ServfixStack extends Stack {
       process.env[`SERVFIX_${config.name.toUpperCase()}_GOOGLE_MAPS_API_KEY`] ??
       process.env.SERVFIX_GOOGLE_MAPS_API_KEY ??
       "";
+    const googleClientId =
+      process.env[`SERVFIX_${config.name.toUpperCase()}_GOOGLE_CLIENT_ID`] ??
+      process.env.SERVFIX_GOOGLE_CLIENT_ID ??
+      "";
 
     const zone = route53.HostedZone.fromHostedZoneAttributes(this, "HostedZone", {
       hostedZoneId: config.hostedZoneId,
@@ -156,6 +160,7 @@ export class ServfixStack extends Stack {
       file: "Dockerfile",
       buildArgs: {
         VITE_API_BASE: appUrl,
+        VITE_GOOGLE_CLIENT_ID: googleClientId,
         VITE_GOOGLE_MAPS_API_KEY: googleMapsApiKey,
         PRISMA_SCHEMA_HASH: prismaSchemaHash,
       },
@@ -171,22 +176,28 @@ export class ServfixStack extends Stack {
       memoryLimitMiB: config.taskMemoryMiB,
     });
 
+    const containerEnv: Record<string, string> = {
+      NODE_ENV: "production",
+      PORT: "4000",
+      AWS_REGION: Stack.of(this).region,
+      AWS_S3_BUCKET: bucket.bucketName,
+      CORS_ORIGIN: resolveCorsOrigins(config).join(","),
+      APP_URL: appUrl,
+      PLATFORM_FEE_BPS: "1000",
+      TAX_BPS: "0",
+    };
+
+    if (googleClientId) {
+      containerEnv.GOOGLE_CLIENT_ID = googleClientId;
+    }
+
     const container = taskDefinition.addContainer("AppContainer", {
       image: ecs.ContainerImage.fromDockerImageAsset(imageAsset),
       logging: ecs.LogDriver.awsLogs({
         logGroup,
         streamPrefix: config.name,
       }),
-      environment: {
-        NODE_ENV: "production",
-        PORT: "4000",
-        AWS_REGION: Stack.of(this).region,
-        AWS_S3_BUCKET: bucket.bucketName,
-        CORS_ORIGIN: resolveCorsOrigins(config).join(","),
-        APP_URL: appUrl,
-        PLATFORM_FEE_BPS: "1000",
-        TAX_BPS: "0",
-      },
+      environment: containerEnv,
       secrets: {
         DATABASE_URL: ecs.Secret.fromSecretsManager(dbUrlSecret),
         JWT_SECRET: ecs.Secret.fromSecretsManager(jwtSecret),

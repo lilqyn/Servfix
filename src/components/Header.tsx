@@ -187,6 +187,9 @@ const Header = () => {
             <Link to="/blog" className="text-sm font-medium text-muted-foreground hover:text-primary transition-colors">
               Blog
             </Link>
+            <Link to="/provider-resources" className="text-sm font-medium text-muted-foreground hover:text-primary transition-colors">
+              Provider Resources
+            </Link>
             {isAuthenticated && isProvider && (
               <Link to="/dashboard" className="text-sm font-medium text-muted-foreground hover:text-primary transition-colors">
                 Dashboard
@@ -390,6 +393,9 @@ const Header = () => {
               </Link>
               <Link to="/blog" className="px-4 py-3 text-sm font-medium text-muted-foreground hover:bg-muted rounded-lg transition-colors">
                 Blog
+              </Link>
+              <Link to="/provider-resources" className="px-4 py-3 text-sm font-medium text-muted-foreground hover:bg-muted rounded-lg transition-colors">
+                Provider Resources
               </Link>
               {isAuthenticated && (
                 <Link to="/notifications" className="px-4 py-3 text-sm font-medium text-muted-foreground hover:bg-muted rounded-lg transition-colors flex items-center justify-between">

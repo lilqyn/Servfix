@@ -10,6 +10,7 @@ import ProviderPayouts from "@/components/dashboard/ProviderPayouts";
 import ProviderReviews from "@/components/dashboard/ProviderReviews";
 import ProviderBoosts from "@/components/dashboard/ProviderBoosts";
 import ProviderSubscriptions from "@/components/dashboard/ProviderSubscriptions";
+import ProviderResourcesCenter from "@/components/dashboard/ProviderResourcesCenter";
 import { Button } from "@/components/ui/button";
 import { Bell, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
@@ -65,6 +66,7 @@ const ProviderDashboard = () => {
       "orders",
       "earnings",
       "payouts",
+      "resources",
       ...(boostsEnabled ? ["boosts"] : []),
       ...(subscriptionsEnabled ? ["subscription"] : []),
       ...(reviewsEnabled ? ["reviews"] : []),
@@ -154,6 +156,7 @@ const ProviderDashboard = () => {
                 <TabsTrigger value="orders">Orders</TabsTrigger>
                 <TabsTrigger value="earnings">Earnings</TabsTrigger>
                 <TabsTrigger value="payouts">Payouts</TabsTrigger>
+                <TabsTrigger value="resources">Resources</TabsTrigger>
                 {boostsEnabled && <TabsTrigger value="boosts">Boosts</TabsTrigger>}
                 {subscriptionsEnabled && <TabsTrigger value="subscription">Subscription</TabsTrigger>}
                 {reviewsEnabled && <TabsTrigger value="reviews">Reviews</TabsTrigger>}
@@ -186,6 +189,10 @@ const ProviderDashboard = () => {
 
               <TabsContent value="payouts" className="mt-6">
                 <ProviderPayouts />
+              </TabsContent>
+
+              <TabsContent value="resources" className="mt-6">
+                <ProviderResourcesCenter />
               </TabsContent>
 
               {boostsEnabled && (

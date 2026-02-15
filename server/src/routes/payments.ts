@@ -8,11 +8,23 @@ import { env } from "../config.js";
 import { createNotification } from "../utils/notifications.js";
 import { getPlatformSettings, type PlatformSettings } from "../utils/platform-settings.js";
 import { getBoostOption } from "../utils/boosts.js";
+import {
+  createHubtelPaylink,
+  normalizeHubtelPhone,
+  resolveHubtelConfig,
+} from "../utils/hubtel.js";
+import {
+  buildExpresspayCustomer,
+  createExpresspayCheckout,
+  normalizeExpresspayPhone,
+  queryExpresspayPayment,
+  resolveExpresspayConfig,
+} from "../utils/expresspay.js";
 
 export const paymentsRouter = Router();
 
 const checkoutSchema = z.object({
-  provider: z.enum(["flutterwave", "stripe", "paystack"]),
+  provider: z.enum(["flutterwave", "stripe", "paystack", "hubtel", "expresspay"]),
   method: z.enum(["card", "mobile_money"]).optional(),
   items: z
     .array(
@@ -26,18 +38,21 @@ const checkoutSchema = z.object({
 });
 
 const orderPaymentCheckoutSchema = z.object({
-  provider: z.enum(["flutterwave", "stripe", "paystack"]),
+  provider: z.enum(["flutterwave", "stripe", "paystack", "hubtel", "expresspay"]),
   method: z.enum(["card", "mobile_money"]).optional(),
   orderPaymentId: z.string().uuid(),
 });
 
 const verifySchema = z.object({
-  provider: z.enum(["flutterwave", "stripe", "paystack"]),
+  provider: z.enum(["flutterwave", "stripe", "paystack", "hubtel", "expresspay"]),
   transaction_id: z.string().optional(),
   tx_ref: z.string().optional(),
   session_id: z.string().optional(),
   reference: z.string().optional(),
   trxref: z.string().optional(),
+  token: z.string().optional(),
+  order_id: z.string().optional(),
+  "order-id": z.string().optional(),
 });
 
 const appUrl = env.APP_URL.replace(/\/+$/, "");
@@ -226,6 +241,8 @@ paymentsRouter.post(
       settings.integrations.payments.paystackSecretKey || env.PAYSTACK_SECRET_KEY;
     const stripeSecret =
       settings.integrations.payments.stripeSecretKey || env.STRIPE_SECRET_KEY;
+    const hubtelConfig = resolveHubtelConfig(settings);
+    const expresspayConfig = resolveExpresspayConfig(settings);
 
     if (data.provider === "flutterwave" && !flutterwaveSecret) {
       return res.status(400).json({ error: "Flutterwave is not configured." });
@@ -235,6 +252,27 @@ paymentsRouter.post(
     }
     if (data.provider === "stripe" && !stripeSecret) {
       return res.status(400).json({ error: "Stripe is not configured." });
+    }
+    if (data.provider === "hubtel" && !hubtelConfig) {
+      return res.status(400).json({ error: "Hubtel is not configured." });
+    }
+    if (data.provider === "expresspay" && !expresspayConfig) {
+      return res.status(400).json({ error: "ExpressPay is not configured." });
+    }
+
+    const hubtelPhone =
+      data.provider === "hubtel" ? normalizeHubtelPhone(req.user!.phone) : null;
+    if (data.provider === "hubtel" && !hubtelPhone) {
+      return res.status(400).json({
+        error: "Hubtel requires a valid phone number in E.164 format.",
+      });
+    }
+    const expresspayPhone =
+      data.provider === "expresspay" ? normalizeExpresspayPhone(req.user!.phone) : null;
+    if (data.provider === "expresspay" && !expresspayPhone) {
+      return res.status(400).json({
+        error: "ExpressPay requires a valid phone number.",
+      });
     }
 
     const tierIds = Array.from(new Set(data.items.map((item) => item.tierId)));
@@ -446,6 +484,93 @@ paymentsRouter.post(
         });
       }
 
+      if (data.provider === "expresspay") {
+        if (result.currency !== "GHS") {
+          return res.status(400).json({ error: "ExpressPay supports GHS only." });
+        }
+
+        const redirectUrl = `${appUrl}/payment/verify?provider=expresspay`;
+        const postUrl = `${appUrl}/api/webhooks/expresspay`;
+        const customer = buildExpresspayCustomer(req.user!);
+
+        const payload = await createExpresspayCheckout(expresspayConfig!, {
+          amount: result.total.toFixed(2),
+          currency: result.currency,
+          orderId: result.paymentIntent.id,
+          redirectUrl,
+          postUrl,
+          customer: {
+            ...customer,
+            phonenumber: expresspayPhone!,
+          },
+          orderDesc: "Escrow payment for your service order.",
+        });
+
+        await prisma.paymentIntent.update({
+          where: { id: result.paymentIntent.id },
+          data: {
+            status: "pending",
+            providerRef: payload.token,
+            metadata: {
+              orderIds: result.orders.map((order) => order.id),
+              buyerId: req.user!.id,
+              expresspay: payload as unknown as Prisma.InputJsonValue,
+            },
+          },
+        });
+
+        return res.json({
+          checkoutUrl: payload.checkoutUrl,
+          paymentIntentId: result.paymentIntent.id,
+          provider: "expresspay",
+          orderIds: result.orders.map((order) => order.id),
+        });
+      }
+
+      if (data.provider === "hubtel") {
+        if (result.currency !== "GHS") {
+          return res.status(400).json({ error: "Hubtel supports GHS only." });
+        }
+
+        const callbackUrl = `${appUrl}/api/webhooks/hubtel`;
+        const returnUrl = `${appUrl}/payment/verify?provider=hubtel&reference=${result.paymentIntent.id}`;
+        const cancellationUrl = `${appUrl}/cart?payment=cancelled`;
+
+        const payload = await createHubtelPaylink(hubtelConfig!, {
+          mobileNumber: hubtelPhone!,
+          amount: Number(result.total.toFixed(2)),
+          title: "SERVFIX",
+          description: "Escrow payment for your service order.",
+          clientReference: result.paymentIntent.id,
+          callbackUrl,
+          returnUrl,
+          cancellationUrl,
+        });
+
+        await prisma.paymentIntent.update({
+          where: { id: result.paymentIntent.id },
+          data: {
+            status: "pending",
+            providerRef:
+              payload.data?.paylinkId ??
+              payload.data?.transactionId ??
+              result.paymentIntent.id,
+            metadata: {
+              orderIds: result.orders.map((order) => order.id),
+              buyerId: req.user!.id,
+              hubtel: payload,
+            },
+          },
+        });
+
+        return res.json({
+          checkoutUrl: payload.data?.paylinkUrl,
+          paymentIntentId: result.paymentIntent.id,
+          provider: "hubtel",
+          orderIds: result.orders.map((order) => order.id),
+        });
+      }
+
       const amountMinor = toMinorUnits(result.total);
       const stripeBody = new URLSearchParams();
       stripeBody.append("mode", "payment");
@@ -548,6 +673,31 @@ paymentsRouter.post(
     }
     if (data.provider === "stripe" && !stripeSecret) {
       return res.status(400).json({ error: "Stripe is not configured." });
+    }
+
+    const hubtelConfig = resolveHubtelConfig(settings);
+    const expresspayConfig = resolveExpresspayConfig(settings);
+
+    if (data.provider === "hubtel" && !hubtelConfig) {
+      return res.status(400).json({ error: "Hubtel is not configured." });
+    }
+    if (data.provider === "expresspay" && !expresspayConfig) {
+      return res.status(400).json({ error: "ExpressPay is not configured." });
+    }
+
+    const hubtelPhone =
+      data.provider === "hubtel" ? normalizeHubtelPhone(req.user!.phone) : null;
+    if (data.provider === "hubtel" && !hubtelPhone) {
+      return res.status(400).json({
+        error: "Hubtel requires a valid phone number in E.164 format.",
+      });
+    }
+    const expresspayPhone =
+      data.provider === "expresspay" ? normalizeExpresspayPhone(req.user!.phone) : null;
+    if (data.provider === "expresspay" && !expresspayPhone) {
+      return res.status(400).json({
+        error: "ExpressPay requires a valid phone number.",
+      });
     }
 
     const orderPayment = await prisma.orderPayment.findUnique({
@@ -736,6 +886,100 @@ paymentsRouter.post(
           checkoutUrl: payload.data.authorization_url,
           paymentIntentId: paymentIntent.id,
           provider: "paystack",
+          orderPaymentId: orderPayment.id,
+          orderId: orderPayment.orderId,
+        });
+      }
+
+      if (data.provider === "expresspay") {
+        if (orderPayment.currency !== "GHS") {
+          return res.status(400).json({ error: "ExpressPay supports GHS only." });
+        }
+
+        const redirectUrl = `${appUrl}/payment/verify?provider=expresspay`;
+        const postUrl = `${appUrl}/api/webhooks/expresspay`;
+        const customer = buildExpresspayCustomer(req.user!);
+
+        const payload = await createExpresspayCheckout(expresspayConfig!, {
+          amount: orderPayment.amount.toFixed(2),
+          currency: orderPayment.currency,
+          orderId: paymentIntent.id,
+          redirectUrl,
+          postUrl,
+          customer: {
+            ...customer,
+            phonenumber: expresspayPhone!,
+          },
+          orderDesc: "Payment for your service order.",
+        });
+
+        await prisma.paymentIntent.update({
+          where: { id: paymentIntent.id },
+          data: {
+            status: "pending",
+            providerRef: payload.token,
+            metadata: {
+              purpose: "order_payment",
+              orderPaymentId: orderPayment.id,
+              orderId: orderPayment.orderId,
+              buyerId: orderPayment.order?.buyerId,
+              expresspay: payload as unknown as Prisma.InputJsonValue,
+            },
+          },
+        });
+
+        return res.json({
+          checkoutUrl: payload.checkoutUrl,
+          paymentIntentId: paymentIntent.id,
+          provider: "expresspay",
+          orderPaymentId: orderPayment.id,
+          orderId: orderPayment.orderId,
+        });
+      }
+
+      if (data.provider === "hubtel") {
+        if (orderPayment.currency !== "GHS") {
+          return res.status(400).json({ error: "Hubtel supports GHS only." });
+        }
+
+        const stageLabel = orderPayment.stage === "deposit" ? "Deposit" : "Balance";
+        const callbackUrl = `${appUrl}/api/webhooks/hubtel`;
+        const returnUrl = `${appUrl}/payment/verify?provider=hubtel&reference=${paymentIntent.id}`;
+        const cancellationUrl = `${appUrl}/payment/verify?provider=hubtel&reference=${paymentIntent.id}`;
+
+        const payload = await createHubtelPaylink(hubtelConfig!, {
+          mobileNumber: hubtelPhone!,
+          amount: Number(orderPayment.amount.toFixed(2)),
+          title: "SERVFIX",
+          description: `${stageLabel} payment for your service order.`,
+          clientReference: paymentIntent.id,
+          callbackUrl,
+          returnUrl,
+          cancellationUrl,
+        });
+
+        await prisma.paymentIntent.update({
+          where: { id: paymentIntent.id },
+          data: {
+            status: "pending",
+            providerRef:
+              payload.data?.paylinkId ??
+              payload.data?.transactionId ??
+              paymentIntent.id,
+            metadata: {
+              purpose: "order_payment",
+              orderPaymentId: orderPayment.id,
+              orderId: orderPayment.orderId,
+              buyerId: orderPayment.order?.buyerId,
+              hubtel: payload,
+            },
+          },
+        });
+
+        return res.json({
+          checkoutUrl: payload.data?.paylinkUrl,
+          paymentIntentId: paymentIntent.id,
+          provider: "hubtel",
           orderPaymentId: orderPayment.id,
           orderId: orderPayment.orderId,
         });
@@ -1048,6 +1292,186 @@ paymentsRouter.get(
       });
     }
 
+    if (query.provider === "expresspay") {
+      if (!enabledProviders.includes("expresspay")) {
+        return res.status(400).json({ error: "ExpressPay is currently disabled." });
+      }
+
+      const token = query.token ?? query.reference;
+      const orderId =
+        query.order_id ??
+        (query as Record<string, string | undefined>)["order-id"] ??
+        query.tx_ref;
+
+      if (!token && !orderId) {
+        return res.status(400).json({ error: "Missing ExpressPay token." });
+      }
+
+      const expresspayConfig = resolveExpresspayConfig(settings);
+      if (!expresspayConfig) {
+        return res.status(400).json({ error: "ExpressPay is not configured." });
+      }
+
+      let paymentIntent =
+        orderId
+          ? await prisma.paymentIntent.findUnique({ where: { id: orderId } })
+          : null;
+
+      if (!paymentIntent && token) {
+        paymentIntent = await prisma.paymentIntent.findFirst({
+          where: { provider: "expresspay", providerRef: token },
+        });
+      }
+
+      if (!paymentIntent) {
+        return res.status(404).json({ error: "Payment intent not found." });
+      }
+
+      try {
+        await ensurePaymentAccess(paymentIntent, req.user!);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Unauthorized";
+        return res.status(403).json({ error: message });
+      }
+
+      const verifyToken = token ?? paymentIntent.providerRef ?? "";
+      if (!verifyToken) {
+        return res.status(400).json({ error: "Missing ExpressPay token." });
+      }
+
+      const { ok, payload } = await queryExpresspayPayment(expresspayConfig, verifyToken);
+      const resultCode = payload.result !== undefined ? String(payload.result) : "";
+      const resultText = payload["result-text"]?.toString();
+
+      if (!ok || !resultCode) {
+        if (paymentIntent.status !== "succeeded") {
+          await prisma.paymentIntent.update({
+            where: { id: paymentIntent.id },
+            data: { status: "failed", metadata: toJsonInput(payload as Prisma.JsonValue) },
+          });
+        }
+        return res
+          .status(400)
+          .json({ error: resultText ?? "Unable to verify ExpressPay payment." });
+      }
+
+      if (resultCode === "4") {
+        return res.status(400).json({ error: "ExpressPay payment is still pending." });
+      }
+
+      if (resultCode !== "1") {
+        if (paymentIntent.status !== "succeeded") {
+          await prisma.paymentIntent.update({
+            where: { id: paymentIntent.id },
+            data: { status: "failed", metadata: toJsonInput(payload as Prisma.JsonValue) },
+          });
+        }
+        return res
+          .status(400)
+          .json({ error: resultText ?? "ExpressPay payment not successful." });
+      }
+
+      if (payload.currency && payload.currency.toString().toUpperCase() !== paymentIntent.currency) {
+        await prisma.paymentIntent.update({
+          where: { id: paymentIntent.id },
+          data: { status: "failed", metadata: toJsonInput(payload as Prisma.JsonValue) },
+        });
+        return res.status(400).json({ error: "Currency mismatch." });
+      }
+
+      if (payload.amount !== undefined) {
+        const amount = new Prisma.Decimal(String(payload.amount));
+        if (amount.lessThan(paymentIntent.amount)) {
+          await prisma.paymentIntent.update({
+            where: { id: paymentIntent.id },
+            data: { status: "failed", metadata: toJsonInput(payload as Prisma.JsonValue) },
+          });
+          return res.status(400).json({ error: "Amount mismatch." });
+        }
+      }
+
+      if (!paymentIntent.providerRef && token) {
+        await prisma.paymentIntent.update({
+          where: { id: paymentIntent.id },
+          data: { providerRef: token },
+        });
+      }
+
+      const providerEventId =
+        payload["transaction-id"]?.toString() ?? verifyToken ?? paymentIntent.id;
+
+      const result = await finalizePayment({
+        paymentIntentId: paymentIntent.id,
+        providerEventId,
+        providerPayload: toJsonInput(payload as Prisma.JsonValue),
+        actorId: req.user!.id,
+        settings,
+      });
+
+      return res.json({
+        status: "success",
+        paymentIntentId: paymentIntent.id,
+        orders: result.orders,
+        purpose: result.purpose,
+        boost: result.boost ?? null,
+        subscription: result.subscription ?? null,
+        invoice: result.invoice ?? null,
+      });
+    }
+
+    if (query.provider === "hubtel") {
+      if (!enabledProviders.includes("hubtel")) {
+        return res.status(400).json({ error: "Hubtel is currently disabled." });
+      }
+      const reference = query.reference ?? query.tx_ref ?? query.trxref;
+      if (!reference) {
+        return res.status(400).json({ error: "Missing Hubtel reference." });
+      }
+
+      let paymentIntent = await prisma.paymentIntent.findUnique({
+        where: { id: reference },
+      });
+
+      if (!paymentIntent) {
+        paymentIntent = await prisma.paymentIntent.findFirst({
+          where: { provider: "hubtel", providerRef: reference },
+        });
+      }
+
+      if (!paymentIntent) {
+        return res.status(404).json({ error: "Payment intent not found." });
+      }
+
+      try {
+        await ensurePaymentAccess(paymentIntent, req.user!);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Unauthorized";
+        return res.status(403).json({ error: message });
+      }
+
+      if (paymentIntent.status !== "succeeded") {
+        return res.status(400).json({ error: "Hubtel payment is still pending." });
+      }
+
+      const result = await finalizePayment({
+        paymentIntentId: paymentIntent.id,
+        providerEventId: paymentIntent.providerRef ?? paymentIntent.id,
+        providerPayload: Prisma.JsonNull,
+        actorId: req.user!.id,
+        settings,
+      });
+
+      return res.json({
+        status: "success",
+        paymentIntentId: paymentIntent.id,
+        orders: result.orders,
+        purpose: result.purpose,
+        boost: result.boost ?? null,
+        subscription: result.subscription ?? null,
+        invoice: result.invoice ?? null,
+      });
+    }
+
     const sessionId = query.session_id;
     if (!sessionId) {
       return res.status(400).json({ error: "Missing Stripe session id." });
@@ -1153,11 +1577,11 @@ paymentsRouter.get(
   }),
 );
 
-const finalizePayment = async (params: {
+export const finalizePayment = async (params: {
   paymentIntentId: string;
   providerEventId: string;
   providerPayload: Prisma.InputJsonValue | Prisma.NullTypes.JsonNull;
-  actorId: string;
+  actorId: string | null;
   settings: PlatformSettings;
 }) => {
   const result = await prisma.$transaction(async (tx) => {

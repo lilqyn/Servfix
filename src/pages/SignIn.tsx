@@ -14,6 +14,7 @@ import { toast } from "sonner";
 import { apiFetch } from "@/lib/api";
 import { AuthResponse, getIdentifierPayload, identifierSchema, mapAuthErrorMessage } from "@/lib/auth";
 import { useAuth } from "@/contexts/AuthContext";
+import GoogleAuthButton from "@/components/auth/GoogleAuthButton";
 
 const signInSchema = z.object({
   identifier: identifierSchema,
@@ -27,6 +28,9 @@ const SignIn = () => {
   const location = useLocation();
   const [submitError, setSubmitError] = useState<string | null>(null);
   const { signIn, user, isAuthenticated, isHydrated } = useAuth();
+  const googleEnabled =
+    import.meta.env.VITE_GOOGLE_AUTH_ENABLED === "true" &&
+    Boolean(import.meta.env.VITE_GOOGLE_CLIENT_ID?.trim());
 
   const form = useForm<SignInFormValues>({
     resolver: zodResolver(signInSchema),
@@ -36,6 +40,24 @@ const SignIn = () => {
     },
     mode: "onSubmit",
   });
+
+  const handleAuthSuccess = (response: AuthResponse) => {
+    signIn(response);
+    toast.success("Welcome back!");
+
+    const next = new URLSearchParams(location.search).get("next");
+    if (next && next.startsWith("/")) {
+      navigate(next);
+      return;
+    }
+
+    navigate(response.user.role === "provider" ? "/dashboard" : "/browse");
+  };
+
+  const handleAuthError = (message: string) => {
+    setSubmitError(message);
+    toast.error(message);
+  };
 
   const onSubmit = async (values: SignInFormValues) => {
     setSubmitError(null);
@@ -51,20 +73,10 @@ const SignIn = () => {
         body: JSON.stringify(payload),
       });
 
-      signIn(response);
-      toast.success("Welcome back!");
-
-      const next = new URLSearchParams(location.search).get("next");
-      if (next && next.startsWith("/")) {
-        navigate(next);
-        return;
-      }
-
-      navigate(response.user.role === "provider" ? "/dashboard" : "/browse");
+      handleAuthSuccess(response);
     } catch (error) {
       const message = mapAuthErrorMessage(error instanceof Error ? error.message : "");
-      setSubmitError(message);
-      toast.error(message);
+      handleAuthError(message);
     }
   };
 
@@ -109,6 +121,17 @@ const SignIn = () => {
                 </Alert>
               )}
 
+              {googleEnabled && (
+                <div className="space-y-4">
+                  <GoogleAuthButton mode="login" onAuth={handleAuthSuccess} onError={handleAuthError} />
+                  <div className="flex items-center gap-3 text-xs uppercase text-muted-foreground">
+                    <span className="h-px flex-1 bg-border/60" />
+                    <span>or sign in with email</span>
+                    <span className="h-px flex-1 bg-border/60" />
+                  </div>
+                </div>
+              )}
+
               <Form {...form}>
                 <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
                   <FormField
@@ -138,6 +161,12 @@ const SignIn = () => {
                       </FormItem>
                     )}
                   />
+
+                  <div className="flex items-center justify-between text-sm">
+                    <Link to="/forgot-password" className="font-semibold text-primary hover:underline">
+                      Forgot password?
+                    </Link>
+                  </div>
 
                   <Button type="submit" variant="gold" className="w-full" disabled={isSubmitting}>
                     {isSubmitting ? "Signing in..." : "Sign In"}

@@ -25,7 +25,9 @@ const formatCurrency = (amount: number, currency: "GHS" | "USD" | "EUR") =>
 const ProviderSubscriptions = () => {
   const [activePlanId, setActivePlanId] = useState<string | null>(null);
   const [isCancelling, setIsCancelling] = useState(false);
-  const [paymentProvider, setPaymentProvider] = useState<"flutterwave" | "stripe" | "paystack">("flutterwave");
+  const [paymentProvider, setPaymentProvider] = useState<
+    "flutterwave" | "stripe" | "paystack" | "hubtel" | "expresspay"
+  >("flutterwave");
   const [paymentMethod, setPaymentMethod] = useState<"mobile_money" | "card">("mobile_money");
   const { data: publicSettings } = usePublicSettings();
 
@@ -45,7 +47,14 @@ const ProviderSubscriptions = () => {
 
   const paymentConfig = publicSettings?.payments;
   const availableProviders = useMemo(
-    () => paymentConfig?.enabledProviders ?? ["flutterwave", "stripe", "paystack"],
+    () =>
+      paymentConfig?.enabledProviders ?? [
+        "flutterwave",
+        "stripe",
+        "paystack",
+        "hubtel",
+        "expresspay",
+      ],
     [paymentConfig?.enabledProviders],
   );
   const defaultProvider = paymentConfig?.defaultProvider ?? "flutterwave";
@@ -55,6 +64,8 @@ const ProviderSubscriptions = () => {
   const flutterwaveEnabled = availableProviders.includes("flutterwave");
   const stripeEnabled = availableProviders.includes("stripe");
   const paystackEnabled = availableProviders.includes("paystack");
+  const hubtelEnabled = availableProviders.includes("hubtel");
+  const expresspayEnabled = availableProviders.includes("expresspay");
 
   useEffect(() => {
     if (availableProviders.length === 0) {
@@ -68,6 +79,12 @@ const ProviderSubscriptions = () => {
   useEffect(() => {
     if (paymentProvider === "stripe") {
       setPaymentMethod("card");
+    }
+    if (paymentProvider === "hubtel") {
+      setPaymentMethod("mobile_money");
+    }
+    if (paymentProvider === "expresspay") {
+      setPaymentMethod("mobile_money");
     }
   }, [paymentProvider]);
 
@@ -89,7 +106,14 @@ const ProviderSubscriptions = () => {
       const response = await createSubscriptionCheckout({
         planId: plan.id,
         provider: paymentProvider,
-        method: paymentProvider === "stripe" ? "card" : paymentMethod,
+        method:
+          paymentProvider === "stripe"
+            ? "card"
+            : paymentProvider === "hubtel"
+              ? "mobile_money"
+              : paymentProvider === "expresspay"
+                ? "mobile_money"
+              : paymentMethod,
       });
       window.location.href = response.checkoutUrl;
     } catch (error) {
@@ -240,6 +264,46 @@ const ProviderSubscriptions = () => {
                     </div>
                   </button>
                 )}
+                {hubtelEnabled && (
+                  <button
+                    className={`p-4 border-2 rounded-xl text-left transition-colors ${
+                      paymentProvider === "hubtel"
+                        ? "border-primary bg-primary/5"
+                        : "border-border/50 hover:border-primary/50"
+                    }`}
+                    onClick={() => setPaymentProvider("hubtel")}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center">
+                        <span className="text-lg font-bold text-primary">H</span>
+                      </div>
+                      <div>
+                        <p className="font-semibold">Hubtel</p>
+                        <p className="text-xs text-muted-foreground">Mobile Money</p>
+                      </div>
+                    </div>
+                  </button>
+                )}
+                {expresspayEnabled && (
+                  <button
+                    className={`p-4 border-2 rounded-xl text-left transition-colors ${
+                      paymentProvider === "expresspay"
+                        ? "border-primary bg-primary/5"
+                        : "border-border/50 hover:border-primary/50"
+                    }`}
+                    onClick={() => setPaymentProvider("expresspay")}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center">
+                        <span className="text-lg font-bold text-primary">E</span>
+                      </div>
+                      <div>
+                        <p className="font-semibold">ExpressPay</p>
+                        <p className="text-xs text-muted-foreground">Mobile Money + Card</p>
+                      </div>
+                    </div>
+                  </button>
+                )}
               </div>
             )}
 
@@ -288,6 +352,17 @@ const ProviderSubscriptions = () => {
             {paymentProvider === "stripe" && stripeEnabled && (
               <div className="rounded-xl border border-border/60 bg-muted/30 p-4 text-sm text-muted-foreground">
                 Stripe supports card payments only. You will be redirected to complete payment.
+              </div>
+            )}
+            {paymentProvider === "hubtel" && hubtelEnabled && (
+              <div className="rounded-xl border border-border/60 bg-muted/30 p-4 text-sm text-muted-foreground">
+                Hubtel payments use Mobile Money. Make sure your phone number is saved on your account.
+              </div>
+            )}
+            {paymentProvider === "expresspay" && expresspayEnabled && (
+              <div className="rounded-xl border border-border/60 bg-muted/30 p-4 text-sm text-muted-foreground">
+                ExpressPay supports Mobile Money and card payments. You will choose your preferred
+                method at checkout.
               </div>
             )}
           </CardContent>

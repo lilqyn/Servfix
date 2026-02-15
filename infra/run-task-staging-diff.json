@@ -25,5 +25,5 @@
     }
   },
   "launchType": "FARGATE",
-  "taskDefinition": "arn:aws:ecs:us-east-1:258974340169:task-definition/ServfixStagingTaskDefFD8ED30F:33"
+  "taskDefinition": "arn:aws:ecs:us-east-1:258974340169:task-definition/ServfixStagingTaskDefFD8ED30F:48"
 }

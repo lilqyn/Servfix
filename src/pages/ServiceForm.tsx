@@ -20,7 +20,7 @@ import ServiceReviews from "@/components/service/ServiceReviews";
 import { apiFetch } from "@/lib/api";
 import { useService } from "@/hooks/useService";
 import { useAuth } from "@/contexts/AuthContext";
-import { FALLBACK_AVATAR, FALLBACK_IMAGE, type ServiceDetailData } from "@/lib/services";
+import { FALLBACK_IMAGE, type ServiceDetailData } from "@/lib/services";
 import type { ApiService } from "@/lib/api";
 
 const pricingTierSchema = z
@@ -530,7 +530,7 @@ const ServiceForm = () => {
       provider: {
         id: user?.id ?? "preview-provider",
         name: previewProviderName,
-        avatar: FALLBACK_AVATAR,
+        avatar: user?.avatarUrl ?? "",
         verified,
         topRated,
         memberSince,

@@ -206,6 +206,8 @@ enum PaymentProvider {
   paystack
   flutterwave
   stripe
+  hubtel
+  expresspay
   other
 }
 
@@ -301,6 +303,7 @@ model User {
 
   phone        String? @unique
   email        String? @unique
+  googleSub    String? @unique
   username     String? @unique
   location     String?
   // If you do password auth. If OTP-only, this can remain null.
@@ -356,6 +359,7 @@ model User {
   supportTicketMessages SupportTicketMessage[]
   supportTicketEvents SupportTicketEvent[]
   supportTicketMeetings SupportTicketMeeting[] @relation("SupportTicketMeetingCreator")
+  passwordResetTokens PasswordResetToken[]
 
   @@index([role])
   @@index([status])
@@ -380,6 +384,19 @@ model Notification {
   @@index([actorId])
   @@index([createdAt])
   @@index([isRead])
+}
+
+model PasswordResetToken {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String   @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
 }
 
 model SupportTicket {

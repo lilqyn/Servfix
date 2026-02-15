@@ -20,6 +20,13 @@ const envSchema = z.object({
   PAYSTACK_SECRET_KEY: z.string().optional(),
   STRIPE_SECRET_KEY: z.string().optional(),
   STRIPE_WEBHOOK_SECRET: z.string().optional(),
+  HUBTEL_CLIENT_ID: z.string().optional(),
+  HUBTEL_CLIENT_SECRET: z.string().optional(),
+  HUBTEL_BASE_URL: z.string().optional(),
+  EXPRESSPAY_MERCHANT_ID: z.string().optional(),
+  EXPRESSPAY_API_KEY: z.string().optional(),
+  EXPRESSPAY_BASE_URL: z.string().optional(),
+  GOOGLE_CLIENT_ID: z.string().optional(),
 });
 
 export const env = envSchema.parse(process.env);

@@ -7,6 +7,17 @@ import { authRequired, requireRole } from "../middleware/auth.js";
 import { env } from "../config.js";
 import { getPlatformSettings } from "../utils/platform-settings.js";
 import { getBoostCatalog, getBoostOption } from "../utils/boosts.js";
+import {
+  createHubtelPaylink,
+  normalizeHubtelPhone,
+  resolveHubtelConfig,
+} from "../utils/hubtel.js";
+import {
+  buildExpresspayCustomer,
+  createExpresspayCheckout,
+  normalizeExpresspayPhone,
+  resolveExpresspayConfig,
+} from "../utils/expresspay.js";
 
 export const boostsRouter = Router();
 
@@ -16,7 +27,7 @@ const purchaseSchema = z.object({
 });
 
 const checkoutSchema = purchaseSchema.extend({
-  provider: z.enum(["flutterwave", "stripe", "paystack"]),
+  provider: z.enum(["flutterwave", "stripe", "paystack", "hubtel", "expresspay"]),
   method: z.enum(["card", "mobile_money"]).optional(),
 });
 
@@ -126,6 +137,8 @@ boostsRouter.post(
       settings.integrations.payments.paystackSecretKey || env.PAYSTACK_SECRET_KEY;
     const stripeSecret =
       settings.integrations.payments.stripeSecretKey || env.STRIPE_SECRET_KEY;
+    const hubtelConfig = resolveHubtelConfig(settings);
+    const expresspayConfig = resolveExpresspayConfig(settings);
 
     if (data.provider === "flutterwave" && !flutterwaveSecret) {
       return res.status(400).json({ error: "Flutterwave is not configured." });
@@ -135,6 +148,27 @@ boostsRouter.post(
     }
     if (data.provider === "stripe" && !stripeSecret) {
       return res.status(400).json({ error: "Stripe is not configured." });
+    }
+    if (data.provider === "hubtel" && !hubtelConfig) {
+      return res.status(400).json({ error: "Hubtel is not configured." });
+    }
+    if (data.provider === "expresspay" && !expresspayConfig) {
+      return res.status(400).json({ error: "ExpressPay is not configured." });
+    }
+
+    const hubtelPhone =
+      data.provider === "hubtel" ? normalizeHubtelPhone(req.user!.phone) : null;
+    if (data.provider === "hubtel" && !hubtelPhone) {
+      return res.status(400).json({
+        error: "Hubtel requires a valid phone number in E.164 format.",
+      });
+    }
+    const expresspayPhone =
+      data.provider === "expresspay" ? normalizeExpresspayPhone(req.user!.phone) : null;
+    if (data.provider === "expresspay" && !expresspayPhone) {
+      return res.status(400).json({
+        error: "ExpressPay requires a valid phone number.",
+      });
     }
 
     const service = await prisma.service.findUnique({
@@ -317,6 +351,95 @@ boostsRouter.post(
           checkoutUrl: payload.data.authorization_url,
           paymentIntentId: paymentIntent.id,
           provider: "paystack",
+        });
+      }
+
+      if (data.provider === "expresspay") {
+        if (paymentIntent.currency !== "GHS") {
+          return res.status(400).json({ error: "ExpressPay supports GHS only." });
+        }
+
+        const redirectUrl = `${appUrl}/payment/verify?provider=expresspay&purpose=boost`;
+        const postUrl = `${appUrl}/api/webhooks/expresspay`;
+        const customer = buildExpresspayCustomer(req.user!);
+
+        const payload = await createExpresspayCheckout(expresspayConfig!, {
+          amount: paymentIntent.amount.toFixed(2),
+          currency: paymentIntent.currency,
+          orderId: paymentIntent.id,
+          redirectUrl,
+          postUrl,
+          customer: {
+            ...customer,
+            phonenumber: expresspayPhone!,
+          },
+          orderDesc: "Boost your service visibility.",
+        });
+
+        await prisma.paymentIntent.update({
+          where: { id: paymentIntent.id },
+          data: {
+            status: "pending",
+            providerRef: payload.token,
+            metadata: {
+              purpose: "boost",
+              boostType: option.type,
+              serviceId: data.serviceId,
+              providerId: req.user!.id,
+              expresspay: payload.payload as unknown as Prisma.InputJsonValue,
+            },
+          },
+        });
+
+        return res.json({
+          checkoutUrl: payload.checkoutUrl,
+          paymentIntentId: paymentIntent.id,
+          provider: "expresspay",
+        });
+      }
+
+      if (data.provider === "hubtel") {
+        if (paymentIntent.currency !== "GHS") {
+          return res.status(400).json({ error: "Hubtel supports GHS only." });
+        }
+
+        const callbackUrl = `${appUrl}/api/webhooks/hubtel`;
+        const returnUrl = `${appUrl}/payment/verify?provider=hubtel&purpose=boost&reference=${paymentIntent.id}`;
+        const cancellationUrl = `${appUrl}/dashboard/boosts?payment=cancelled`;
+
+        const payload = await createHubtelPaylink(hubtelConfig!, {
+          mobileNumber: hubtelPhone!,
+          amount: Number(paymentIntent.amount.toFixed(2)),
+          title: "SERVFIX",
+          description: "Boost your service visibility.",
+          clientReference: paymentIntent.id,
+          callbackUrl,
+          returnUrl,
+          cancellationUrl,
+        });
+
+        await prisma.paymentIntent.update({
+          where: { id: paymentIntent.id },
+          data: {
+            status: "pending",
+            providerRef:
+              payload.data?.paylinkId ??
+              payload.data?.transactionId ??
+              paymentIntent.id,
+            metadata: {
+              purpose: "boost",
+              boostType: option.type,
+              serviceId: data.serviceId,
+              providerId: req.user!.id,
+              hubtel: payload,
+            },
+          },
+        });
+
+        return res.json({
+          checkoutUrl: payload.data?.paylinkUrl,
+          paymentIntentId: paymentIntent.id,
+          provider: "hubtel",
         });
       }
 

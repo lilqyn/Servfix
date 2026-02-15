@@ -6,6 +6,8 @@ import { asyncHandler } from "../utils/async-handler.js";
 import { createNotification } from "../utils/notifications.js";
 import { getPlatformSettings } from "../utils/platform-settings.js";
 import { Prisma, type PaymentProvider } from "@prisma/client";
+import { finalizePayment } from "./payments.js";
+import { queryExpresspayPayment, resolveExpresspayConfig } from "../utils/expresspay.js";
 
 export const webhooksRouter = Router();
 
@@ -421,6 +423,288 @@ webhooksRouter.post(
       refundReference,
       provider: "paystack",
       payload: payload as Prisma.JsonValue,
+    });
+
+    res.json({ received: true });
+  }),
+);
+
+webhooksRouter.post(
+  "/hubtel",
+  asyncHandler(async (req, res) => {
+    const payload = req.body as {
+      responseCode?: string;
+      ResponseCode?: string;
+      message?: string;
+      Message?: string;
+      data?: Record<string, unknown>;
+      Data?: Record<string, unknown>;
+    };
+
+    const data = payload.data ?? payload.Data ?? {};
+    const clientReference =
+      (data["clientReference"] ?? data["ClientReference"])?.toString() ??
+      (payload as Record<string, unknown>)["clientReference"]?.toString() ??
+      (payload as Record<string, unknown>)["ClientReference"]?.toString();
+
+    if (!clientReference) {
+      return res.status(400).json({ error: "Missing Hubtel client reference." });
+    }
+
+    const paymentIntent = await prisma.paymentIntent.findUnique({
+      where: { id: clientReference },
+    });
+
+    if (!paymentIntent) {
+      return res.status(404).json({ error: "Payment intent not found." });
+    }
+
+    if (paymentIntent.provider !== "hubtel") {
+      return res.status(400).json({ error: "Invalid payment provider." });
+    }
+
+    const responseCode = String(
+      payload.responseCode ?? payload.ResponseCode ?? "",
+    );
+    const status = String(data["status"] ?? data["Status"] ?? "").toLowerCase();
+
+    const successCodes = new Set(["0000", "00", "200", "0"]);
+    const successStatuses = new Set(["paid", "success", "successful", "completed"]);
+    const failureStatuses = new Set(["failed", "cancelled", "canceled", "declined"]);
+
+    const isSuccess = successCodes.has(responseCode) || successStatuses.has(status);
+    const isFailure = failureStatuses.has(status);
+
+    if (isFailure && paymentIntent.status !== "succeeded") {
+      await prisma.paymentIntent.update({
+        where: { id: paymentIntent.id },
+        data: {
+          status: "failed",
+          metadata:
+            payload === null ? Prisma.JsonNull : (payload as Prisma.InputJsonValue),
+        },
+      });
+      return res.json({ received: true });
+    }
+
+    if (!isSuccess) {
+      return res.json({ received: true });
+    }
+
+    if (paymentIntent.status === "succeeded") {
+      return res.json({ received: true });
+    }
+
+    const amountValue = data["amount"] ?? data["Amount"];
+    if (amountValue !== undefined && amountValue !== null) {
+      const amount = new Prisma.Decimal(String(amountValue));
+      if (amount.lessThan(paymentIntent.amount)) {
+        await prisma.paymentIntent.update({
+          where: { id: paymentIntent.id },
+          data: {
+            status: "failed",
+            metadata:
+              payload === null ? Prisma.JsonNull : (payload as Prisma.InputJsonValue),
+          },
+        });
+        return res.status(400).json({ error: "Amount mismatch." });
+      }
+    }
+
+    const paylinkId =
+      (data["paylinkId"] ?? data["PaylinkId"])?.toString() ??
+      (data["transactionId"] ?? data["TransactionId"])?.toString() ??
+      clientReference;
+
+    if (!paymentIntent.providerRef && paylinkId) {
+      await prisma.paymentIntent.update({
+        where: { id: paymentIntent.id },
+        data: { providerRef: paylinkId },
+      });
+    }
+
+    const metadata =
+      paymentIntent.metadata && typeof paymentIntent.metadata === "object"
+        ? (paymentIntent.metadata as Record<string, unknown>)
+        : {};
+    const actorId =
+      (metadata["buyerId"] as string | undefined) ??
+      (metadata["providerId"] as string | undefined) ??
+      (metadata["payerId"] as string | undefined) ??
+      null;
+
+    const { settings } = await getPlatformSettings();
+    await finalizePayment({
+      paymentIntentId: paymentIntent.id,
+      providerEventId: paylinkId ?? paymentIntent.id,
+      providerPayload:
+        payload === null ? Prisma.JsonNull : (payload as Prisma.InputJsonValue),
+      actorId,
+      settings,
+    });
+
+    res.json({ received: true });
+  }),
+);
+
+webhooksRouter.post(
+  "/expresspay",
+  asyncHandler(async (req, res) => {
+    const payload = req.body as Record<string, unknown>;
+    const token =
+      payload["token"]?.toString() ?? payload["Token"]?.toString();
+    const orderId =
+      payload["order-id"]?.toString() ??
+      payload["order_id"]?.toString() ??
+      payload["orderId"]?.toString() ??
+      payload["OrderId"]?.toString();
+
+    if (!token && !orderId) {
+      return res.status(400).json({ error: "Missing ExpressPay reference." });
+    }
+
+    let paymentIntent =
+      orderId
+        ? await prisma.paymentIntent.findUnique({ where: { id: orderId } })
+        : null;
+
+    if (!paymentIntent && token) {
+      paymentIntent = await prisma.paymentIntent.findFirst({
+        where: { provider: "expresspay", providerRef: token },
+      });
+    }
+
+    if (!paymentIntent) {
+      return res.status(404).json({ error: "Payment intent not found." });
+    }
+
+    if (paymentIntent.provider !== "expresspay") {
+      return res.status(400).json({ error: "Invalid payment provider." });
+    }
+
+    const { settings } = await getPlatformSettings();
+    const expresspayConfig = resolveExpresspayConfig(settings);
+    if (!expresspayConfig) {
+      return res.status(400).json({ error: "ExpressPay is not configured." });
+    }
+
+    const verifyToken = token ?? paymentIntent.providerRef ?? "";
+    if (!verifyToken) {
+      return res.status(400).json({ error: "Missing ExpressPay token." });
+    }
+
+    const { ok, payload: verifyPayload } = await queryExpresspayPayment(
+      expresspayConfig,
+      verifyToken,
+    );
+    const resultCode =
+      verifyPayload.result !== undefined ? String(verifyPayload.result) : "";
+
+    if (!ok || !resultCode) {
+      if (paymentIntent.status !== "succeeded") {
+        await prisma.paymentIntent.update({
+          where: { id: paymentIntent.id },
+          data: {
+            status: "failed",
+            metadata:
+              verifyPayload === null
+                ? Prisma.JsonNull
+                : (verifyPayload as Prisma.InputJsonValue),
+          },
+        });
+      }
+      return res
+        .status(400)
+        .json({ error: "Unable to verify ExpressPay payment." });
+    }
+
+    if (resultCode === "4") {
+      return res.json({ received: true });
+    }
+
+    if (resultCode !== "1") {
+      if (paymentIntent.status !== "succeeded") {
+        await prisma.paymentIntent.update({
+          where: { id: paymentIntent.id },
+          data: {
+            status: "failed",
+            metadata:
+              verifyPayload === null
+                ? Prisma.JsonNull
+                : (verifyPayload as Prisma.InputJsonValue),
+          },
+        });
+      }
+      return res.json({ received: true });
+    }
+
+    if (
+      verifyPayload.currency &&
+      verifyPayload.currency.toString().toUpperCase() !== paymentIntent.currency
+    ) {
+      await prisma.paymentIntent.update({
+        where: { id: paymentIntent.id },
+        data: {
+          status: "failed",
+          metadata:
+            verifyPayload === null
+              ? Prisma.JsonNull
+              : (verifyPayload as Prisma.InputJsonValue),
+        },
+      });
+      return res.status(400).json({ error: "Currency mismatch." });
+    }
+
+    if (verifyPayload.amount !== undefined) {
+      const amount = new Prisma.Decimal(String(verifyPayload.amount));
+      if (amount.lessThan(paymentIntent.amount)) {
+        await prisma.paymentIntent.update({
+          where: { id: paymentIntent.id },
+          data: {
+            status: "failed",
+            metadata:
+              verifyPayload === null
+                ? Prisma.JsonNull
+                : (verifyPayload as Prisma.InputJsonValue),
+          },
+        });
+        return res.status(400).json({ error: "Amount mismatch." });
+      }
+    }
+
+    if (!paymentIntent.providerRef && token) {
+      await prisma.paymentIntent.update({
+        where: { id: paymentIntent.id },
+        data: { providerRef: token },
+      });
+    }
+
+    if (paymentIntent.status === "succeeded") {
+      return res.json({ received: true });
+    }
+
+    const metadata =
+      paymentIntent.metadata && typeof paymentIntent.metadata === "object"
+        ? (paymentIntent.metadata as Record<string, unknown>)
+        : {};
+    const actorId =
+      (metadata["buyerId"] as string | undefined) ??
+      (metadata["providerId"] as string | undefined) ??
+      (metadata["payerId"] as string | undefined) ??
+      null;
+
+    const providerEventId =
+      verifyPayload["transaction-id"]?.toString() ?? verifyToken ?? paymentIntent.id;
+
+    await finalizePayment({
+      paymentIntentId: paymentIntent.id,
+      providerEventId,
+      providerPayload:
+        verifyPayload === null
+          ? Prisma.JsonNull
+          : (verifyPayload as Prisma.InputJsonValue),
+      actorId,
+      settings,
     });
 
     res.json({ received: true });

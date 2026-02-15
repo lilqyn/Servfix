@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { Star, ThumbsUp, MoreHorizontal, ChevronDown, Image as ImageIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { computeReviewSummary, type NewReviewInput, type Review } from "@/lib/reviews";
 import { toast } from "sonner";
 
@@ -43,6 +44,12 @@ const ServiceReviews = ({
 
   const displayedReviews = showAll ? reviews : reviews.slice(0, 3);
   const safeTotal = summary.totalReviews > 0 ? summary.totalReviews : 1;
+  const getInitials = (name: string) => {
+    const parts = name.split(" ").filter(Boolean);
+    const first = parts[0]?.[0] ?? "U";
+    const second = parts[1]?.[0] ?? "";
+    return `${first}${second}`.toUpperCase();
+  };
 
   const toggleHelpful = (reviewId: string) => {
     setHelpfulReviews(prev => {
@@ -227,11 +234,12 @@ const ServiceReviews = ({
           <div key={review.id} className="pb-6 border-b border-border/50 last:border-0">
             <div className="flex items-start justify-between mb-3">
               <div className="flex items-center gap-3">
-                <img
-                  src={review.avatar}
-                  alt={review.author}
-                  className="w-10 h-10 rounded-full object-cover"
-                />
+                <Avatar className="w-10 h-10">
+                  {review.avatar ? <AvatarImage src={review.avatar} alt={review.author} /> : null}
+                  <AvatarFallback className="bg-primary/10 text-primary text-xs font-semibold">
+                    {getInitials(review.author)}
+                  </AvatarFallback>
+                </Avatar>
                 <div>
                   <h4 className="font-semibold text-foreground">{review.author}</h4>
                   <div className="flex items-center gap-2">
