@@ -11,6 +11,51 @@ type ApiError = {
   meta?: unknown;
 };
 
+type ApiFetchOptions = RequestInit & {
+  skipAuthRefresh?: boolean;
+  _retried?: boolean;
+};
+
+const CSRF_COOKIE_NAME = "servfix_csrf";
+const MUTATING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+
+const readCookie = (name: string) => {
+  if (typeof document === "undefined") {
+    return null;
+  }
+
+  const prefix = `${name}=`;
+  const found = document.cookie
+    .split(";")
+    .map((chunk) => chunk.trim())
+    .find((chunk) => chunk.startsWith(prefix));
+
+  if (!found) {
+    return null;
+  }
+
+  try {
+    return decodeURIComponent(found.slice(prefix.length));
+  } catch {
+    return found.slice(prefix.length);
+  }
+};
+
+const shouldAttemptAuthRefresh = (path: string) => {
+  const authPaths = [
+    "/api/auth/login",
+    "/api/auth/register",
+    "/api/auth/google",
+    "/api/auth/phone",
+    "/api/auth/staff-invite",
+    "/api/auth/admin-mfa/verify",
+    "/api/auth/refresh",
+    "/api/auth/logout",
+    "/api/auth/password-reset",
+  ];
+  return !authPaths.some((authPath) => path.startsWith(authPath));
+};
+
 async function parseJson<T>(response: Response): Promise<T> {
   const text = await response.text();
   if (!text) {
@@ -21,24 +66,32 @@ async function parseJson<T>(response: Response): Promise<T> {
 
 export async function apiFetch<T>(
   path: string,
-  options: RequestInit = {},
+  options: ApiFetchOptions = {},
 ): Promise<T> {
-  const headers = new Headers(options.headers);
+  const { skipAuthRefresh = false, _retried = false, ...requestOptions } = options;
+  const headers = new Headers(requestOptions.headers);
   headers.set("Accept", "application/json");
+  const method = (requestOptions.method ?? "GET").toUpperCase();
 
   const isFormData =
-    typeof FormData !== "undefined" && options.body instanceof FormData;
+    typeof FormData !== "undefined" && requestOptions.body instanceof FormData;
 
-  if (options.body && !headers.has("Content-Type") && !isFormData) {
+  if (requestOptions.body && !headers.has("Content-Type") && !isFormData) {
     headers.set("Content-Type", "application/json");
   }
 
-  const token =
-    localStorage.getItem("servfix-token") ??
-    localStorage.getItem("serveghana-token");
-  if (token) {
-    headers.set("Authorization", `Bearer ${token}`);
-  } else {
+  if (MUTATING_METHODS.has(method) && !headers.has("x-csrf-token")) {
+    const csrfToken = readCookie(CSRF_COOKIE_NAME);
+    if (csrfToken) {
+      headers.set("x-csrf-token", csrfToken);
+    }
+  }
+
+  const hasStoredUser =
+    typeof window !== "undefined" &&
+    Boolean(localStorage.getItem("servfix-user") ?? localStorage.getItem("serveghana-user"));
+
+  if (!hasStoredUser) {
     const guestId = getGuestId();
     if (guestId) {
       headers.set("x-guest-id", guestId);
@@ -46,9 +99,36 @@ export async function apiFetch<T>(
   }
 
   const response = await fetch(`${API_BASE_URL}${path}`, {
-    ...options,
+    ...requestOptions,
+    method,
     headers,
+    credentials: "include",
   });
+
+  if (
+    response.status === 401 &&
+    !_retried &&
+    !skipAuthRefresh &&
+    shouldAttemptAuthRefresh(path)
+  ) {
+    const csrfToken = readCookie(CSRF_COOKIE_NAME);
+    const refreshResponse = await fetch(`${API_BASE_URL}/api/auth/refresh`, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        ...(csrfToken ? { "x-csrf-token": csrfToken } : {}),
+      },
+      credentials: "include",
+    });
+
+    if (refreshResponse.ok) {
+      return apiFetch<T>(path, {
+        ...requestOptions,
+        _retried: true,
+        skipAuthRefresh,
+      });
+    }
+  }
 
   if (!response.ok) {
     const payload = await parseJson<ApiError>(response);
@@ -154,11 +234,15 @@ export type ApiOrderStatus =
   | "paid_to_escrow"
   | "accepted"
   | "in_progress"
+  | "delivery_submitted"
   | "delivered"
+  | "release_approved"
   | "approved"
   | "released"
+  | "disbursed"
   | "cancelled"
   | "expired"
+  | "dispute_open"
   | "disputed"
   | "refund_pending"
   | "refunded"
@@ -175,10 +259,15 @@ export type ApiOrder = {
   amountPaid?: string;
   amountPaidNet?: string;
   amountReleasedNet?: string;
+  amountDisbursedNet?: string;
   depositPercent?: number | null;
   depositAmount?: string | null;
   balanceAmount?: string | null;
   quoteId?: string | null;
+  deliverySubmittedAt?: string | null;
+  reviewDeadlineAt?: string | null;
+  disputeOpenedAt?: string | null;
+  disbursedAt?: string | null;
   currency: "GHS" | "USD" | "EUR";
   service: {
     id: string;
@@ -694,13 +783,14 @@ export type HomeContent = HomeContentPayload & {
   updatedAt?: string;
 };
 
-export type StaticPageKey = "about" | "blog" | "providerResources";
+export type StaticPageKey = "about" | "blog" | "academy" | "providerResources";
 
 export type BlogPost = {
   title: string;
   summary?: string | null;
   body: string;
   imageUrl?: string | null;
+  videoUrl?: string | null;
   publishedAt: string;
 };
 
@@ -717,6 +807,31 @@ export type StaffProfile = {
 
 export type StaffProfileView = StaffProfile & {
   photoSignedUrl?: string | null;
+};
+
+export type AboutFontOption =
+  | "space_grotesk"
+  | "plus_jakarta_sans"
+  | "georgia_serif"
+  | "times_serif"
+  | "system_sans"
+  | "mono";
+
+export type AboutPageConfig = {
+  introLabel: string;
+  heroImageUrl?: string | null;
+  heroImageSignedUrl?: string | null;
+  missionTitle: string;
+  missionBody: string;
+  missionBullets: string[];
+  whatWeDoTitle: string;
+  whatWeDoLeft: string[];
+  whatWeDoRight: string[];
+  visionTitle: string;
+  visionLeft: string;
+  visionRight: string[];
+  headingFont: AboutFontOption;
+  bodyFont: AboutFontOption;
 };
 
 export type ProviderLaunchChecklistKey =
@@ -756,6 +871,7 @@ export type ProviderResourcesContent = {
 export type StaticPagePayload = {
   title: string;
   body: string;
+  aboutConfig?: AboutPageConfig;
   posts?: BlogPost[];
   staff?: StaffProfile[];
   resourcesConfig?: ProviderResourcesContent;
@@ -779,6 +895,10 @@ export type PublicSettings = {
   payments?: {
     enabledProviders: PaymentIntegrationProvider[];
     defaultProvider: PaymentIntegrationProvider;
+  };
+  localization?: {
+    currency: "GHS" | "USD" | "EUR";
+    enabledCurrencies: Array<"GHS" | "USD" | "EUR">;
   };
   socialLinks?: SocialLink[];
   updatedAt?: string | null;
@@ -845,6 +965,23 @@ export async function fetchService(id: string): Promise<ApiService> {
   return response.service;
 }
 
+export async function updateServiceStatus(
+  serviceId: string,
+  status: "draft" | "published" | "suspended",
+): Promise<ApiService> {
+  const response = await apiFetch<ServiceResponse>(`/api/services/${serviceId}/status`, {
+    method: "PATCH",
+    body: JSON.stringify({ status }),
+  });
+  return response.service;
+}
+
+export async function deleteService(serviceId: string): Promise<void> {
+  await apiFetch(`/api/services/${serviceId}`, {
+    method: "DELETE",
+  });
+}
+
 export async function fetchOrders(): Promise<ApiOrder[]> {
   const response = await apiFetch<OrdersResponse>("/api/orders");
   return response.orders;
@@ -859,6 +996,36 @@ export async function updateOrderStatus(
     body: JSON.stringify({ status }),
   });
   return response.order;
+}
+
+export type OrderDispute = {
+  id: string;
+  orderId: string;
+  openedById: string;
+  reason: string;
+  details?: string | null;
+  status: "open" | "investigating" | "resolved" | "cancelled";
+  resolution?: "refund" | "release" | "partial_refund" | "deny" | null;
+  createdAt: string;
+  resolvedAt?: string | null;
+};
+
+export async function approveOrderCompletion(orderId: string): Promise<ApiOrder> {
+  const response = await apiFetch<{ order: ApiOrder }>(`/api/orders/${orderId}/approve-completion`, {
+    method: "POST",
+  });
+  return response.order;
+}
+
+export async function openOrderDispute(
+  orderId: string,
+  payload: { reason: string; details?: string; evidence?: string[] },
+): Promise<OrderDispute> {
+  const response = await apiFetch<{ dispute: OrderDispute }>(`/api/orders/${orderId}/disputes`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  return response.dispute;
 }
 
 type CommunityFeedResponse = {
@@ -960,6 +1127,81 @@ export type AdminUser = {
   status: "active" | "suspended" | "deleted";
   createdAt: string;
   providerProfile?: { displayName?: string | null } | null;
+};
+
+export type AccountDeletionRequestStatus = "pending" | "approved" | "rejected";
+
+export type AccountDeletionRequest = {
+  id: string;
+  status: AccountDeletionRequestStatus;
+  reason?: string | null;
+  requestedAt: string;
+  reviewedAt?: string | null;
+  reviewNote?: string | null;
+  reviewedBy?: {
+    id: string;
+    email?: string | null;
+    username?: string | null;
+  } | null;
+};
+
+export type MyAccountDeletionResponse =
+  | { status: "deleted" }
+  | { status: "pending_approval"; request: AccountDeletionRequest };
+
+export type ProviderDeletionEligibility = {
+  eligible: boolean;
+  activeOrders: number;
+  pendingPayoutRequests: number;
+  openComplianceCases: number;
+  reasons: string[];
+};
+
+export type AdminAccountDeletionRequest = {
+  id: string;
+  status: AccountDeletionRequestStatus;
+  reason?: string | null;
+  requestedAt: string;
+  reviewedAt?: string | null;
+  reviewNote?: string | null;
+  user: {
+    id: string;
+    role: UserRole;
+    status: "active" | "suspended" | "deleted";
+    email?: string | null;
+    phone?: string | null;
+    username?: string | null;
+    providerProfile?: { displayName?: string | null } | null;
+  };
+  reviewedBy?: {
+    id: string;
+    email?: string | null;
+    username?: string | null;
+  } | null;
+  eligibility?: ProviderDeletionEligibility | null;
+};
+
+export type AdminStaffInvitationStatus = "pending" | "accepted" | "revoked" | "expired";
+
+export type AdminStaffInvitation = {
+  id: string;
+  email: string;
+  role: UserRole;
+  status: AdminStaffInvitationStatus;
+  expiresAt: string;
+  acceptedAt?: string | null;
+  revokedAt?: string | null;
+  createdAt: string;
+  invitedBy: {
+    id: string;
+    email?: string | null;
+    username?: string | null;
+  };
+  acceptedBy?: {
+    id: string;
+    email?: string | null;
+    username?: string | null;
+  } | null;
 };
 
 export type AdminProvider = {
@@ -1085,9 +1327,12 @@ export type AdminReport = {
 
 export type AdminDispute = {
   id: string;
+  reason: string;
+  details?: string | null;
   status: "open" | "investigating" | "resolved" | "cancelled";
   resolution?: "refund" | "release" | "partial_refund" | "deny" | null;
   createdAt: string;
+  evidence?: string[];
   order: { id: string; status: string };
   openedBy: { id: string; email?: string | null; username?: string | null };
 };
@@ -1097,13 +1342,13 @@ export type AdminPayoutSummary = {
   totals: { released: string; pending: string };
 };
 
-export type ProviderWallet = {
-  availableBalance: string;
-  pendingBalance: string;
+export type ProviderEarningsLedger = {
+  payable: string;
+  pending_release: string;
   currency: "GHS" | "USD" | "EUR";
 };
 
-export type ProviderPayoutRequest = {
+export type ProviderDisbursementRequest = {
   id: string;
   amount: string;
   currency: "GHS" | "USD" | "EUR";
@@ -1114,9 +1359,12 @@ export type ProviderPayoutRequest = {
   createdAt: string;
 };
 
+export type ProviderWallet = ProviderEarningsLedger;
+export type ProviderPayoutRequest = ProviderDisbursementRequest;
+
 export type ProviderPayoutsResponse = {
-  wallet: ProviderWallet;
-  requests: ProviderPayoutRequest[];
+  earnings: ProviderEarningsLedger;
+  disbursement_requests: ProviderDisbursementRequest[];
 };
 
 export type AdminPayoutRequest = {
@@ -1130,6 +1378,53 @@ export type AdminPayoutRequest = {
   failureReason?: string | null;
   createdAt: string;
   provider: AdminProvider;
+};
+
+export type AdminPayoutComplianceCaseStatus =
+  | "open"
+  | "investigating"
+  | "cleared"
+  | "escalated"
+  | "reported"
+  | "closed";
+
+export type AdminPayoutComplianceCaseSeverity = "low" | "medium" | "high" | "critical";
+export type AdminPayoutComplianceCaseType = "aml_payout" | "sanctions_match";
+
+export type AdminPayoutComplianceCase = {
+  id: string;
+  type: AdminPayoutComplianceCaseType;
+  status: AdminPayoutComplianceCaseStatus;
+  severity: AdminPayoutComplianceCaseSeverity;
+  riskScore?: number | null;
+  title: string;
+  summary?: string | null;
+  reasons: string[];
+  metadata?: Record<string, unknown> | null;
+  resolvedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  provider: AdminProvider;
+  payoutRequest?: {
+    id: string;
+    amount: string;
+    currency: "GHS" | "USD" | "EUR";
+    status: "requested" | "processing" | "paid" | "failed" | "cancelled";
+    createdAt: string;
+    destinationMomo: string;
+    momoNetwork?: "mtn" | "vodafone" | "airteltigo" | null;
+  } | null;
+  screening?: {
+    id: string;
+    status: "pending" | "clear" | "possible_match" | "confirmed_match" | "error";
+    matchScore: number;
+    watchlistSource?: string | null;
+    screenedAt: string;
+    reviewedAt?: string | null;
+  } | null;
+  assignedTo?: { id: string; email?: string | null; username?: string | null } | null;
+  createdBy?: { id: string; email?: string | null; username?: string | null } | null;
+  closedBy?: { id: string; email?: string | null; username?: string | null } | null;
 };
 
 export type AdminAnalytics = {
@@ -1468,6 +1763,7 @@ export type Integrations = {
 
 export type LocalizationSettings = {
   currency: "GHS" | "USD" | "EUR";
+  enabledCurrencies: Array<"GHS" | "USD" | "EUR">;
   locale: string;
   timezone: string;
 };
@@ -1609,6 +1905,20 @@ export async function updateMyProfile(payload: UpdateMyProfilePayload): Promise<
   });
 }
 
+export async function fetchMyAccountDeletionRequest(): Promise<{
+  request: AccountDeletionRequest | null;
+}> {
+  return apiFetch<{ request: AccountDeletionRequest | null }>("/api/users/me/account-deletion-request");
+}
+
+export async function requestMyAccountDeletion(reason?: string): Promise<MyAccountDeletionResponse> {
+  const payload = reason?.trim() ? { reason: reason.trim() } : {};
+  return apiFetch<MyAccountDeletionResponse>("/api/users/me", {
+    method: "DELETE",
+    body: JSON.stringify(payload),
+  });
+}
+
 export async function createCommunityPost(payload: {
   content?: string;
   media?: Array<string | CommunityPostMediaInput>;
@@ -1715,6 +2025,16 @@ export async function uploadCommunityImage(file: File): Promise<UploadImageRespo
   form.append("file", file);
 
   return apiFetch<UploadImageResponse>("/api/uploads/community-image", {
+    method: "POST",
+    body: form,
+  });
+}
+
+export async function uploadDisputeImage(file: File): Promise<UploadImageResponse> {
+  const form = new FormData();
+  form.append("file", file);
+
+  return apiFetch<UploadImageResponse>("/api/uploads/dispute-image", {
     method: "POST",
     body: form,
   });
@@ -1865,6 +2185,80 @@ export async function updateAdminUserRole(id: string, role: UserRole): Promise<v
     method: "PATCH",
     body: JSON.stringify({ role }),
   });
+}
+
+export async function deleteAdminStaffUser(id: string): Promise<void> {
+  await apiFetch(`/api/admin/users/${id}/delete`, {
+    method: "POST",
+  });
+}
+
+export async function fetchAdminStaffInvitations(params?: {
+  status?: AdminStaffInvitationStatus;
+  limit?: number;
+}): Promise<{ invitations: AdminStaffInvitation[]; invitableRoles: UserRole[] }> {
+  const searchParams = new URLSearchParams();
+  if (params?.status) searchParams.set("status", params.status);
+  if (params?.limit) searchParams.set("limit", String(params.limit));
+  const query = searchParams.toString();
+  return apiFetch(`/api/admin/staff-invitations${query ? `?${query}` : ""}`);
+}
+
+export async function createAdminStaffInvitation(payload: {
+  email: string;
+  role: UserRole;
+}): Promise<AdminStaffInvitation> {
+  const response = await apiFetch<{ invitation: AdminStaffInvitation }>("/api/admin/staff-invitations", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  return response.invitation;
+}
+
+export async function revokeAdminStaffInvitation(id: string): Promise<AdminStaffInvitation> {
+  const response = await apiFetch<{ invitation: AdminStaffInvitation }>(`/api/admin/staff-invitations/${id}/revoke`, {
+    method: "PATCH",
+  });
+  return response.invitation;
+}
+
+export async function fetchAdminAccountDeletionRequests(params?: {
+  status?: AccountDeletionRequestStatus;
+  limit?: number;
+}): Promise<{ requests: AdminAccountDeletionRequest[] }> {
+  const searchParams = new URLSearchParams();
+  if (params?.status) searchParams.set("status", params.status);
+  if (params?.limit) searchParams.set("limit", String(params.limit));
+  const query = searchParams.toString();
+  return apiFetch(`/api/admin/account-deletion-requests${query ? `?${query}` : ""}`);
+}
+
+export async function approveAdminAccountDeletionRequest(
+  id: string,
+  note?: string,
+): Promise<AdminAccountDeletionRequest> {
+  const response = await apiFetch<{ request: AdminAccountDeletionRequest }>(
+    `/api/admin/account-deletion-requests/${id}/approve`,
+    {
+      method: "POST",
+      body: JSON.stringify(note?.trim() ? { note: note.trim() } : {}),
+    },
+  );
+  return response.request;
+}
+
+export async function rejectAdminAccountDeletionRequest(
+  id: string,
+  note?: string,
+): Promise<AdminAccountDeletionRequest> {
+  const response = await apiFetch<{ request: AdminAccountDeletionRequest }>(
+    `/api/admin/account-deletion-requests/${id}/reject`,
+    {
+      method: "POST",
+      body: JSON.stringify(note?.trim() ? { note: note.trim() } : {}),
+    },
+  );
+  return response.request;
 }
 
 export async function fetchAdminProviders(params?: {
@@ -2132,11 +2526,15 @@ export async function fetchProviderPayouts(): Promise<ProviderPayoutsResponse> {
   return apiFetch("/api/payouts");
 }
 
-export async function requestProviderPayout(amount: number): Promise<void> {
+export async function requestProviderDisbursement(amount: number): Promise<void> {
   await apiFetch("/api/payouts", {
     method: "POST",
     body: JSON.stringify({ amount }),
   });
+}
+
+export async function requestProviderPayout(amount: number): Promise<void> {
+  await requestProviderDisbursement(amount);
 }
 
 export async function fetchBoostOptions(): Promise<BoostOption[]> {
@@ -2384,6 +2782,39 @@ export async function fetchAdminPayoutRequests(): Promise<{ requests: AdminPayou
   return apiFetch("/api/admin/payout-requests");
 }
 
+export async function fetchAdminPayoutComplianceCases(params?: {
+  status?: AdminPayoutComplianceCaseStatus;
+  severity?: AdminPayoutComplianceCaseSeverity;
+  type?: AdminPayoutComplianceCaseType;
+  limit?: number;
+}): Promise<{ cases: AdminPayoutComplianceCase[] }> {
+  const searchParams = new URLSearchParams();
+  if (params?.status) searchParams.set("status", params.status);
+  if (params?.severity) searchParams.set("severity", params.severity);
+  if (params?.type) searchParams.set("type", params.type);
+  if (params?.limit) searchParams.set("limit", String(params.limit));
+  const query = searchParams.toString();
+  return apiFetch(`/api/admin/payout-compliance-cases${query ? `?${query}` : ""}`);
+}
+
+export async function updateAdminPayoutComplianceCase(
+  id: string,
+  payload: {
+    status: AdminPayoutComplianceCaseStatus;
+    assignedToId?: string | null;
+    note?: string;
+  },
+): Promise<AdminPayoutComplianceCase> {
+  const response = await apiFetch<{ case: AdminPayoutComplianceCase }>(
+    `/api/admin/payout-compliance-cases/${id}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    },
+  );
+  return response.case;
+}
+
 export async function approveAdminPayoutRequest(id: string): Promise<void> {
   await apiFetch(`/api/admin/payout-requests/${id}/approve`, {
     method: "POST",
@@ -2499,6 +2930,7 @@ export async function updateAdminPages(payload: AdminPagesPayload): Promise<void
 export async function createPaymentCheckout(input: {
   provider: CheckoutProvider;
   method?: CheckoutMethod;
+  returnTo?: "web" | "mobile";
   items: {
     serviceId: string;
     tierId: string;
@@ -2513,6 +2945,7 @@ export async function createPaymentCheckout(input: {
 
 export async function verifyPayment(params: {
   provider: CheckoutProvider;
+  paymentIntentId?: string | null;
   transactionId?: string | null;
   txRef?: string | null;
   sessionId?: string | null;
@@ -2522,6 +2955,9 @@ export async function verifyPayment(params: {
 }): Promise<PaymentVerifyResponse> {
   const query = new URLSearchParams();
   query.set("provider", params.provider);
+  if (params.paymentIntentId) {
+    query.set("payment_intent_id", params.paymentIntentId);
+  }
   if (params.transactionId) {
     query.set("transaction_id", params.transactionId);
   }
@@ -2548,6 +2984,7 @@ export async function createOrderPaymentCheckout(payload: {
   orderPaymentId: string;
   provider: CheckoutProvider;
   method?: CheckoutMethod;
+  returnTo?: "web" | "mobile";
 }): Promise<PaymentCheckoutResponse> {
   return apiFetch("/api/payments/order-payment", {
     method: "POST",

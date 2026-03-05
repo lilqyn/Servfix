@@ -1,17 +1,23 @@
 import type { Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import { verifyToken } from "./auth/jwt.js";
+import { getAccessTokenFromHeaders } from "./auth/session.js";
 import { prisma } from "./db.js";
 
 type AuthedSocket = WebSocket & { userId?: string; isAlive?: boolean };
 
 const connections = new Map<string, Set<AuthedSocket>>();
 
-const getTokenFromRequest = (req: { url?: string | null }) => {
+const getTokenFromRequest = (req: { url?: string | null; headers?: Record<string, string | string[] | undefined> }) => {
   const rawUrl = req.url ?? "";
   const url = new URL(rawUrl, "http://localhost");
-  const token = url.searchParams.get("token");
-  return token;
+  const queryToken = url.searchParams.get("token");
+  if (queryToken) {
+    return queryToken;
+  }
+
+  const headerToken = getAccessTokenFromHeaders(req.headers ?? {});
+  return headerToken;
 };
 
 export const initWebsocket = (server: Server) => {

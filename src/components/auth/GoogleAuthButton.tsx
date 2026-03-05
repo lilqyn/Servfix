@@ -15,11 +15,36 @@ type GoogleAuthButtonProps = {
   onError?: (message: string) => void;
 };
 
-declare global {
-  interface Window {
-    google?: any;
-  }
-}
+type GoogleCredentialResponse = {
+  credential?: string;
+};
+
+type GoogleAccountsIdClient = {
+  initialize: (options: {
+    client_id: string;
+    callback: (credentialResponse: GoogleCredentialResponse) => void;
+  }) => void;
+  renderButton: (
+    parent: HTMLElement,
+    options: {
+      theme: "outline";
+      size: "large";
+      type: "standard";
+      text: "signin_with" | "signup_with";
+      shape: "pill";
+      logo_alignment: "left";
+    },
+  ) => void;
+};
+
+type GoogleIdentityNamespace = {
+  accounts?: {
+    id?: GoogleAccountsIdClient;
+  };
+};
+
+const getGoogleIdentity = () =>
+  (window as Window & { google?: GoogleIdentityNamespace }).google;
 
 const GoogleAuthButton = ({
   mode,
@@ -62,7 +87,7 @@ const GoogleAuthButton = ({
     );
 
     if (existingScript) {
-      if (window.google?.accounts?.id) {
+      if (getGoogleIdentity()?.accounts?.id) {
         setStatus("ready");
         return;
       }
@@ -107,7 +132,7 @@ const GoogleAuthButton = ({
     return () => {
       cancelled = true;
     };
-  }, [googleClientId]);
+  }, []);
 
   useEffect(() => {
     if (status !== "ready") {
@@ -122,7 +147,7 @@ const GoogleAuthButton = ({
       return;
     }
 
-    const google = window.google;
+    const google = getGoogleIdentity();
     if (!google?.accounts?.id) {
       setStatus("error");
       return;
@@ -130,7 +155,7 @@ const GoogleAuthButton = ({
 
     google.accounts.id.initialize({
       client_id: googleClientId,
-      callback: async (credentialResponse: { credential?: string }) => {
+      callback: async (credentialResponse: GoogleCredentialResponse) => {
         const token = credentialResponse?.credential;
         if (!token) {
           handlersRef.current.onError?.("Google sign-in failed. Please try again.");
@@ -175,7 +200,7 @@ const GoogleAuthButton = ({
     });
 
     initializedRef.current = true;
-  }, [googleClientId, mode, status]);
+  }, [mode, status]);
 
   if (!googleClientId) {
     return null;

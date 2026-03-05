@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMessages } from "@/contexts/MessagesContext";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth } from "@/contexts/useAuth";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -12,6 +12,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { useQueryClient } from "@tanstack/react-query";
 import { format, isToday, isYesterday } from "date-fns";
 import { cn } from "@/lib/utils";
+import { formatCurrencyAmount, type CurrencyCode } from "@/lib/currency";
 import {
   ArrowLeft,
   Phone,
@@ -73,14 +74,12 @@ const ChatView = ({ onBack, isMobile }: ChatViewProps) => {
       : enabledProviders[0]
     : "flutterwave";
   const paymentMethod = paymentProvider === "stripe" ? "card" : "mobile_money";
-  const formatMoneyExact = (amount: number, currency: "GHS" | "USD" | "EUR") =>
-    new Intl.NumberFormat("en-GH", {
-      style: "currency",
-      currency,
+  const formatMoneyExact = (amount: number, currency: CurrencyCode) =>
+    formatCurrencyAmount(amount, currency, {
       currencyDisplay: "code",
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
-    }).format(amount);
+    });
 
   const [isQuoteOpen, setIsQuoteOpen] = useState(false);
   const [quoteAmount, setQuoteAmount] = useState("");
@@ -112,7 +111,7 @@ const ChatView = ({ onBack, isMobile }: ChatViewProps) => {
   const amountPaid = order?.amountPaid ? Number(order.amountPaid) : 0;
   const amountGross = order?.amountGross ? Number(order.amountGross) : 0;
   const balanceDue = amountGross > 0 && amountPaid < amountGross;
-  const serviceTiers = serviceDetails?.tiers ?? [];
+  const serviceTiers = useMemo(() => serviceDetails?.tiers ?? [], [serviceDetails?.tiers]);
   const selectedQuoteTier =
     serviceTiers.find((tier) => tier.id === quoteTierId) ?? serviceTiers[0];
   const quotePricingType = selectedQuoteTier?.pricingType ?? "flat";
@@ -263,7 +262,7 @@ const ChatView = ({ onBack, isMobile }: ChatViewProps) => {
       });
       window.location.href = checkout.checkoutUrl;
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Unable to start balance payment.";
+      const message = error instanceof Error ? error.message : "Unable to start payable amount payment.";
       toast.error(message);
     }
   };
@@ -387,7 +386,7 @@ const ChatView = ({ onBack, isMobile }: ChatViewProps) => {
               </div>
               <div className="mt-2 text-sm text-muted-foreground space-y-1">
                 <div>
-                  Total: {latestQuote.currency} {Number(latestQuote.amount).toLocaleString()}
+                  Total: {formatMoneyExact(Number(latestQuote.amount), latestQuote.currency)}
                 </div>
                 {latestQuotePricingType === "per_unit" && (
                   <div>
@@ -396,16 +395,17 @@ const ChatView = ({ onBack, isMobile }: ChatViewProps) => {
                 )}
                 {latestQuoteRate !== null && (
                   <div>
-                    Rate: {latestQuote.currency} {latestQuoteRate.toLocaleString()} per{" "}
+                    Rate: {formatMoneyExact(latestQuoteRate, latestQuote.currency)} per{" "}
                     {latestQuoteUnitLabel}
                   </div>
                 )}
                 <div>
-                  Deposit: {latestQuote.depositPercent}% (
-                  {latestQuote.currency} {Number(latestQuote.depositAmount).toLocaleString()})
+                  Initial payment: {latestQuote.depositPercent}% (
+                  {formatMoneyExact(Number(latestQuote.depositAmount), latestQuote.currency)})
                 </div>
                 <div>
-                  Balance: {latestQuote.currency} {Number(latestQuote.balanceAmount).toLocaleString()}
+                  Remaining payable amount:{" "}
+                  {formatMoneyExact(Number(latestQuote.balanceAmount), latestQuote.currency)}
                 </div>
                 {latestQuote.message && (
                   <div className="text-xs text-muted-foreground mt-2">
@@ -416,7 +416,7 @@ const ChatView = ({ onBack, isMobile }: ChatViewProps) => {
               {user?.role === "buyer" && latestQuote.status === "sent" && (
                 <div className="mt-3 flex flex-wrap gap-2">
                   <Button size="sm" variant="gold" onClick={handleAcceptQuote}>
-                    {latestQuote.depositPercent > 0 ? "Accept & Pay Deposit" : "Accept & Pay"}
+                    {latestQuote.depositPercent > 0 ? "Accept & Pay Initial Amount" : "Accept & Pay"}
                   </Button>
                   <Button size="sm" variant="outline" onClick={handleRejectQuote}>
                     Decline
@@ -443,14 +443,14 @@ const ChatView = ({ onBack, isMobile }: ChatViewProps) => {
           {user?.role === "buyer" && pendingBalancePayment && (
             <div className="rounded-xl border border-border/60 bg-card p-4 flex items-center justify-between">
               <div>
-                <p className="text-sm font-semibold">Balance payment due</p>
+                <p className="text-sm font-semibold">Payable amount due</p>
                 <p className="text-xs text-muted-foreground">
-                  Remaining balance:{" "}
+                  Remaining payable amount:{" "}
                   {formatMoneyExact(pendingBalanceAmount, pendingBalancePayment.currency)}
                 </p>
               </div>
               <Button size="sm" variant="gold" onClick={handlePayBalance}>
-                Pay Balance
+                Pay amount
               </Button>
             </div>
           )}
@@ -590,17 +590,17 @@ const ChatView = ({ onBack, isMobile }: ChatViewProps) => {
             </div>
             {quoteTotal !== null && (
               <p className="text-xs text-muted-foreground">
-                Estimated total: {quoteCurrency} {quoteTotal.toLocaleString()}
+                Estimated total: {formatMoneyExact(quoteTotal, quoteCurrency)}
               </p>
             )}
             <div>
-              <label className="text-sm font-medium text-foreground">Deposit %</label>
+              <label className="text-sm font-medium text-foreground">Initial payment %</label>
               <Select
                 value={String(quoteDeposit)}
                 onValueChange={(value) => setQuoteDeposit(Number(value))}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Select deposit percent" />
+                  <SelectValue placeholder="Select initial payment percent" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="50">50%</SelectItem>

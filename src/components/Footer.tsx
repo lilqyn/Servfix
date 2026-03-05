@@ -1,12 +1,16 @@
-﻿import { Link } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { Facebook, Twitter, Instagram, Youtube, Linkedin, Mail, Phone, MapPin } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { usePublicSettings } from "@/hooks/usePublicSettings";
 import type { SocialLink } from "@/lib/api";
+import { useAuth } from "@/contexts/useAuth";
+import { isProviderRole } from "@/lib/roles";
 
 const Footer = () => {
   const { data: publicSettings } = usePublicSettings();
+  const { user, isAuthenticated } = useAuth();
   const communityEnabled = publicSettings?.featureFlags.community ?? true;
+  const showProviderResources = isAuthenticated && isProviderRole(user?.role);
   const socialLinks = publicSettings?.socialLinks ?? [];
   const baseUrl = import.meta.env.BASE_URL;
   const logoUrl = `${baseUrl}servfix-logo.png`;
@@ -114,6 +118,7 @@ const Footer = () => {
                 </li>
               )}
               <li><Link to="/about" className="hover:text-primary transition-colors">About Us</Link></li>
+              <li><Link to="/academy" className="hover:text-primary transition-colors">Academy</Link></li>
               <li>
                 <Link to="/support" className="hover:text-primary transition-colors">
                   Contact
@@ -135,7 +140,13 @@ const Footer = () => {
                   </Link>
                 </li>
               )}
-              <li><Link to="/provider-resources" className="hover:text-primary transition-colors">Provider Resources</Link></li>
+              {showProviderResources && (
+                <li>
+                  <Link to="/provider-resources" className="hover:text-primary transition-colors">
+                    Provider Resources
+                  </Link>
+                </li>
+              )}
               <li><Link to="/sign-up" className="hover:text-primary transition-colors">Join as Provider</Link></li>
             </ul>
           </div>
@@ -176,7 +187,7 @@ const Footer = () => {
 
         {/* Bottom */}
         <div className="mt-12 pt-8 border-t border-background/10 flex flex-col md:flex-row justify-between items-center gap-4 text-sm text-background/50">
-          <p>© 2024 SERVFIX. All rights reserved.</p>
+          <p>� 2024 SERVFIX. All rights reserved.</p>
           <div className="flex flex-wrap items-center gap-4">
             <Link to="/privacy" className="hover:text-background transition-colors">Privacy Policy</Link>
             <Link to="/terms" className="hover:text-background transition-colors">Terms of Service</Link>

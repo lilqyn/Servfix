@@ -3,7 +3,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { TrendingUp, TrendingDown, Package, ShoppingCart, Star, Wallet } from "lucide-react";
 import { useOrders } from "@/hooks/useOrders";
 import { useProviderServices } from "@/hooks/useProviderServices";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth } from "@/contexts/useAuth";
+import { formatCurrencyAmount, type CurrencyCode } from "@/lib/currency";
 import type { ApiOrderStatus } from "@/lib/api";
 
 const ACTIVE_STATUSES: ApiOrderStatus[] = [
@@ -11,13 +12,16 @@ const ACTIVE_STATUSES: ApiOrderStatus[] = [
   "paid_to_escrow",
   "accepted",
   "in_progress",
+  "delivery_submitted",
   "delivered",
+  "release_approved",
   "approved",
 ];
 
 const NON_REVENUE_STATUSES: ApiOrderStatus[] = [
   "cancelled",
   "expired",
+  "dispute_open",
   "disputed",
   "refund_pending",
   "refunded",
@@ -35,13 +39,11 @@ const toNumber = (value: unknown) => {
   return 0;
 };
 
-const formatCurrency = (amount: number, currency: "GHS" | "USD" | "EUR") =>
-  new Intl.NumberFormat("en-GH", {
-    style: "currency",
-    currency,
+const formatCurrency = (amount: number, currency: CurrencyCode) =>
+  formatCurrencyAmount(amount, currency, {
     currencyDisplay: "code",
     maximumFractionDigits: 0,
-  }).format(amount);
+  });
 
 const DashboardStats = () => {
   const { data: orders = [] } = useOrders();

@@ -11,16 +11,15 @@ import {
   fetchSubscriptionPlans,
   type SubscriptionPlan,
 } from "@/lib/api";
+import { formatCurrencyAmount, type CurrencyCode } from "@/lib/currency";
 import { usePublicSettings } from "@/hooks/usePublicSettings";
 import { toast } from "sonner";
 
-const formatCurrency = (amount: number, currency: "GHS" | "USD" | "EUR") =>
-  new Intl.NumberFormat("en-GH", {
-    style: "currency",
-    currency,
+const formatCurrency = (amount: number, currency: CurrencyCode) =>
+  formatCurrencyAmount(amount, currency, {
     currencyDisplay: "code",
     maximumFractionDigits: 0,
-  }).format(amount);
+  });
 
 const ProviderSubscriptions = () => {
   const [activePlanId, setActivePlanId] = useState<string | null>(null);
@@ -373,7 +372,7 @@ const ProviderSubscriptions = () => {
         <CardHeader>
           <CardTitle className="text-lg font-semibold">Plans</CardTitle>
           <p className="text-sm text-muted-foreground">
-            Upgrade to get better placement, analytics, and faster payouts.
+            Upgrade to get better placement, analytics, and faster disbursements.
           </p>
         </CardHeader>
         <CardContent>

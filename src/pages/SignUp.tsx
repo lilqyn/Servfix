@@ -14,8 +14,15 @@ import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { toast } from "sonner";
 import { apiFetch } from "@/lib/api";
-import { AuthResponse, getIdentifierPayload, identifierSchema, mapAuthErrorMessage } from "@/lib/auth";
-import { useAuth } from "@/contexts/AuthContext";
+import {
+  AuthResponse,
+  getIdentifierPayload,
+  identifierSchema,
+  isPhoneOtpChallengeResponse,
+  mapAuthErrorMessage,
+  type PhoneOtpChallengeResponse,
+} from "@/lib/auth";
+import { useAuth } from "@/contexts/useAuth";
 import GoogleAuthButton from "@/components/auth/GoogleAuthButton";
 
 const signUpSchema = z
@@ -59,6 +66,10 @@ const SignUp = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [phoneChallenge, setPhoneChallenge] = useState<PhoneOtpChallengeResponse | null>(null);
+  const [phoneCode, setPhoneCode] = useState("");
+  const [isPhoneRequesting, setIsPhoneRequesting] = useState(false);
+  const [isPhoneVerifying, setIsPhoneVerifying] = useState(false);
   const { signIn, user, isAuthenticated, isHydrated } = useAuth();
   const googleEnabled =
     import.meta.env.VITE_GOOGLE_AUTH_ENABLED === "true" &&
@@ -80,6 +91,8 @@ const SignUp = () => {
   const role = form.watch("role");
   const username = form.watch("username");
   const displayName = form.watch("displayName");
+  const identifier = form.watch("identifier");
+  const isPhoneIdentifier = Boolean(identifier) && !identifier.includes("@");
 
   const handleAuthSuccess = (response: AuthResponse) => {
     signIn(response);
@@ -99,12 +112,78 @@ const SignUp = () => {
     toast.error(message);
   };
 
+  const handlePhoneChallenge = (challenge: PhoneOtpChallengeResponse) => {
+    setSubmitError(null);
+    setPhoneChallenge(challenge);
+    setPhoneCode("");
+    toast.info(`Verification code sent to ${challenge.delivery.destination}`);
+  };
+
+  const requestPhoneOtp = async (phone: string) => {
+    setIsPhoneRequesting(true);
+    try {
+      const response = await apiFetch<AuthResponse | PhoneOtpChallengeResponse>(
+        "/api/auth/phone/request-otp",
+        {
+          method: "POST",
+          body: JSON.stringify({ phone, mode: "register" }),
+        },
+      );
+      if (isPhoneOtpChallengeResponse(response)) {
+        handlePhoneChallenge(response);
+      }
+    } catch (error) {
+      const message = mapAuthErrorMessage(error instanceof Error ? error.message : "");
+      handleAuthError(message);
+    } finally {
+      setIsPhoneRequesting(false);
+    }
+  };
+
   const onSubmit = async (values: SignUpFormValues) => {
     setSubmitError(null);
+    const trimmedIdentifier = values.identifier.trim();
+    const usingPhone = !trimmedIdentifier.includes("@");
 
     try {
+      if (usingPhone) {
+        if (!phoneChallenge) {
+          await requestPhoneOtp(trimmedIdentifier);
+          return;
+        }
+
+        const code = phoneCode.trim();
+        if (!/^\d{6}$/.test(code)) {
+          handleAuthError("Enter the 6-digit verification code.");
+          return;
+        }
+
+        setIsPhoneVerifying(true);
+        const response = await apiFetch<AuthResponse>("/api/auth/phone/verify", {
+          method: "POST",
+          body: JSON.stringify({
+            mode: "register",
+            challengeToken: phoneChallenge.challengeToken,
+            code,
+            register: {
+              username: values.username.trim().toLowerCase(),
+              password: values.password,
+              role: values.role,
+              ...(values.role === "provider" ? { displayName: values.displayName?.trim() } : {}),
+            },
+          }),
+        });
+
+        setPhoneChallenge(null);
+        setPhoneCode("");
+        handleAuthSuccess(response);
+        return;
+      }
+
+      setPhoneChallenge(null);
+      setPhoneCode("");
       const payload = {
-        ...getIdentifierPayload(values.identifier),
+        ...getIdentifierPayload(trimmedIdentifier),
         username: values.username.trim().toLowerCase(),
         password: values.password,
         role: values.role,
@@ -120,10 +199,15 @@ const SignUp = () => {
     } catch (error) {
       const message = mapAuthErrorMessage(error instanceof Error ? error.message : "");
       handleAuthError(message);
+    } finally {
+      if (usingPhone) {
+        setIsPhoneVerifying(false);
+      }
     }
   };
 
   const isSubmitting = form.formState.isSubmitting;
+  const isBusy = isSubmitting || isPhoneRequesting || isPhoneVerifying;
 
   if (isHydrated && isAuthenticated) {
     const destination = user?.role === "provider" ? "/dashboard" : "/browse";
@@ -147,7 +231,7 @@ const SignUp = () => {
                 </Alert>
               )}
 
-              {googleEnabled && (
+              {googleEnabled && !isPhoneIdentifier && !phoneChallenge && (
                 <div className="space-y-4">
                   <GoogleAuthButton
                     mode="register"
@@ -205,7 +289,12 @@ const SignUp = () => {
                       <FormItem>
                         <FormLabel>Email or phone</FormLabel>
                         <FormControl>
-                          <Input placeholder="you@example.com or 0240000000" autoComplete="email" {...field} />
+                          <Input
+                            placeholder="you@example.com or 0240000000"
+                            autoComplete="email"
+                            {...field}
+                            disabled={Boolean(phoneChallenge) || isBusy}
+                          />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -277,9 +366,74 @@ const SignUp = () => {
                     )}
                   />
 
-                  <Button type="submit" variant="gold" className="w-full" disabled={isSubmitting}>
-                    {isSubmitting ? "Creating account..." : "Create account"}
+                  {isPhoneIdentifier && (
+                    <div className="space-y-2">
+                      {!phoneChallenge ? (
+                        <p className="text-sm text-muted-foreground">
+                          We will send a one-time verification code to your phone before creating your account.
+                        </p>
+                      ) : (
+                        <>
+                          <p className="text-sm text-muted-foreground">
+                            Enter the 6-digit code sent to {phoneChallenge.delivery.destination}.
+                          </p>
+                          <Input
+                            value={phoneCode}
+                            onChange={(event) =>
+                              setPhoneCode(event.target.value.replace(/\D/g, "").slice(0, 6))
+                            }
+                            placeholder="123456"
+                            inputMode="numeric"
+                            autoComplete="one-time-code"
+                            disabled={isBusy}
+                          />
+                        </>
+                      )}
+                    </div>
+                  )}
+
+                  <Button type="submit" variant="gold" className="w-full" disabled={isBusy}>
+                    {isPhoneIdentifier
+                      ? phoneChallenge
+                        ? isPhoneVerifying
+                          ? "Verifying..."
+                          : "Verify phone & create account"
+                        : isPhoneRequesting
+                          ? "Sending code..."
+                          : "Send verification code"
+                      : isSubmitting
+                        ? "Creating account..."
+                        : "Create account"}
                   </Button>
+
+                  {isPhoneIdentifier && phoneChallenge && (
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        disabled={isBusy}
+                        onClick={() => {
+                          const phone = form.getValues("identifier").trim();
+                          if (phone) {
+                            void requestPhoneOtp(phone);
+                          }
+                        }}
+                      >
+                        Resend code
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        disabled={isBusy}
+                        onClick={() => {
+                          setPhoneChallenge(null);
+                          setPhoneCode("");
+                        }}
+                      >
+                        Use different number
+                      </Button>
+                    </div>
+                  )}
                 </form>
               </Form>
 

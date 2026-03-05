@@ -3,6 +3,7 @@ dist
 dist-ssr
 infra/node_modules
 infra/cdk.out
+infra/cdk.out*
 cdk.out
 .git
 .gitignore

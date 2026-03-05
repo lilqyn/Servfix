@@ -46,7 +46,10 @@ export function useServiceReviews(
     },
   });
 
-  const reviews = query.data?.reviews ?? options?.initialReviews ?? [];
+  const reviews = useMemo(
+    () => query.data?.reviews ?? options?.initialReviews ?? [],
+    [options?.initialReviews, query.data?.reviews],
+  );
   const summary = useMemo(() => {
     if (query.data?.summary) {
       return query.data.summary;

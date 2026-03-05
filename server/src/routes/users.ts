@@ -7,6 +7,10 @@ import { authRequired, optionalAuth, requireRole } from "../middleware/auth.js";
 import { normalizeS3Key, signS3Key } from "../utils/s3.js";
 import { getPlatformSettings } from "../utils/platform-settings.js";
 import { createNotification } from "../utils/notifications.js";
+import {
+  evaluateBuyerDeletionEligibility,
+  softDeleteUserAccount,
+} from "../utils/account-deletion.js";
 
 export const usersRouter = Router();
 
@@ -55,6 +59,10 @@ const reviewReplySchema = z.object({
   reply: z.string().trim().min(2).max(1000),
 });
 
+const accountDeletionRequestSchema = z.object({
+  reason: z.string().trim().max(500).optional(),
+});
+
 const publicUserSelect = {
   id: true,
   email: true,
@@ -77,6 +85,42 @@ const publicUserSelect = {
     },
   },
 };
+
+const accountDeletionRequestSelect = {
+  id: true,
+  status: true,
+  reason: true,
+  requestedAt: true,
+  reviewedAt: true,
+  reviewNote: true,
+  reviewedBy: {
+    select: {
+      id: true,
+      email: true,
+      username: true,
+    },
+  },
+} satisfies Prisma.AccountDeletionRequestSelect;
+
+type AccountDeletionRequestRecord = Prisma.AccountDeletionRequestGetPayload<{
+  select: typeof accountDeletionRequestSelect;
+}>;
+
+const serializeAccountDeletionRequest = (request: AccountDeletionRequestRecord) => ({
+  id: request.id,
+  status: request.status,
+  reason: request.reason,
+  requestedAt: request.requestedAt,
+  reviewedAt: request.reviewedAt,
+  reviewNote: request.reviewNote,
+  reviewedBy: request.reviewedBy
+    ? {
+        id: request.reviewedBy.id,
+        email: request.reviewedBy.email,
+        username: request.reviewedBy.username,
+      }
+    : null,
+});
 
 const resolveMediaUrl = async (key?: string | null) => {
   if (!key) {
@@ -384,6 +428,112 @@ usersRouter.patch(
     });
 
     res.json({ user: await withMedia(user) });
+  }),
+);
+
+usersRouter.get(
+  "/me/account-deletion-request",
+  authRequired,
+  asyncHandler(async (req, res) => {
+    const request = await prisma.accountDeletionRequest.findFirst({
+      where: { userId: req.user!.id },
+      orderBy: [{ requestedAt: "desc" }, { id: "desc" }],
+      select: accountDeletionRequestSelect,
+    });
+
+    res.json({
+      request: request ? serializeAccountDeletionRequest(request) : null,
+    });
+  }),
+);
+
+usersRouter.delete(
+  "/me",
+  authRequired,
+  asyncHandler(async (req, res) => {
+    const data = accountDeletionRequestSchema.parse(req.body ?? {});
+    const reason = data.reason?.trim() || null;
+
+    const currentUser = await prisma.user.findUnique({
+      where: { id: req.user!.id },
+      select: {
+        id: true,
+        role: true,
+        status: true,
+      },
+    });
+
+    if (!currentUser) {
+      return res.status(404).json({ error: "User not found." });
+    }
+
+    if (currentUser.status === "deleted") {
+      return res.status(400).json({ error: "Account already deleted." });
+    }
+
+    if (currentUser.role === "buyer") {
+      const eligibility = await evaluateBuyerDeletionEligibility(prisma, currentUser.id);
+      if (!eligibility.eligible) {
+        return res.status(409).json({
+          error: "You cannot delete your account while you have active orders or deposits.",
+          eligibility,
+        });
+      }
+
+      const now = new Date();
+      await prisma.$transaction(async (tx) => {
+        await tx.accountDeletionRequest.create({
+          data: {
+            userId: currentUser.id,
+            status: "approved",
+            reason,
+            requestedAt: now,
+            reviewedAt: now,
+            reviewNote: "Auto-approved buyer self-service deletion.",
+          },
+        });
+
+        await softDeleteUserAccount(tx, currentUser.id, { now });
+      });
+
+      return res.json({ status: "deleted" as const });
+    }
+
+    if (currentUser.role === "provider") {
+      const existingPending = await prisma.accountDeletionRequest.findFirst({
+        where: {
+          userId: currentUser.id,
+          status: "pending",
+        },
+        orderBy: [{ requestedAt: "desc" }, { id: "desc" }],
+        select: accountDeletionRequestSelect,
+      });
+
+      if (existingPending) {
+        return res.status(409).json({
+          error: "An account deletion request is already pending approval.",
+          request: serializeAccountDeletionRequest(existingPending),
+        });
+      }
+
+      const request = await prisma.accountDeletionRequest.create({
+        data: {
+          userId: currentUser.id,
+          status: "pending",
+          reason,
+        },
+        select: accountDeletionRequestSelect,
+      });
+
+      return res.status(202).json({
+        status: "pending_approval" as const,
+        request: serializeAccountDeletionRequest(request),
+      });
+    }
+
+    return res.status(403).json({
+      error: "Self-service deletion is only available for buyer and provider accounts.",
+    });
   }),
 );
 

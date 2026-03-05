@@ -4,7 +4,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Loader2 } from "lucide-react";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth } from "@/contexts/useAuth";
 import { toast } from "@/components/ui/use-toast";
 import { createCommunityPost } from "@/lib/api";
 import CommunityMediaPicker, { CommunityMediaDraft } from "@/components/community/CommunityMediaPicker";

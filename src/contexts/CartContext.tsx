@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import type { CurrencyCode } from "@/lib/currency";
 
 export interface CartItem {
   id: string;
@@ -12,6 +13,7 @@ export interface CartItem {
   packageType: "basic" | "standard" | "premium";
   packageName: string;
   price: number;
+  currency?: CurrencyCode;
   pricingType?: "flat" | "per_unit";
   unitLabel?: string | null;
   quantity?: number;
@@ -54,6 +56,7 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
     return parsed.map((item) => ({
       ...item,
       id: String(item.id),
+      currency: item.currency ?? "GHS",
       pricingType: item.pricingType ?? "flat",
       quantity:
         item.pricingType === "per_unit"
@@ -71,6 +74,7 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
     const normalizedItem = {
       ...item,
       id: String(item.id),
+      currency: item.currency ?? "GHS",
       pricingType: item.pricingType ?? "flat",
       quantity:
         item.pricingType === "per_unit"

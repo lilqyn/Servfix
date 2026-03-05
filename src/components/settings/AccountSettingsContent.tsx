@@ -1,12 +1,20 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQueries, useQuery } from "@tanstack/react-query";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth } from "@/contexts/useAuth";
 import {
+  approveOrderCompletion,
   createOrderPaymentCheckout,
+  fetchOrderProgressReports,
   fetchOrderPayments,
+  fetchMyAccountDeletionRequest,
   fetchOrders,
   fetchProviderPayouts,
+  openOrderDispute,
+  requestMyAccountDeletion,
+  type ApiOrder,
+  type OrderProgressReport,
+  uploadDisputeImage,
   updateMyProfile,
   uploadProfileAvatar,
   uploadProfileBanner,
@@ -25,8 +33,17 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { toast } from "@/components/ui/use-toast";
 import { getRoleLabel, isProviderRole } from "@/lib/roles";
+import { formatCurrencyAmount, type CurrencyCode } from "@/lib/currency";
 import { usePublicSettings } from "@/hooks/usePublicSettings";
 
 const PREFERENCES_KEY = "servfix-preferences";
@@ -73,13 +90,44 @@ const toNumber = (value: unknown) => {
   return 0;
 };
 
+const isSupportedDisputeImage = (file: File) => {
+  if (SUPPORTED_DISPUTE_IMAGE_TYPES.includes(file.type)) {
+    return true;
+  }
+  const name = file.name.toLowerCase();
+  return SUPPORTED_DISPUTE_IMAGE_EXTENSIONS.some((extension) => name.endsWith(extension));
+};
+
+const BUYER_REVIEW_STATUSES: ApiOrder["status"][] = [
+  "delivery_submitted",
+  "delivered",
+  "dispute_open",
+  "disputed",
+];
+const MAX_DISPUTE_EVIDENCE = 8;
+const MAX_DISPUTE_IMAGE_BYTES = 10 * 1024 * 1024;
+const SUPPORTED_DISPUTE_IMAGE_TYPES = [
+  "image/jpeg",
+  "image/jpg",
+  "image/png",
+  "image/webp",
+  "image/heic",
+  "image/heif",
+];
+const SUPPORTED_DISPUTE_IMAGE_EXTENSIONS = [".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif"];
+
+type DisputeEvidenceDraft = {
+  key: string;
+  url: string;
+};
+
 type AccountSettingsContentProps = {
   showHeader?: boolean;
 };
 
 const AccountSettingsContent = ({ showHeader = true }: AccountSettingsContentProps) => {
   const navigate = useNavigate();
-  const { user, refreshUser } = useAuth();
+  const { user, refreshUser, signOut } = useAuth();
   const isProvider = isProviderRole(user?.role);
   const isBuyer = user?.role === "buyer";
   const { data: publicSettings } = usePublicSettings();
@@ -92,10 +140,20 @@ const AccountSettingsContent = ({ showHeader = true }: AccountSettingsContentPro
     data: buyerOrders = [],
     isLoading: isLoadingBuyerOrders,
     error: buyerOrdersError,
+    refetch: refetchBuyerOrders,
   } = useQuery({
     queryKey: ["orders"],
     queryFn: fetchOrders,
     enabled: isBuyer,
+  });
+  const {
+    data: accountDeletionRequestData,
+    isLoading: isLoadingAccountDeletionRequest,
+    refetch: refetchAccountDeletionRequest,
+  } = useQuery({
+    queryKey: ["account-deletion-request"],
+    queryFn: fetchMyAccountDeletionRequest,
+    enabled: Boolean(user),
   });
   const paymentConfig = publicSettings?.payments;
   const enabledProviders =
@@ -147,6 +205,29 @@ const AccountSettingsContent = ({ showHeader = true }: AccountSettingsContentPro
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
   const [isUploadingBanner, setIsUploadingBanner] = useState(false);
   const [payingOrderPaymentId, setPayingOrderPaymentId] = useState<string | null>(null);
+  const [isDisputeDialogOpen, setIsDisputeDialogOpen] = useState(false);
+  const [selectedDisputeOrder, setSelectedDisputeOrder] = useState<ApiOrder | null>(null);
+  const [disputeReason, setDisputeReason] = useState("");
+  const [disputeDetails, setDisputeDetails] = useState("");
+  const [disputeEvidence, setDisputeEvidence] = useState<DisputeEvidenceDraft[]>([]);
+  const [isUploadingDisputeEvidence, setIsUploadingDisputeEvidence] = useState(false);
+  const [isSubmittingDispute, setIsSubmittingDispute] = useState(false);
+  const [approvingOrderId, setApprovingOrderId] = useState<string | null>(null);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [deletionReason, setDeletionReason] = useState("");
+  const [deleteConfirmationText, setDeleteConfirmationText] = useState("");
+  const [isSubmittingDeletion, setIsSubmittingDeletion] = useState(false);
+  const [expandedProgressOrderIds, setExpandedProgressOrderIds] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const disputeEvidenceInputRef = useRef<HTMLInputElement>(null);
+
+  const buyerReviewOrders = useMemo(() => {
+    if (!isBuyer) {
+      return [];
+    }
+    return buyerOrders.filter((order) => BUYER_REVIEW_STATUSES.includes(order.status));
+  }, [buyerOrders, isBuyer]);
 
   const buyerOrdersWithPartialPayments = useMemo(() => {
     if (!isBuyer) {
@@ -167,6 +248,24 @@ const AccountSettingsContent = ({ showHeader = true }: AccountSettingsContentPro
       staleTime: 15_000,
     })),
   });
+
+  const buyerProgressReportQueries = useQueries({
+    queries: buyerReviewOrders.map((order) => ({
+      queryKey: ["order-progress-reports", order.id],
+      queryFn: () => fetchOrderProgressReports(order.id),
+      enabled: isBuyer,
+      staleTime: 15_000,
+    })),
+  });
+
+  const buyerProgressReportsByOrderId = useMemo(() => {
+    const map = new Map<string, OrderProgressReport[]>();
+    buyerReviewOrders.forEach((order, index) => {
+      const reports = buyerProgressReportQueries[index]?.data ?? [];
+      map.set(order.id, reports);
+    });
+    return map;
+  }, [buyerProgressReportQueries, buyerReviewOrders]);
 
   const buyerBalanceDueItems = useMemo(() => {
     return buyerOrdersWithPartialPayments.flatMap((order, index) => {
@@ -255,30 +354,30 @@ const AccountSettingsContent = ({ showHeader = true }: AccountSettingsContentPro
     return date.toLocaleDateString("en-US", { month: "short", year: "numeric" });
   }, [user?.createdAt]);
 
-  const formatMoney = (value: number, currency: "GHS" | "USD" | "EUR") =>
-    new Intl.NumberFormat("en-GH", {
-      style: "currency",
-      currency,
+  const accountDeletionRequest = accountDeletionRequestData?.request ?? null;
+  const supportsSelfDeletion = user?.role === "buyer" || user?.role === "provider";
+  const isDeletionPending = accountDeletionRequest?.status === "pending";
+
+  const formatMoney = (value: number, currency: CurrencyCode) =>
+    formatCurrencyAmount(value, currency, {
       currencyDisplay: "code",
       maximumFractionDigits: 0,
-    }).format(value);
-  const formatMoneyExact = (value: number, currency: "GHS" | "USD" | "EUR") =>
-    new Intl.NumberFormat("en-GH", {
-      style: "currency",
-      currency,
+    });
+  const formatMoneyExact = (value: number, currency: CurrencyCode) =>
+    formatCurrencyAmount(value, currency, {
       currencyDisplay: "code",
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
-    }).format(value);
+    });
 
-  const payoutCurrency = payoutData?.wallet?.currency ?? "GHS";
-  const availableBalance = payoutData?.wallet
-    ? Number(payoutData.wallet.availableBalance || 0)
+  const payoutCurrency = payoutData?.earnings?.currency ?? "GHS";
+  const payableAmount = payoutData?.earnings
+    ? Number(payoutData.earnings.payable || 0)
     : null;
-  const pendingBalance = payoutData?.wallet
-    ? Number(payoutData.wallet.pendingBalance || 0)
+  const pendingReleaseAmount = payoutData?.earnings
+    ? Number(payoutData.earnings.pending_release || 0)
     : null;
-  const recentPayouts = payoutData?.requests?.slice(0, 5) ?? [];
+  const recentPayouts = payoutData?.disbursement_requests?.slice(0, 5) ?? [];
 
   const handleSave = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -391,6 +490,44 @@ const AccountSettingsContent = ({ showHeader = true }: AccountSettingsContentPro
     }
   };
 
+  const closeDeletionDialog = () => {
+    setIsDeleteDialogOpen(false);
+    setDeletionReason("");
+    setDeleteConfirmationText("");
+  };
+
+  const handleAccountDeletion = async () => {
+    if (!user || !supportsSelfDeletion) {
+      return;
+    }
+
+    if (user.role === "buyer" && deleteConfirmationText.trim().toUpperCase() !== "DELETE") {
+      toast('Type "DELETE" to confirm account deletion.');
+      return;
+    }
+
+    setIsSubmittingDeletion(true);
+    try {
+      const response = await requestMyAccountDeletion(deletionReason.trim() || undefined);
+
+      if (response.status === "deleted") {
+        toast("Account deleted.");
+        closeDeletionDialog();
+        signOut();
+        navigate("/");
+        return;
+      }
+
+      toast("Deletion request submitted for admin approval.");
+      closeDeletionDialog();
+      await refetchAccountDeletionRequest();
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "Unable to process account deletion.");
+    } finally {
+      setIsSubmittingDeletion(false);
+    }
+  };
+
   const handlePayBalance = async (orderPaymentId: string) => {
     if (enabledProviders.length === 0) {
       toast("No payment providers are currently available.");
@@ -405,9 +542,170 @@ const AccountSettingsContent = ({ showHeader = true }: AccountSettingsContentPro
       });
       window.location.href = checkout.checkoutUrl;
     } catch (error) {
-      toast(error instanceof Error ? error.message : "Unable to start balance payment.");
+      toast(error instanceof Error ? error.message : "Unable to start payable amount payment.");
     } finally {
       setPayingOrderPaymentId(null);
+    }
+  };
+
+  const handleDisputeEvidenceSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files;
+    if (!files) {
+      return;
+    }
+
+    const remainingSlots = Math.max(0, MAX_DISPUTE_EVIDENCE - disputeEvidence.length);
+    if (remainingSlots === 0) {
+      toast(`You can upload up to ${MAX_DISPUTE_EVIDENCE} photos.`);
+      event.target.value = "";
+      return;
+    }
+
+    const fileList = Array.from(files).slice(0, remainingSlots);
+    setIsUploadingDisputeEvidence(true);
+
+    try {
+      const uploaded: DisputeEvidenceDraft[] = [];
+
+      for (const file of fileList) {
+        if (!isSupportedDisputeImage(file)) {
+          toast("Only JPG, PNG, WebP, or HEIC/HEIF images are supported.");
+          continue;
+        }
+
+        if (file.size > MAX_DISPUTE_IMAGE_BYTES) {
+          toast("Each evidence photo must be 10MB or less.");
+          continue;
+        }
+
+        try {
+          const result = await uploadDisputeImage(file);
+          const evidenceUrl = result.signedUrl;
+
+          if (!evidenceUrl) {
+            toast("Unable to attach image evidence right now.");
+            continue;
+          }
+
+          uploaded.push({
+            key: result.key,
+            url: evidenceUrl,
+          });
+        } catch (error) {
+          toast(error instanceof Error ? error.message : "Unable to upload evidence photo.");
+        }
+      }
+
+      if (uploaded.length > 0) {
+        setDisputeEvidence((prev) => [...prev, ...uploaded]);
+      }
+    } finally {
+      setIsUploadingDisputeEvidence(false);
+      event.target.value = "";
+    }
+  };
+
+  const removeDisputeEvidence = (index: number) => {
+    setDisputeEvidence((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const canOpenDispute = (order: ApiOrder) => {
+    if (!["delivery_submitted", "delivered"].includes(order.status)) {
+      return false;
+    }
+    if (!order.reviewDeadlineAt) {
+      return false;
+    }
+    const deadline = new Date(order.reviewDeadlineAt);
+    return !Number.isNaN(deadline.getTime()) && deadline.getTime() > Date.now();
+  };
+
+  const canApproveCompletion = (order: ApiOrder) =>
+    ["delivery_submitted", "delivered"].includes(order.status);
+
+  const closeDisputeDialog = () => {
+    if (isSubmittingDispute || isUploadingDisputeEvidence) {
+      return;
+    }
+    setIsDisputeDialogOpen(false);
+    setSelectedDisputeOrder(null);
+    setDisputeReason("");
+    setDisputeDetails("");
+    setDisputeEvidence([]);
+    if (disputeEvidenceInputRef.current) {
+      disputeEvidenceInputRef.current.value = "";
+    }
+  };
+
+  const startDispute = (order: ApiOrder) => {
+    setSelectedDisputeOrder(order);
+    setDisputeReason("");
+    setDisputeDetails("");
+    setDisputeEvidence([]);
+    if (disputeEvidenceInputRef.current) {
+      disputeEvidenceInputRef.current.value = "";
+    }
+    setIsDisputeDialogOpen(true);
+  };
+
+  const approveCompletion = async (orderId: string) => {
+    setApprovingOrderId(orderId);
+    try {
+      await approveOrderCompletion(orderId);
+      toast("Order completion accepted. Earnings are now payable.");
+      await refetchBuyerOrders();
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "Unable to approve completion.");
+    } finally {
+      setApprovingOrderId(null);
+    }
+  };
+
+  const toggleProgressTimeline = (orderId: string) => {
+    setExpandedProgressOrderIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(orderId)) {
+        next.delete(orderId);
+      } else {
+        next.add(orderId);
+      }
+      return next;
+    });
+  };
+
+  const submitDispute = async () => {
+    if (!selectedDisputeOrder) {
+      return;
+    }
+
+    const reason = disputeReason.trim();
+    const details = disputeDetails.trim();
+    if (reason.length < 5) {
+      toast("Please provide a dispute reason of at least 5 characters.");
+      return;
+    }
+
+    setIsSubmittingDispute(true);
+    try {
+      await openOrderDispute(selectedDisputeOrder.id, {
+        reason,
+        details: details || undefined,
+        evidence: disputeEvidence.length > 0 ? disputeEvidence.map((item) => item.url) : undefined,
+      });
+      toast("Dispute opened. Our team will review and follow up.");
+      setIsDisputeDialogOpen(false);
+      setSelectedDisputeOrder(null);
+      setDisputeReason("");
+      setDisputeDetails("");
+      setDisputeEvidence([]);
+      if (disputeEvidenceInputRef.current) {
+        disputeEvidenceInputRef.current.value = "";
+      }
+      await refetchBuyerOrders();
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "Unable to open dispute.");
+    } finally {
+      setIsSubmittingDispute(false);
     }
   };
 
@@ -422,7 +720,7 @@ const AccountSettingsContent = ({ showHeader = true }: AccountSettingsContentPro
           <div>
             <h1 className="text-3xl font-display font-bold text-foreground">Account settings</h1>
             <p className="text-sm text-muted-foreground mt-2">
-              Manage your profile, contact details, notifications, and payout preferences.
+              Manage your profile, contact details, notifications, and disbursement preferences.
             </p>
           </div>
           <div className="flex items-center gap-3">
@@ -478,6 +776,17 @@ const AccountSettingsContent = ({ showHeader = true }: AccountSettingsContentPro
                   type="button"
                   className="w-full text-left rounded-lg px-3 py-2 hover:bg-muted"
                   onClick={() =>
+                    document.getElementById("order-reviews-section")?.scrollIntoView({ behavior: "smooth" })
+                  }
+                >
+                  Order reviews
+                </button>
+              ) : null}
+              {isBuyer ? (
+                <button
+                  type="button"
+                  className="w-full text-left rounded-lg px-3 py-2 hover:bg-muted"
+                  onClick={() =>
                     document.getElementById("payments-section")?.scrollIntoView({ behavior: "smooth" })
                   }
                 >
@@ -492,7 +801,7 @@ const AccountSettingsContent = ({ showHeader = true }: AccountSettingsContentPro
                     document.getElementById("payout-section")?.scrollIntoView({ behavior: "smooth" })
                   }
                 >
-                  Payouts
+                  Disbursements
                 </button>
               ) : null}
               <button
@@ -749,78 +1058,259 @@ const AccountSettingsContent = ({ showHeader = true }: AccountSettingsContentPro
           </Card>
 
           {isBuyer ? (
-            <Card id="payments-section" className="border-border/60">
-              <CardContent className="p-6 space-y-4">
-                <div>
-                  <h2 className="text-lg font-semibold text-foreground">Payments due</h2>
-                  <p className="text-sm text-muted-foreground">
-                    When a provider requests your remaining balance, it appears here with the exact
-                    amount.
-                  </p>
-                </div>
-                {isLoadingBuyerBalanceDue ? (
-                  <div className="text-sm text-muted-foreground">Checking outstanding balances...</div>
-                ) : buyerBalanceDueError ? (
-                  <div className="text-sm text-destructive">
-                    {buyerBalanceDueError instanceof Error
-                      ? buyerBalanceDueError.message
-                      : "Unable to load balance payments."}
+            <>
+              <Card id="order-reviews-section" className="border-border/60">
+                <CardContent className="p-6 space-y-4">
+                  <div>
+                    <h2 className="text-lg font-semibold text-foreground">Order reviews & disputes</h2>
+                    <p className="text-sm text-muted-foreground">
+                      Open a dispute during the buyer review window if delivered work does not match expectations.
+                    </p>
                   </div>
-                ) : buyerBalanceDueItems.length === 0 ? (
-                  <div className="rounded-xl border border-border/60 bg-muted/20 p-4 text-sm text-muted-foreground">
-                    No balance payments are due right now.
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    {buyerBalanceDueItems.map((item) => {
-                      const updatedAt = new Date(item.orderUpdatedAt);
-                      const dateLabel = Number.isNaN(updatedAt.getTime())
-                        ? null
-                        : updatedAt.toLocaleDateString("en-US", {
-                            month: "short",
-                            day: "numeric",
-                            year: "numeric",
-                          });
-                      const isPaying = payingOrderPaymentId === item.paymentId;
-                      return (
-                        <div
-                          key={item.paymentId}
-                          className="flex flex-col gap-3 rounded-xl border border-border/60 bg-card px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
-                        >
-                          <div>
-                            <p className="text-sm font-medium text-foreground">{item.serviceTitle}</p>
-                            <p className="text-xs text-muted-foreground">
-                              Remaining balance: {formatMoneyExact(item.amount, item.currency)}
-                            </p>
-                            {dateLabel ? (
-                              <p className="text-xs text-muted-foreground">Updated {dateLabel}</p>
-                            ) : null}
-                          </div>
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="gold"
-                            disabled={isPaying}
-                            onClick={() => void handlePayBalance(item.paymentId)}
+                  {isLoadingBuyerOrders ? (
+                    <div className="text-sm text-muted-foreground">Loading order reviews...</div>
+                  ) : buyerOrdersError ? (
+                    <div className="text-sm text-destructive">
+                      {buyerOrdersError instanceof Error
+                        ? buyerOrdersError.message
+                        : "Unable to load buyer order reviews."}
+                    </div>
+                  ) : buyerReviewOrders.length === 0 ? (
+                    <div className="rounded-xl border border-border/60 bg-muted/20 p-4 text-sm text-muted-foreground">
+                      No orders are currently in buyer review.
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {buyerReviewOrders.map((order, index) => {
+                        const reviewDeadline = order.reviewDeadlineAt
+                          ? new Date(order.reviewDeadlineAt)
+                          : null;
+                        const hasReviewDeadline = Boolean(
+                          reviewDeadline && !Number.isNaN(reviewDeadline.getTime()),
+                        );
+                        const reviewDeadlineLabel = hasReviewDeadline
+                          ? reviewDeadline.toLocaleString("en-US", {
+                              month: "short",
+                              day: "numeric",
+                              year: "numeric",
+                              hour: "numeric",
+                              minute: "2-digit",
+                            })
+                          : "Unavailable";
+                        const canApprove = canApproveCompletion(order);
+                        const disputeAllowed = canOpenDispute(order);
+                        const statusLabel = order.status.replace(/_/g, " ");
+                        const isApproving = approvingOrderId === order.id;
+                        const progressQuery = buyerProgressReportQueries[index];
+                        const isLoadingProgress = Boolean(progressQuery?.isLoading);
+                        const reports = buyerProgressReportsByOrderId.get(order.id) ?? [];
+                        const isProgressExpanded = expandedProgressOrderIds.has(order.id);
+                        const latestReport = reports[0] ?? null;
+                        const latestReportDate = latestReport?.createdAt
+                          ? new Date(latestReport.createdAt)
+                          : null;
+                        const latestReportDateLabel =
+                          latestReportDate && !Number.isNaN(latestReportDate.getTime())
+                            ? latestReportDate.toLocaleString("en-US", {
+                                month: "short",
+                                day: "numeric",
+                                year: "numeric",
+                                hour: "numeric",
+                                minute: "2-digit",
+                              })
+                            : "Unknown";
+
+                        return (
+                          <div
+                            key={order.id}
+                            className="flex flex-col gap-3 rounded-xl border border-border/60 bg-card px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
                           >
-                            {isPaying ? "Starting checkout..." : "Pay Balance"}
-                          </Button>
-                        </div>
-                      );
-                    })}
+                            <div className="min-w-0 space-y-2">
+                              <p className="text-sm font-medium text-foreground">
+                                {order.service?.title ?? "Service"}
+                              </p>
+                              <p className="text-xs text-muted-foreground capitalize">
+                                Status: {statusLabel}
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                Review deadline: {reviewDeadlineLabel}
+                              </p>
+                              {isLoadingProgress ? (
+                                <p className="text-xs text-muted-foreground">Loading progress updates...</p>
+                              ) : latestReport ? (
+                                <div className="rounded-md border border-border/60 bg-muted/30 p-2 text-xs text-muted-foreground">
+                                  <p className="font-medium text-foreground">
+                                    Latest progress: {latestReport.title}
+                                  </p>
+                                  <p>
+                                    {latestReport.percentComplete}% complete - {latestReportDateLabel}
+                                  </p>
+                                  {latestReport.body ? (
+                                    <p className="mt-1 break-words">{latestReport.body}</p>
+                                  ) : null}
+                                  {reports.length > 1 ? (
+                                    <button
+                                      type="button"
+                                      className="mt-1 text-xs font-medium text-primary underline underline-offset-2 hover:text-primary/80"
+                                      onClick={() => toggleProgressTimeline(order.id)}
+                                    >
+                                      {isProgressExpanded
+                                        ? "Hide full progress"
+                                        : `View all updates (${reports.length})`}
+                                    </button>
+                                  ) : null}
+                                </div>
+                              ) : (
+                                <p className="text-xs text-muted-foreground">No progress updates yet.</p>
+                              )}
+                              {isProgressExpanded && reports.length > 1 ? (
+                                <div className="rounded-md border border-border/60 bg-muted/20 p-2 text-xs text-muted-foreground">
+                                  <p className="mb-1 font-medium text-foreground">Progress timeline</p>
+                                  <div className="space-y-2">
+                                    {reports.map((report) => {
+                                      const reportDate = new Date(report.createdAt);
+                                      const reportDateLabel = Number.isNaN(reportDate.getTime())
+                                        ? "Unknown"
+                                        : reportDate.toLocaleString("en-US", {
+                                            month: "short",
+                                            day: "numeric",
+                                            year: "numeric",
+                                            hour: "numeric",
+                                            minute: "2-digit",
+                                          });
+
+                                      return (
+                                        <div
+                                          key={report.id}
+                                          className="rounded border border-border/60 bg-background/70 p-2"
+                                        >
+                                          <p className="font-medium text-foreground">{report.title}</p>
+                                          <p>
+                                            {report.percentComplete}% complete - {reportDateLabel}
+                                          </p>
+                                          {report.body ? (
+                                            <p className="mt-1 break-words">{report.body}</p>
+                                          ) : null}
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              ) : null}
+                            </div>
+                            {["dispute_open", "disputed"].includes(order.status) ? (
+                              <span className="text-xs text-muted-foreground">Dispute in review</span>
+                            ) : canApprove || disputeAllowed ? (
+                              <div className="flex flex-wrap items-center justify-end gap-2">
+                                {canApprove ? (
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="gold"
+                                    disabled={isApproving}
+                                    onClick={() => void approveCompletion(order.id)}
+                                  >
+                                    {isApproving ? "Accepting..." : "Accept completion"}
+                                  </Button>
+                                ) : null}
+                                {disputeAllowed ? (
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="outline"
+                                    disabled={isApproving}
+                                    onClick={() => startDispute(order)}
+                                  >
+                                    Open dispute
+                                  </Button>
+                                ) : (
+                                  <span className="text-xs text-muted-foreground">Review window closed</span>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">Review window closed</span>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              <Card id="payments-section" className="border-border/60">
+                <CardContent className="p-6 space-y-4">
+                  <div>
+                    <h2 className="text-lg font-semibold text-foreground">Payments due</h2>
+                    <p className="text-sm text-muted-foreground">
+                      When a provider requests your remaining payable amount, it appears here with the exact
+                      amount.
+                    </p>
                   </div>
-                )}
-              </CardContent>
-            </Card>
+                  {isLoadingBuyerBalanceDue ? (
+                    <div className="text-sm text-muted-foreground">Checking outstanding payable amounts...</div>
+                  ) : buyerBalanceDueError ? (
+                    <div className="text-sm text-destructive">
+                      {buyerBalanceDueError instanceof Error
+                        ? buyerBalanceDueError.message
+                        : "Unable to load payable amount payments."}
+                    </div>
+                  ) : buyerBalanceDueItems.length === 0 ? (
+                    <div className="rounded-xl border border-border/60 bg-muted/20 p-4 text-sm text-muted-foreground">
+                      No payable amount payments are due right now.
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {buyerBalanceDueItems.map((item) => {
+                        const updatedAt = new Date(item.orderUpdatedAt);
+                        const dateLabel = Number.isNaN(updatedAt.getTime())
+                          ? null
+                          : updatedAt.toLocaleDateString("en-US", {
+                              month: "short",
+                              day: "numeric",
+                              year: "numeric",
+                            });
+                        const isPaying = payingOrderPaymentId === item.paymentId;
+                        return (
+                          <div
+                            key={item.paymentId}
+                            className="flex flex-col gap-3 rounded-xl border border-border/60 bg-card px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+                          >
+                            <div>
+                              <p className="text-sm font-medium text-foreground">{item.serviceTitle}</p>
+                              <p className="text-xs text-muted-foreground">
+                                Remaining payable amount: {formatMoneyExact(item.amount, item.currency)}
+                              </p>
+                              {dateLabel ? (
+                                <p className="text-xs text-muted-foreground">Updated {dateLabel}</p>
+                              ) : null}
+                            </div>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="gold"
+                              disabled={isPaying}
+                              onClick={() => void handlePayBalance(item.paymentId)}
+                            >
+                              {isPaying ? "Starting checkout..." : "Pay amount"}
+                            </Button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </>
           ) : null}
 
           {isProvider && (
             <Card id="payout-section" className="border-border/60">
               <CardContent className="p-6 space-y-4">
                 <div>
-                  <h2 className="text-lg font-semibold text-foreground">Payouts</h2>
+                  <h2 className="text-lg font-semibold text-foreground">Disbursements</h2>
                   <p className="text-sm text-muted-foreground">
-                    Set where you receive provider payouts.
+                    Set where you receive provider disbursements.
                   </p>
                 </div>
                 <div className="space-y-2">
@@ -853,26 +1343,26 @@ const AccountSettingsContent = ({ showHeader = true }: AccountSettingsContentPro
                     </SelectContent>
                   </Select>
                   <p className="text-xs text-muted-foreground">
-                    Needed to send MoMo payouts correctly.
+                    Needed to send MoMo disbursements correctly.
                   </p>
                 </div>
 
                 <div className="rounded-xl border border-border/60 bg-muted/20 p-4 space-y-2">
-                  <div className="text-sm font-semibold text-foreground">Payout summary</div>
+                  <div className="text-sm font-semibold text-foreground">Earnings ledger summary</div>
                   {isLoadingPayouts ? (
-                    <div className="text-xs text-muted-foreground">Loading payout balances...</div>
+                    <div className="text-xs text-muted-foreground">Loading earnings ledger...</div>
                   ) : (
                     <div className="grid gap-2 text-sm">
                       <div className="flex items-center justify-between">
-                        <span className="text-muted-foreground">Available</span>
+                        <span className="text-muted-foreground">Payable amount</span>
                         <span className="font-medium">
-                          {formatMoney(availableBalance ?? 0, payoutCurrency)}
+                          {formatMoney(payableAmount ?? 0, payoutCurrency)}
                         </span>
                       </div>
                       <div className="flex items-center justify-between">
-                        <span className="text-muted-foreground">Pending</span>
+                        <span className="text-muted-foreground">Pending release</span>
                         <span className="font-medium">
-                          {formatMoney(pendingBalance ?? 0, payoutCurrency)}
+                          {formatMoney(pendingReleaseAmount ?? 0, payoutCurrency)}
                         </span>
                       </div>
                     </div>
@@ -881,13 +1371,13 @@ const AccountSettingsContent = ({ showHeader = true }: AccountSettingsContentPro
 
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
-                    <span className="text-sm font-semibold text-foreground">Recent payouts</span>
+                    <span className="text-sm font-semibold text-foreground">Recent disbursements</span>
                     <span className="text-xs text-muted-foreground">Last 5 requests</span>
                   </div>
                   {isLoadingPayouts ? (
-                    <div className="text-xs text-muted-foreground">Loading payout requests...</div>
+                    <div className="text-xs text-muted-foreground">Loading disbursement requests...</div>
                   ) : recentPayouts.length === 0 ? (
-                    <div className="text-xs text-muted-foreground">No payout requests yet.</div>
+                    <div className="text-xs text-muted-foreground">No disbursement requests yet.</div>
                   ) : (
                     <div className="space-y-2">
                       {recentPayouts.map((request) => {
@@ -1004,12 +1494,260 @@ const AccountSettingsContent = ({ showHeader = true }: AccountSettingsContentPro
             </CardContent>
           </Card>
 
+          <Card className="border-destructive/30 bg-destructive/5">
+            <CardContent className="p-6 space-y-4">
+              <div>
+                <h2 className="text-lg font-semibold text-foreground">Danger zone</h2>
+                <p className="text-sm text-muted-foreground">
+                  Account deletion is permanent and cannot be undone.
+                </p>
+              </div>
+
+              {isLoadingAccountDeletionRequest ? (
+                <p className="text-sm text-muted-foreground">Checking account deletion status...</p>
+              ) : isDeletionPending ? (
+                <div className="space-y-2 rounded-lg border border-border/60 bg-background/70 p-4 text-sm">
+                  <p className="font-medium text-foreground">
+                    Your deletion request is pending admin approval.
+                  </p>
+                  <p className="text-muted-foreground">
+                    Requested:{" "}
+                    {accountDeletionRequest?.requestedAt
+                      ? new Date(accountDeletionRequest.requestedAt).toLocaleString()
+                      : "-"}
+                  </p>
+                  {accountDeletionRequest?.reason && (
+                    <p className="text-muted-foreground">Reason: {accountDeletionRequest.reason}</p>
+                  )}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  {user?.role === "buyer"
+                    ? "Buyers can delete immediately only when there are no active orders or deposits."
+                    : user?.role === "provider"
+                      ? "Provider deletion requires admin approval after eligibility checks."
+                      : "Self-service deletion is available for buyer and provider accounts only."}
+                </p>
+              )}
+
+              <div className="flex flex-wrap items-center gap-3">
+                <Button
+                  type="button"
+                  variant="destructive"
+                  disabled={!supportsSelfDeletion || isDeletionPending}
+                  onClick={() => setIsDeleteDialogOpen(true)}
+                >
+                  {user?.role === "provider" ? "Request account deletion" : "Delete account"}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
           <div className="flex justify-end">
             <Button type="submit" disabled={isSaving}>
               {isSaving ? "Saving..." : "Save changes"}
             </Button>
           </div>
         </form>
+
+        <Dialog
+          open={isDeleteDialogOpen}
+          onOpenChange={(open) => {
+            if (open) {
+              setIsDeleteDialogOpen(true);
+              return;
+            }
+            closeDeletionDialog();
+          }}
+        >
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>
+                {user?.role === "provider" ? "Request account deletion" : "Delete account"}
+              </DialogTitle>
+              <DialogDescription>
+                {user?.role === "provider"
+                  ? "Your request will be reviewed by admin before deletion."
+                  : "This action permanently removes your access."}
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4">
+              {user?.role === "buyer" && (
+                <div className="space-y-2">
+                  <Label htmlFor="delete-confirm-text">Type DELETE to confirm</Label>
+                  <Input
+                    id="delete-confirm-text"
+                    value={deleteConfirmationText}
+                    onChange={(event) => setDeleteConfirmationText(event.target.value)}
+                    placeholder="DELETE"
+                    disabled={isSubmittingDeletion}
+                  />
+                </div>
+              )}
+
+              <div className="space-y-2">
+                <Label htmlFor="delete-reason">
+                  {user?.role === "provider" ? "Reason for deletion request (optional)" : "Reason (optional)"}
+                </Label>
+                <Textarea
+                  id="delete-reason"
+                  value={deletionReason}
+                  onChange={(event) => setDeletionReason(event.target.value)}
+                  placeholder="Tell us why you want to delete this account"
+                  maxLength={500}
+                  rows={4}
+                  disabled={isSubmittingDeletion}
+                />
+              </div>
+            </div>
+
+            <DialogFooter className="gap-2">
+              <Button type="button" variant="outline" onClick={closeDeletionDialog} disabled={isSubmittingDeletion}>
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                variant="destructive"
+                onClick={() => {
+                  void handleAccountDeletion();
+                }}
+                disabled={isSubmittingDeletion}
+              >
+                {isSubmittingDeletion
+                  ? "Submitting..."
+                  : user?.role === "provider"
+                    ? "Submit request"
+                    : "Delete now"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog
+          open={isDisputeDialogOpen}
+          onOpenChange={(open) => {
+            if (open) {
+              setIsDisputeDialogOpen(true);
+              return;
+            }
+            closeDisputeDialog();
+          }}
+        >
+          <DialogContent className="sm:max-w-lg">
+            <DialogHeader>
+              <DialogTitle>Open dispute</DialogTitle>
+              <DialogDescription>
+                Share what went wrong and our support team will investigate the order.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4">
+              <div className="rounded-lg border border-border/60 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+                Order: {selectedDisputeOrder?.service?.title ?? "Service"}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="dispute-reason">Reason</Label>
+                <Input
+                  id="dispute-reason"
+                  value={disputeReason}
+                  onChange={(event) => setDisputeReason(event.target.value)}
+                  placeholder="Brief summary of the issue"
+                  maxLength={200}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="dispute-details">Details (optional)</Label>
+                <Textarea
+                  id="dispute-details"
+                  value={disputeDetails}
+                  onChange={(event) => setDisputeDetails(event.target.value)}
+                  placeholder="Add more context so the team can review quickly"
+                  maxLength={2000}
+                  rows={5}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="dispute-evidence">Evidence photos (optional)</Label>
+                <input
+                  ref={disputeEvidenceInputRef}
+                  id="dispute-evidence"
+                  type="file"
+                  accept="image/png,image/jpeg,image/jpg,image/webp,image/heic,image/heif"
+                  multiple
+                  className="hidden"
+                  onChange={handleDisputeEvidenceSelect}
+                  disabled={isUploadingDisputeEvidence || isSubmittingDispute}
+                />
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => disputeEvidenceInputRef.current?.click()}
+                    disabled={
+                      isUploadingDisputeEvidence ||
+                      isSubmittingDispute ||
+                      disputeEvidence.length >= MAX_DISPUTE_EVIDENCE
+                    }
+                  >
+                    {isUploadingDisputeEvidence ? "Uploading..." : "Upload photos"}
+                  </Button>
+                  <span className="text-xs text-muted-foreground">
+                    {disputeEvidence.length}/{MAX_DISPUTE_EVIDENCE}
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  JPG, PNG, WebP, or HEIC/HEIF. Max 10MB per photo.
+                </p>
+                {disputeEvidence.length > 0 ? (
+                  <div className="grid gap-2 sm:grid-cols-3">
+                    {disputeEvidence.map((item, index) => (
+                      <div key={`${item.key}-${index}`} className="space-y-1">
+                        <img
+                          src={item.url}
+                          alt={`Evidence ${index + 1}`}
+                          className="h-20 w-full rounded-md border border-border/60 object-cover"
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="w-full"
+                          onClick={() => removeDisputeEvidence(index)}
+                          disabled={isSubmittingDispute || isUploadingDisputeEvidence}
+                        >
+                          Remove
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            </div>
+
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={closeDisputeDialog}
+                disabled={isSubmittingDispute || isUploadingDisputeEvidence}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                onClick={submitDispute}
+                disabled={isSubmittingDispute || isUploadingDisputeEvidence}
+              >
+                {isSubmittingDispute ? "Submitting..." : "Submit dispute"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );

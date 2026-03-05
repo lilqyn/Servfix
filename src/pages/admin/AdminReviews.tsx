@@ -23,7 +23,7 @@ import {
 import { toast } from "@/components/ui/use-toast";
 import { deleteAdminReview, fetchAdminReviews, type AdminReview } from "@/lib/api";
 import { hasPermission } from "@/lib/permissions";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth } from "@/contexts/useAuth";
 
 const RATING_OPTIONS = [1, 2, 3, 4, 5];
 

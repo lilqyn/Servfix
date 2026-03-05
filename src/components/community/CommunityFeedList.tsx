@@ -50,7 +50,7 @@ import CommunityMediaPicker, {
   CommunityMediaDraft,
 } from "@/components/community/CommunityMediaPicker";
 import { toast } from "@/components/ui/use-toast";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth } from "@/contexts/useAuth";
 import { ensureGuestId } from "@/lib/guest";
 import {
   ApiCommunityAuthor,

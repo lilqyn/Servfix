@@ -15,8 +15,8 @@ import { Button } from "@/components/ui/button";
 import { Bell, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useAuth } from "@/contexts/AuthContext";
-import { useNotifications } from "@/contexts/NotificationsContext";
+import { useAuth } from "@/contexts/useAuth";
+import { useNotifications } from "@/contexts/useNotifications";
 import CommunityPostComposer from "@/components/community/CommunityPostComposer";
 import { usePublicSettings } from "@/hooks/usePublicSettings";
 
@@ -155,7 +155,7 @@ const ProviderDashboard = () => {
                 <TabsTrigger value="services">Services</TabsTrigger>
                 <TabsTrigger value="orders">Orders</TabsTrigger>
                 <TabsTrigger value="earnings">Earnings</TabsTrigger>
-                <TabsTrigger value="payouts">Payouts</TabsTrigger>
+                <TabsTrigger value="payouts">Disbursements</TabsTrigger>
                 <TabsTrigger value="resources">Resources</TabsTrigger>
                 {boostsEnabled && <TabsTrigger value="boosts">Boosts</TabsTrigger>}
                 {subscriptionsEnabled && <TabsTrigger value="subscription">Subscription</TabsTrigger>}

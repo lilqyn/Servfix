@@ -75,7 +75,10 @@ const ProviderReviews = () => {
   });
 
   const summary = analytics?.trend ?? data?.pages?.[0]?.summary;
-  const allReviews = data?.pages?.flatMap((page) => page.reviews) ?? [];
+  const allReviews = useMemo(
+    () => data?.pages?.flatMap((page) => page.reviews) ?? [],
+    [data?.pages],
+  );
 
   const filteredReviews = useMemo(() => {
     const term = search.trim().toLowerCase();

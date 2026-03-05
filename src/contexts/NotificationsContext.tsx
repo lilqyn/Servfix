@@ -1,6 +1,5 @@
 import React, {
-  createContext,
-  useContext,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -14,7 +13,8 @@ import {
   markNotificationsRead,
   type ApiNotification,
 } from "@/lib/api";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth } from "@/contexts/useAuth";
+import { NotificationsContext } from "@/contexts/notifications-context";
 import {
   canAccessNotification,
   countUnreadNotifications,
@@ -22,30 +22,16 @@ import {
   shouldUseServerUnreadCount,
 } from "@/lib/notifications";
 
-type NotificationsContextType = {
-  notifications: ApiNotification[];
-  unreadCount: number;
-  isLoading: boolean;
-  isLoadingMore: boolean;
-  hasMore: boolean;
-  refresh: () => Promise<void>;
-  loadMore: () => Promise<void>;
-  markAllRead: () => Promise<void>;
-  markRead: (ids: string[]) => Promise<void>;
-};
-
-const NotificationsContext = createContext<NotificationsContextType | undefined>(undefined);
-
 const PAGE_SIZE = 20;
 
-const buildWebSocketUrl = (baseUrl: string, token: string) => {
+const buildWebSocketUrl = (baseUrl: string) => {
   const trimmed = baseUrl.replace(/\/$/, "");
   const wsBase = trimmed.replace(/^http/i, "ws");
-  return `${wsBase}/ws?token=${encodeURIComponent(token)}`;
+  return `${wsBase}/ws`;
 };
 
 export const NotificationsProvider = ({ children }: { children: ReactNode }) => {
-  const { isAuthenticated, isHydrated, token, user } = useAuth();
+  const { isAuthenticated, isHydrated, user } = useAuth();
   const [notifications, setNotifications] = useState<ApiNotification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
@@ -58,16 +44,16 @@ export const NotificationsProvider = ({ children }: { children: ReactNode }) => 
   const reconnectAttemptsRef = useRef(0);
   const shouldReconnectRef = useRef(false);
 
-  const resetState = () => {
+  const resetState = useCallback(() => {
     setNotifications([]);
     setUnreadCount(0);
     setNextCursor(null);
     setIsLoading(false);
     setIsLoadingMore(false);
     setHasLoaded(false);
-  };
+  }, []);
 
-  const refresh = async () => {
+  const refresh = useCallback(async () => {
     if (!isAuthenticated) {
       return;
     }
@@ -90,9 +76,9 @@ export const NotificationsProvider = ({ children }: { children: ReactNode }) => 
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [isAuthenticated, user?.role]);
 
-  const loadMore = async () => {
+  const loadMore = useCallback(async () => {
     if (!isAuthenticated || isLoadingMore || !nextCursor) {
       return;
     }
@@ -118,9 +104,9 @@ export const NotificationsProvider = ({ children }: { children: ReactNode }) => 
     } finally {
       setIsLoadingMore(false);
     }
-  };
+  }, [isAuthenticated, isLoadingMore, nextCursor, user?.role]);
 
-  const markAllRead = async () => {
+  const markAllRead = useCallback(async () => {
     if (!isAuthenticated || notifications.length === 0) {
       return;
     }
@@ -133,9 +119,9 @@ export const NotificationsProvider = ({ children }: { children: ReactNode }) => 
       const message = error instanceof Error ? error.message : "Unable to mark notifications as read.";
       toast.error(message);
     }
-  };
+  }, [isAuthenticated, notifications.length]);
 
-  const markRead = async (ids: string[]) => {
+  const markRead = useCallback(async (ids: string[]) => {
     if (!isAuthenticated || ids.length === 0) {
       return;
     }
@@ -150,7 +136,7 @@ export const NotificationsProvider = ({ children }: { children: ReactNode }) => 
       const message = error instanceof Error ? error.message : "Unable to mark notification as read.";
       toast.error(message);
     }
-  };
+  }, [isAuthenticated]);
 
   useEffect(() => {
     if (!isHydrated) {
@@ -165,14 +151,14 @@ export const NotificationsProvider = ({ children }: { children: ReactNode }) => 
     if (!hasLoaded) {
       void refresh();
     }
-  }, [isAuthenticated, isHydrated, hasLoaded]);
+  }, [isAuthenticated, isHydrated, hasLoaded, resetState, refresh]);
 
   useEffect(() => {
     if (!isHydrated) {
       return;
     }
 
-    if (!isAuthenticated || !token) {
+    if (!isAuthenticated) {
       shouldReconnectRef.current = false;
       if (socketRef.current) {
         socketRef.current.close();
@@ -206,7 +192,7 @@ export const NotificationsProvider = ({ children }: { children: ReactNode }) => 
       if (!shouldReconnectRef.current) {
         return;
       }
-      const wsUrl = buildWebSocketUrl(API_BASE_URL, token);
+      const wsUrl = buildWebSocketUrl(API_BASE_URL);
       const socket = new WebSocket(wsUrl);
       socketRef.current = socket;
 
@@ -222,26 +208,30 @@ export const NotificationsProvider = ({ children }: { children: ReactNode }) => 
           };
 
           if (payload?.type === "notification" && payload.notification) {
+            const notification = payload.notification;
             if (!canAccessNotification(payload.notification, user?.role)) {
               return;
             }
             setNotifications((prev) => {
-              const existingIndex = prev.findIndex((item) => item.id === payload.notification!.id);
+              const existingIndex = prev.findIndex((item) => item.id === notification.id);
               if (existingIndex >= 0) {
                 const existing = prev[existingIndex];
+                if (!existing) {
+                  return prev;
+                }
                 const updated = [...prev];
-                updated[existingIndex] = payload.notification!;
-                if (existing.isRead && !payload.notification!.isRead) {
+                updated[existingIndex] = notification;
+                if (existing.isRead && !notification.isRead) {
                   setUnreadCount((count) => count + 1);
-                } else if (!existing.isRead && payload.notification!.isRead) {
+                } else if (!existing.isRead && notification.isRead) {
                   setUnreadCount((count) => Math.max(0, count - 1));
                 }
                 return updated;
               }
-              if (!payload.notification!.isRead) {
+              if (!notification.isRead) {
                 setUnreadCount((count) => count + 1);
               }
-              return [payload.notification!, ...prev];
+              return [notification, ...prev];
             });
           }
         } catch {
@@ -274,7 +264,7 @@ export const NotificationsProvider = ({ children }: { children: ReactNode }) => 
         reconnectTimeoutRef.current = null;
       }
     };
-  }, [isAuthenticated, isHydrated, token, user?.role]);
+  }, [isAuthenticated, isHydrated, user?.role]);
 
   const value = useMemo(
     () => ({
@@ -288,7 +278,17 @@ export const NotificationsProvider = ({ children }: { children: ReactNode }) => 
       markAllRead,
       markRead,
     }),
-    [notifications, unreadCount, isLoading, isLoadingMore, nextCursor],
+    [
+      notifications,
+      unreadCount,
+      isLoading,
+      isLoadingMore,
+      nextCursor,
+      refresh,
+      loadMore,
+      markAllRead,
+      markRead,
+    ],
   );
 
   return (
@@ -296,12 +296,4 @@ export const NotificationsProvider = ({ children }: { children: ReactNode }) => 
       {children}
     </NotificationsContext.Provider>
   );
-};
-
-export const useNotifications = () => {
-  const context = useContext(NotificationsContext);
-  if (context === undefined) {
-    throw new Error("useNotifications must be used within a NotificationsProvider");
-  }
-  return context;
 };

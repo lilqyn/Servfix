@@ -19,11 +19,14 @@ type ServiceCategoriesProps = {
   content?: HomeContentPayload["categories"];
 };
 
+const EMPTY_CATEGORY_DEFINITIONS: CategoryDefinition[] = [];
+
 const ServiceCategories = ({ content }: ServiceCategoriesProps) => {
   const navigate = useNavigate();
   const { data: services = [] } = useServices();
   const categoriesContent = content ?? defaultHomeContent.categories;
-  const categoryDefinitions: CategoryDefinition[] = categoriesContent.items ?? [];
+  const categoryDefinitions: CategoryDefinition[] =
+    categoriesContent.items ?? EMPTY_CATEGORY_DEFINITIONS;
 
   const categoryStats = useMemo(() => {
     const stats = categoryDefinitions.map(() => ({ count: 0, targetCategory: "" }));

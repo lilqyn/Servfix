@@ -35,7 +35,7 @@ import {
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth } from "@/contexts/useAuth";
 import { getRoleLabel, isAdminRole } from "@/lib/roles";
 import { hasPermission, type Permission } from "@/lib/permissions";
 import {
@@ -189,7 +189,7 @@ const AdminSidebar = () => {
       pageKey: "support",
     },
     {
-      title: "Payouts",
+      title: "Disbursements",
       url: "/admin/payouts",
       icon: Wallet,
       permission: "payouts.read",

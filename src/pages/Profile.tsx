@@ -3,7 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth } from "@/contexts/useAuth";
 import { useUserPosts } from "@/hooks/useUserPosts";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";

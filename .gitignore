@@ -29,5 +29,10 @@ dist-ssr
 cdk.out
 cdk.context.json
 infra/cdk.out
+infra/cdk.out.deploy
 infra/cdk.context.json
 infra/node_modules
+mobile/app/.expo
+mobile/app/android
+mobile/app/ios
+mobile/app/node_modules

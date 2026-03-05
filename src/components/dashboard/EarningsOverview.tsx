@@ -19,16 +19,19 @@ import {
 } from "recharts";
 import { useOrders } from "@/hooks/useOrders";
 import { useQuery } from "@tanstack/react-query";
-import { fetchProviderPayouts, requestProviderPayout } from "@/lib/api";
+import { fetchProviderPayouts, requestProviderDisbursement } from "@/lib/api";
+import { formatCurrencyAmount, type CurrencyCode } from "@/lib/currency";
 import { toast } from "@/components/ui/use-toast";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth } from "@/contexts/useAuth";
 import type { ApiOrderStatus, ApiOrderUser } from "@/lib/api";
 
 const IN_ESCROW_STATUSES: ApiOrderStatus[] = [
   "paid_to_escrow",
   "accepted",
   "in_progress",
+  "delivery_submitted",
   "delivered",
+  "dispute_open",
   "approved",
 ];
 
@@ -52,13 +55,11 @@ const toNumber = (value: unknown) => {
   return 0;
 };
 
-const formatCurrency = (amount: number, currency: "GHS" | "USD" | "EUR") =>
-  new Intl.NumberFormat("en-GH", {
-    style: "currency",
-    currency,
+const formatCurrency = (amount: number, currency: CurrencyCode) =>
+  formatCurrencyAmount(amount, currency, {
     currencyDisplay: "code",
     maximumFractionDigits: 0,
-  }).format(amount);
+  });
 
 const getDisplayName = (user?: ApiOrderUser | null) => {
   if (!user) return "Customer";
@@ -106,8 +107,11 @@ const EarningsOverview = () => {
       const status = order.status;
       const isRevenue = !NON_REVENUE_STATUSES.includes(status);
 
-      if (status === "released") {
-        availableBalance += amount;
+      if (["release_approved", "released", "disbursed"].includes(status)) {
+        const released = toNumber(order.amountReleasedNet ?? 0);
+        const disbursed = toNumber(order.amountDisbursedNet ?? 0);
+        const payable = Math.max(released - disbursed, 0);
+        availableBalance += payable > 0 ? payable : amount;
       } else if (IN_ESCROW_STATUSES.includes(status)) {
         inEscrow += amount;
       } else if (status === "created" || status === "refund_pending") {
@@ -142,7 +146,11 @@ const EarningsOverview = () => {
         service: order.service?.title ?? "Service",
         amount: formatCurrency(toNumber(order.amountNetProvider), order.currency),
         releaseDate:
-          order.status === "approved" ? "Pending release" : "After completion",
+          order.status === "delivery_submitted"
+            ? "Buyer review window"
+            : order.status === "dispute_open"
+              ? "Dispute review"
+              : "After completion",
       }));
 
     return {
@@ -166,20 +174,20 @@ const EarningsOverview = () => {
   const momoNetwork = providerProfile.momoNetwork ?? "";
   const hasPayoutDestination = Boolean(momoNumber && momoNetwork);
 
-  const walletAvailable = payoutData?.wallet
-    ? toNumber(payoutData.wallet.availableBalance)
+  const payableAmount = payoutData?.earnings
+    ? toNumber(payoutData.earnings.payable)
     : derived.availableBalance;
-  const walletPending = payoutData?.wallet
-    ? toNumber(payoutData.wallet.pendingBalance)
+  const pendingReleaseAmount = payoutData?.earnings
+    ? toNumber(payoutData.earnings.pending_release)
     : derived.inEscrow;
-  const displayCurrency = payoutData?.wallet?.currency ?? derived.currency;
-  const walletAvailableRaw = payoutData?.wallet?.availableBalance ?? null;
-  const fullBalanceValue =
-    walletAvailableRaw ?? (Number.isFinite(walletAvailable) ? String(walletAvailable) : "");
+  const displayCurrency = payoutData?.earnings?.currency ?? derived.currency;
+  const payableAmountRaw = payoutData?.earnings?.payable ?? null;
+  const fullPayableAmountValue =
+    payableAmountRaw ?? (Number.isFinite(payableAmount) ? String(payableAmount) : "");
   const payoutDisabledReason = !hasPayoutDestination
-    ? "Add your mobile money number and network in Account Settings to request a payout."
-    : walletAvailable <= 0
-      ? "No available balance to withdraw yet."
+    ? "Add your mobile money number and network in Account Settings to request a disbursement."
+    : payableAmount <= 0
+      ? "No payable amount is ready for disbursement yet."
       : null;
 
   const handleRequestPayout = async () => {
@@ -187,35 +195,35 @@ const EarningsOverview = () => {
       toast("Add your mobile money number and network in Account Settings.");
       return;
     }
-    if (walletAvailable <= 0) {
-      toast("No available balance to withdraw yet.");
+    if (payableAmount <= 0) {
+      toast("No payable amount is ready for disbursement yet.");
       return;
     }
     const amountValue = Number(payoutAmount);
     if (!Number.isFinite(amountValue) || amountValue <= 0) {
-      toast("Enter a valid payout amount.");
+      toast("Enter a valid disbursement amount.");
       return;
     }
-    if (amountValue > walletAvailable) {
-      toast("Amount exceeds available balance.");
+    if (amountValue > payableAmount) {
+      toast("Amount exceeds payable amount.");
       return;
     }
     try {
-      await requestProviderPayout(amountValue);
-      toast("Payout request submitted.");
+      await requestProviderDisbursement(amountValue);
+      toast("Disbursement request submitted.");
       setPayoutAmount("");
       setPayoutOpen(false);
       await refetchPayouts();
     } catch (error) {
-      toast(error instanceof Error ? error.message : "Unable to request payout.");
+      toast(error instanceof Error ? error.message : "Unable to request disbursement.");
     }
   };
 
   const handleUseFullBalance = () => {
-    if (walletAvailable <= 0) {
+    if (payableAmount <= 0) {
       return;
     }
-    setPayoutAmount(fullBalanceValue);
+    setPayoutAmount(fullPayableAmountValue);
   };
 
   return (
@@ -281,17 +289,17 @@ const EarningsOverview = () => {
       {/* Earnings Breakdown */}
       <Card className="border-border/50">
         <CardHeader>
-          <CardTitle className="text-lg font-semibold">Balance</CardTitle>
+          <CardTitle className="text-lg font-semibold">Earnings Ledger</CardTitle>
         </CardHeader>
         <CardContent className="space-y-6">
-          {/* Available Balance */}
+          {/* Payable Amount */}
           <div className="p-4 rounded-lg bg-gradient-gold/10 border border-primary/20">
             <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
               <Wallet className="h-4 w-4" />
-              Available Balance
+              Payable Amount
             </div>
             <p className="text-2xl font-bold text-primary">
-              {formatCurrency(walletAvailable, displayCurrency)}
+              {formatCurrency(payableAmount, displayCurrency)}
             </p>
             <Dialog open={payoutOpen} onOpenChange={setPayoutOpen}>
               <DialogTrigger asChild>
@@ -301,12 +309,12 @@ const EarningsOverview = () => {
                   className="w-full mt-3 gap-2"
                 >
                   <ArrowUpRight className="h-4 w-4" />
-                  Request payout
+                  Request disbursement
                 </Button>
               </DialogTrigger>
               <DialogContent>
                 <DialogHeader>
-                  <DialogTitle>Request payout</DialogTitle>
+                  <DialogTitle>Request disbursement</DialogTitle>
                 </DialogHeader>
                 {payoutDisabledReason ? (
                   <div className="rounded-lg border border-border/60 bg-muted/40 p-3 text-sm text-muted-foreground">
@@ -335,16 +343,16 @@ const EarningsOverview = () => {
                     />
                     <div className="flex items-center justify-between">
                       <p className="text-xs text-muted-foreground">
-                        Available: {formatCurrency(walletAvailable, displayCurrency)}
+                        Payable: {formatCurrency(payableAmount, displayCurrency)}
                       </p>
                       <Button
                         type="button"
                         variant="ghost"
                         size="sm"
                         onClick={handleUseFullBalance}
-                        disabled={walletAvailable <= 0}
+                        disabled={payableAmount <= 0}
                       >
-                        Use full balance
+                        Use full payable amount
                       </Button>
                     </div>
                   </div>
@@ -371,7 +379,7 @@ const EarningsOverview = () => {
               In Escrow
             </div>
             <p className="text-2xl font-bold">
-              {formatCurrency(walletPending, displayCurrency)}
+              {formatCurrency(pendingReleaseAmount, displayCurrency)}
             </p>
             <p className="text-xs text-muted-foreground mt-1">
               Released after service completion

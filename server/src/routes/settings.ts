@@ -14,6 +14,10 @@ settingsRouter.get(
         enabledProviders: settings.integrations.payments.enabledProviders,
         defaultProvider: settings.integrations.payments.defaultProvider,
       },
+      localization: {
+        currency: settings.localization.currency,
+        enabledCurrencies: settings.localization.enabledCurrencies,
+      },
       socialLinks: settings.integrations.socialLinks,
       updatedAt: record.updatedAt,
     });

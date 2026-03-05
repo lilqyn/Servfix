@@ -13,7 +13,7 @@ import {
 import { toast } from "@/components/ui/use-toast";
 import { fetchAdminReports, updateAdminReportStatus, type AdminReport } from "@/lib/api";
 import { hasPermission } from "@/lib/permissions";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth } from "@/contexts/useAuth";
 
 const STATUS_OPTIONS: AdminReport["status"][] = ["open", "resolved", "dismissed"];
 

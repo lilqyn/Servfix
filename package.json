@@ -1,24 +1,34 @@
 {
   "homepage": "https://lilqyn.github.io/servfix",
-
   "name": "vite_react_shadcn_ts",
   "private": true,
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-  "dev": "vite",
-  "predeploy": "npm run build",
-  "deploy": "gh-pages -d dist",
+    "dev": "vite",
+    "predeploy": "npm run build",
+    "deploy": "gh-pages -d dist",
     "dev:server": "tsx watch server/src/index.ts",
+    "mobile:assetlinks": "node scripts/mobile/generateAssetLinks.mjs",
+    "chaos:fis:retarget": "node scripts/chaos/retargetFisTemplates.mjs",
+    "android:twa:doctor": "npx @bubblewrap/cli doctor",
+    "android:twa:build": "npx @bubblewrap/cli build",
+    "android:twa:update": "npx @bubblewrap/cli update",
     "build": "vite build",
     "build:dev": "vite build --mode development",
     "build:server": "tsc -p server/tsconfig.json",
+    "backfill:earnings-ledger": "tsx scripts/backfillEarningsLedger.ts",
     "heroku-postbuild": "npm run build && npm run build:server",
     "lint": "eslint .",
+    "lint:strict": "eslint src/lib/auth.ts src/lib/api.ts src/contexts/AuthContext.tsx src/contexts/NotificationsContext.tsx server/src/auth/session.ts server/src/middleware/auth.ts server/src/routes/auth.ts server/src/websocket.ts server/src/middleware/request-context.ts server/src/middleware/error.ts server/src/routes/health.ts server/src/observability/logger.ts server/src/observability/runtime-state.ts",
     "preview": "vite preview",
     "start": "node server/dist/index.js",
     "start:server": "node server/dist/index.js",
+    "audit:prod": "npm audit --omit=dev --audit-level=high",
+    "typecheck:strict": "tsc -p tsconfig.frontend-strict.json --noEmit",
+    "ci:checks": "npm run lint && npm run typecheck:strict && npm run test && npm run build && npm run build:server && npm run audit:prod",
     "test": "vitest run",
+    "test:mobile-auth": "vitest run --project server server/src/test/mobile-auth-flow.test.ts server/src/test/api-access.test.ts",
     "test:watch": "vitest"
   },
   "dependencies": {
@@ -53,6 +63,7 @@
     "@radix-ui/react-toggle": "^1.1.9",
     "@radix-ui/react-toggle-group": "^1.1.10",
     "@radix-ui/react-tooltip": "^1.2.7",
+    "@sentry/node": "^10.39.0",
     "@tanstack/react-query": "^5.83.0",
     "bcryptjs": "^2.4.3",
     "class-variance-authority": "^0.7.1",
@@ -63,10 +74,11 @@
     "dotenv": "^16.4.5",
     "embla-carousel-react": "^8.6.0",
     "express": "^4.19.2",
+    "express-rate-limit": "^8.2.1",
     "google-auth-library": "^9.10.0",
+    "helmet": "^8.1.0",
     "input-otp": "^1.4.2",
     "jsonwebtoken": "^9.0.2",
-    "latest": "^0.2.0",
     "lucide-react": "^0.462.0",
     "multer": "^1.4.5-lts.1",
     "next-themes": "^0.3.0",
@@ -99,6 +111,7 @@
     "@types/node": "^22.16.5",
     "@types/react": "^18.3.23",
     "@types/react-dom": "^18.3.7",
+    "@types/supertest": "^6.0.3",
     "@types/ws": "^8.5.13",
     "@vitejs/plugin-react-swc": "^3.11.0",
     "autoprefixer": "^10.4.21",
@@ -110,11 +123,17 @@
     "jsdom": "^20.0.3",
     "postcss": "^8.5.6",
     "prisma": "^6.19.2",
+    "supertest": "^7.2.2",
     "tailwindcss": "^3.4.17",
     "tsx": "^4.16.2",
     "typescript": "^5.8.3",
     "typescript-eslint": "^8.38.0",
     "vite": "^7.3.1",
     "vitest": "^3.2.4"
+  },
+  "overrides": {
+    "@sentry/node": {
+      "minimatch": "^10.2.1"
+    }
   }
 }

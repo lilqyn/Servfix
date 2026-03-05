@@ -13,7 +13,7 @@ import {
 import { toast } from "@/components/ui/use-toast";
 import { fetchAdminProviders, updateAdminProviderVerification } from "@/lib/api";
 import { hasPermission } from "@/lib/permissions";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth } from "@/contexts/useAuth";
 
 const VERIFICATION_OPTIONS = ["unverified", "pending", "verified", "rejected"] as const;
 type VerificationStatus = (typeof VERIFICATION_OPTIONS)[number];

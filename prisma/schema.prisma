@@ -28,6 +28,12 @@ enum UserStatus {
   deleted
 }
 
+enum AccountDeletionRequestStatus {
+  pending
+  approved
+  rejected
+}
+
 enum ProviderVerificationStatus {
   unverified
   pending
@@ -65,18 +71,30 @@ enum PricingModel {
 
 enum OrderStatus {
   created
+  payment_pending
   paid_to_escrow
   accepted
   in_progress
+  delivery_submitted
   delivered
+  release_approved
   approved
   released
+  disbursement_initiated
+  disbursed
   cancelled
   expired
+  dispute_open
   disputed
   refund_pending
   refunded
   chargeback
+}
+
+enum OrderReleaseMethod {
+  buyer_approved
+  auto_release
+  admin_decision
 }
 
 enum OrderEventType {
@@ -84,9 +102,11 @@ enum OrderEventType {
   paid
   accepted
   started
+  delivery_submitted
   delivered
   approved
   released
+  disbursed
   cancelled
   expired
   dispute_opened
@@ -127,6 +147,20 @@ enum ReleaseRequestStatus {
   approved
   rejected
   cancelled
+}
+
+enum PayoutRequestStatus {
+  requested
+  processing
+  paid
+  failed
+  cancelled
+}
+
+enum EarningsLedgerState {
+  payable
+  reserved
+  disbursed
 }
 
 enum ReportTargetType {
@@ -296,6 +330,40 @@ enum ThreadStatus {
   archived
 }
 
+enum ComplianceCaseType {
+  aml_payout
+  sanctions_match
+}
+
+enum ComplianceCaseStatus {
+  open
+  investigating
+  cleared
+  escalated
+  reported
+  closed
+}
+
+enum ComplianceCaseSeverity {
+  low
+  medium
+  high
+  critical
+}
+
+enum SanctionsScreeningStatus {
+  pending
+  clear
+  possible_match
+  confirmed_match
+  error
+}
+
+enum PhoneOtpMode {
+  login
+  register
+}
+
 model User {
   id     String     @id @default(uuid())
   role   UserRole
@@ -343,23 +411,35 @@ model User {
   notifications     Notification[] @relation("NotificationRecipient")
   notificationsSent Notification[] @relation("NotificationActor")
 
-  boostPurchases BoostPurchase[]
-  disputesOpened Dispute[]
-  auditLogs      AuditLog[]
-  payoutRequests PayoutRequest[]
-  ledgerEntries  LedgerEntry[]
-  subscriptions  ProviderSubscription[]
-  businessMemberships BusinessMember[]
-  businessJobsRequested BusinessJob[] @relation("BusinessJobRequester")
-  businessJobsAssigned BusinessJob[] @relation("BusinessJobProvider")
-  reportsFiled    Report[] @relation("ReportReporter")
-  reportsResolved Report[] @relation("ReportResolvedBy")
-  supportTickets SupportTicket[] @relation("SupportTicketRequester")
-  assignedSupportTickets SupportTicket[] @relation("SupportTicketAssignee")
-  supportTicketMessages SupportTicketMessage[]
-  supportTicketEvents SupportTicketEvent[]
-  supportTicketMeetings SupportTicketMeeting[] @relation("SupportTicketMeetingCreator")
-  passwordResetTokens PasswordResetToken[]
+  boostPurchases             BoostPurchase[]
+  disputesOpened             Dispute[]
+  auditLogs                  AuditLog[]
+  payoutRequests             PayoutRequest[]
+  earningsLedgers            EarningsLedger[]
+  ledgerEntries              LedgerEntry[]
+  complianceCases            ComplianceCase[]    @relation("ComplianceCaseProvider")
+  assignedComplianceCases    ComplianceCase[]    @relation("ComplianceCaseAssignee")
+  createdComplianceCases     ComplianceCase[]    @relation("ComplianceCaseCreator")
+  closedComplianceCases      ComplianceCase[]    @relation("ComplianceCaseCloser")
+  sanctionsScreenings        SanctionsScreening[] @relation("SanctionsScreeningProvider")
+  reviewedSanctionsScreenings SanctionsScreening[] @relation("SanctionsScreeningReviewer")
+  subscriptions              ProviderSubscription[]
+  businessMemberships        BusinessMember[]
+  businessJobsRequested      BusinessJob[]       @relation("BusinessJobRequester")
+  businessJobsAssigned       BusinessJob[]       @relation("BusinessJobProvider")
+  reportsFiled               Report[]            @relation("ReportReporter")
+  reportsResolved            Report[]            @relation("ReportResolvedBy")
+  supportTickets             SupportTicket[]     @relation("SupportTicketRequester")
+  assignedSupportTickets     SupportTicket[]     @relation("SupportTicketAssignee")
+  supportTicketMessages      SupportTicketMessage[]
+  supportTicketEvents        SupportTicketEvent[]
+  supportTicketMeetings      SupportTicketMeeting[] @relation("SupportTicketMeetingCreator")
+  passwordResetTokens        PasswordResetToken[]
+  authSessions               AuthSession[]
+  staffInvitationsSent       StaffInvitation[] @relation("StaffInvitationsSent")
+  staffInvitationsAccepted   StaffInvitation[] @relation("StaffInvitationsAccepted")
+  accountDeletionRequests    AccountDeletionRequest[] @relation("AccountDeletionRequestUser")
+  accountDeletionReviews     AccountDeletionRequest[] @relation("AccountDeletionRequestReviewer")
 
   @@index([role])
   @@index([status])
@@ -397,6 +477,87 @@ model PasswordResetToken {
 
   @@index([userId])
   @@index([expiresAt])
+}
+
+model PhoneOtpChallenge {
+  id           String       @id @default(uuid())
+  phone        String
+  mode         PhoneOtpMode
+  tokenHash    String       @unique
+  codeHash     String
+  attemptCount Int          @default(0)
+  maxAttempts  Int          @default(5)
+  expiresAt    DateTime
+  usedAt       DateTime?
+  requestIp    String?
+  userAgent    String?
+  lastSentAt   DateTime     @default(now())
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  @@index([phone, mode])
+  @@index([expiresAt])
+  @@index([usedAt])
+  @@index([createdAt])
+}
+
+model AuthSession {
+  id               String   @id @default(uuid())
+  userId           String
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  refreshTokenHash String   @unique
+  userAgent        String?
+  ipAddress        String?
+  expiresAt        DateTime
+  revokedAt        DateTime?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@index([revokedAt])
+}
+
+model StaffInvitation {
+  id           String   @id @default(uuid())
+  email        String
+  role         UserRole
+  tokenHash    String   @unique
+  invitedById  String
+  invitedBy    User     @relation("StaffInvitationsSent", fields: [invitedById], references: [id], onDelete: Cascade)
+  acceptedById String?
+  acceptedBy   User?    @relation("StaffInvitationsAccepted", fields: [acceptedById], references: [id], onDelete: SetNull)
+  expiresAt    DateTime
+  acceptedAt   DateTime?
+  revokedAt    DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([email])
+  @@index([expiresAt])
+  @@index([acceptedAt])
+  @@index([revokedAt])
+  @@index([invitedById])
+  @@index([acceptedById])
+}
+
+model AccountDeletionRequest {
+  id           String                        @id @default(uuid())
+  userId       String
+  user         User                          @relation("AccountDeletionRequestUser", fields: [userId], references: [id], onDelete: Cascade)
+  status       AccountDeletionRequestStatus  @default(pending)
+  reason       String?
+  requestedAt  DateTime                      @default(now())
+  reviewedAt   DateTime?
+  reviewedById String?
+  reviewedBy   User?                         @relation("AccountDeletionRequestReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  reviewNote   String?
+  createdAt    DateTime                      @default(now())
+  updatedAt    DateTime                      @updatedAt
+
+  @@index([userId])
+  @@index([status, requestedAt])
+  @@index([reviewedById])
 }
 
 model SupportTicket {
@@ -670,14 +831,25 @@ model Order {
   amountPaid        Decimal      @default(0.0) @db.Decimal(12, 2)
   amountPaidNet     Decimal      @default(0.0) @db.Decimal(12, 2)
   amountReleasedNet Decimal      @default(0.0) @db.Decimal(12, 2)
+  amountDisbursedNet Decimal     @default(0.0) @db.Decimal(12, 2)
   depositPercent    Int?
   depositAmount     Decimal?     @db.Decimal(12, 2)
   balanceAmount     Decimal?     @db.Decimal(12, 2)
 
   acceptedAt  DateTime?
+  deliverySubmittedAt DateTime?
+  reviewNotifiedAt DateTime?
+  reviewDeadlineAt DateTime?
   deliveredAt DateTime?
+  disputeOpenedAt DateTime?
   approvedAt  DateTime?
+  releaseApprovedAt DateTime?
+  releaseMethod OrderReleaseMethod?
+  releaseVersion Int @default(0)
   releasedAt  DateTime?
+  disbursedAt DateTime?
+  pspPaymentRef String?
+  pspPayoutRef String?
   cancelledAt DateTime?
   refundReference String?
   refundProvider  PaymentProvider?
@@ -701,15 +873,20 @@ model Order {
   businessInvoiceId String?
   businessInvoice   BusinessInvoice? @relation(fields: [businessInvoiceId], references: [id], onDelete: SetNull)
   businessJob   BusinessJob? @relation("BusinessJobOrder")
+  earningsLedger EarningsLedger?
+  payoutRequests PayoutRequest[]
 
   @@index([buyerId])
   @@index([providerId])
   @@index([serviceId])
   @@index([status])
   @@index([refundReference])
+  @@index([pspPaymentRef])
+  @@index([pspPayoutRef])
   @@index([paymentIntentId])
   @@index([businessAccountId])
   @@index([businessInvoiceId])
+  @@index([reviewDeadlineAt])
   @@index([createdAt])
 }
 
@@ -853,6 +1030,31 @@ model ProviderWallet {
   updatedAt DateTime @updatedAt
 }
 
+model EarningsLedger {
+  id         String @id @default(uuid())
+  orderId    String @unique
+  order      Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  providerId String
+  provider   User   @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  grossAmount  Decimal      @db.Decimal(12, 2)
+  platformFee  Decimal      @db.Decimal(12, 2)
+  netAmount    Decimal      @db.Decimal(12, 2)
+  currency     CurrencyCode @default(GHS)
+  state        EarningsLedgerState @default(payable)
+
+  reservedAt   DateTime?
+  disbursedAt  DateTime?
+  pspPayoutRef String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([providerId])
+  @@index([providerId, state])
+  @@index([state, createdAt])
+  @@index([pspPayoutRef])
+}
+
 model LedgerEntry {
   id String @id @default(uuid())
 
@@ -883,6 +1085,8 @@ model PayoutRequest {
   id         String @id @default(uuid())
   providerId String
   provider   User   @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  orderId    String?
+  order      Order? @relation(fields: [orderId], references: [id], onDelete: SetNull)
 
   amount   Decimal      @db.Decimal(12, 2)
   currency CurrencyCode @default(GHS)
@@ -890,15 +1094,90 @@ model PayoutRequest {
   destinationMomo String
   momoNetwork     MomoNetwork?
   reference       String?
-  status          String // requested|processing|paid|failed (enum later)
+  idempotencyKey  String @unique @default(uuid())
+  pspTransferRef  String? @unique
+  status          PayoutRequestStatus @default(requested)
   metadata        Json?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  complianceCases ComplianceCase[]
+
   @@index([providerId])
+  @@index([orderId])
   @@index([status])
   @@index([createdAt])
+}
+
+model ComplianceCase {
+  id         String @id @default(uuid())
+  providerId String
+  provider   User   @relation("ComplianceCaseProvider", fields: [providerId], references: [id], onDelete: Cascade)
+
+  payoutRequestId String?
+  payoutRequest   PayoutRequest? @relation(fields: [payoutRequestId], references: [id], onDelete: SetNull)
+
+  screeningId String?
+  screening   SanctionsScreening? @relation(fields: [screeningId], references: [id], onDelete: SetNull)
+
+  type      ComplianceCaseType
+  status    ComplianceCaseStatus   @default(open)
+  severity  ComplianceCaseSeverity @default(medium)
+  riskScore Int?
+  title     String
+  summary   String?
+  reasons   String[] @default([])
+  metadata  Json?
+
+  assignedToId String?
+  assignedTo   User?   @relation("ComplianceCaseAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+
+  createdById String?
+  createdBy   User?   @relation("ComplianceCaseCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  closedById String?
+  closedBy   User?   @relation("ComplianceCaseCloser", fields: [closedById], references: [id], onDelete: SetNull)
+
+  resolvedAt DateTime?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([providerId])
+  @@index([payoutRequestId])
+  @@index([screeningId])
+  @@index([status, createdAt])
+  @@index([severity, createdAt])
+  @@index([type, createdAt])
+  @@index([assignedToId])
+}
+
+model SanctionsScreening {
+  id         String @id @default(uuid())
+  providerId String
+  provider   User   @relation("SanctionsScreeningProvider", fields: [providerId], references: [id], onDelete: Cascade)
+
+  status          SanctionsScreeningStatus @default(pending)
+  matchScore      Int @default(0)
+  watchlistSource String?
+  notes           String?
+  metadata        Json?
+
+  screenedAt DateTime @default(now())
+
+  reviewedById String?
+  reviewedBy   User?   @relation("SanctionsScreeningReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  reviewedAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  cases ComplianceCase[]
+
+  @@index([providerId, screenedAt])
+  @@index([providerId, status])
+  @@index([status, screenedAt])
+  @@index([reviewedById])
 }
 
 model BusinessAccount {
@@ -1137,9 +1416,11 @@ model Dispute {
   status     DisputeStatus      @default(open)
   resolution DisputeResolution?
 
+  openedAt   DateTime  @default(now())
   createdAt  DateTime  @default(now())
   resolvedAt DateTime?
 
+  @@unique([orderId])
   @@index([orderId])
   @@index([status])
   @@index([createdAt])

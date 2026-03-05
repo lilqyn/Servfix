@@ -14,9 +14,9 @@ import { Menu, X, ShoppingCart, Heart, Search, MessageCircle, ChevronDown } from
 import { useWishlist } from "@/contexts/WishlistContext";
 import { useCart } from "@/contexts/CartContext";
 import { useMessages } from "@/contexts/MessagesContext";
-import { useNotifications } from "@/contexts/NotificationsContext";
+import { useNotifications } from "@/contexts/useNotifications";
 import SearchAutocomplete from "@/components/header/SearchAutocomplete";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth } from "@/contexts/useAuth";
 import NotificationsMenu from "@/components/notifications/NotificationsMenu";
 import { isAdminRole, isProviderRole, getRoleLabel } from "@/lib/roles";
 import {
@@ -95,7 +95,7 @@ const Header = () => {
   }, [providerDisplayName, user]);
 
   const roleLabel = useMemo(() => {
-    if (!user) {
+    if (!user?.role) {
       return "";
     }
 
@@ -104,7 +104,7 @@ const Header = () => {
     }
 
     return getRoleLabel(user.role);
-  }, [displayName, user?.role]);
+  }, [user?.role]);
 
   const handle = useMemo(() => {
     if (!user?.username) {
@@ -140,7 +140,7 @@ const Header = () => {
     const first = tokens[0]?.[0] ?? displayName[0];
     const second = tokens[1]?.[0] ?? "";
     return `${first}${second}`.toUpperCase();
-  }, [user]);
+  }, [displayName]);
 
   return (
     <header className="sticky top-0 z-50 bg-background/80 backdrop-blur-xl border-b border-border/50">
@@ -187,9 +187,17 @@ const Header = () => {
             <Link to="/blog" className="text-sm font-medium text-muted-foreground hover:text-primary transition-colors">
               Blog
             </Link>
-            <Link to="/provider-resources" className="text-sm font-medium text-muted-foreground hover:text-primary transition-colors">
-              Provider Resources
+            <Link to="/academy" className="text-sm font-medium text-muted-foreground hover:text-primary transition-colors">
+              Academy
             </Link>
+            {isAuthenticated && isProvider && (
+              <Link
+                to="/provider-resources"
+                className="text-sm font-medium text-muted-foreground hover:text-primary transition-colors"
+              >
+                Provider Resources
+              </Link>
+            )}
             {isAuthenticated && isProvider && (
               <Link to="/dashboard" className="text-sm font-medium text-muted-foreground hover:text-primary transition-colors">
                 Dashboard
@@ -394,9 +402,17 @@ const Header = () => {
               <Link to="/blog" className="px-4 py-3 text-sm font-medium text-muted-foreground hover:bg-muted rounded-lg transition-colors">
                 Blog
               </Link>
-              <Link to="/provider-resources" className="px-4 py-3 text-sm font-medium text-muted-foreground hover:bg-muted rounded-lg transition-colors">
-                Provider Resources
+              <Link to="/academy" className="px-4 py-3 text-sm font-medium text-muted-foreground hover:bg-muted rounded-lg transition-colors">
+                Academy
               </Link>
+              {isAuthenticated && isProvider && (
+                <Link
+                  to="/provider-resources"
+                  className="px-4 py-3 text-sm font-medium text-muted-foreground hover:bg-muted rounded-lg transition-colors"
+                >
+                  Provider Resources
+                </Link>
+              )}
               {isAuthenticated && (
                 <Link to="/notifications" className="px-4 py-3 text-sm font-medium text-muted-foreground hover:bg-muted rounded-lg transition-colors flex items-center justify-between">
                   Notifications

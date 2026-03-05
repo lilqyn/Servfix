@@ -19,10 +19,12 @@ import {
   normalizeExpresspayPhone,
   resolveExpresspayConfig,
 } from "../utils/expresspay.js";
+import { getProviderCurrencyError } from "../utils/payment-provider-support.js";
 
 export const businessRouter = Router();
 
-const isAdminRole = (role?: string | null) => Boolean(role && ADMIN_ROLES.includes(role as any));
+const isAdminRole = (role?: string | null) =>
+  Boolean(role && ADMIN_ROLES.includes(role as (typeof ADMIN_ROLES)[number]));
 
 const createAccountSchema = z.object({
   name: z.string().min(2).max(120),
@@ -30,6 +32,17 @@ const createAccountSchema = z.object({
   size: z.string().max(60).optional(),
   notes: z.string().max(500).optional(),
 });
+
+const updateAccountSchema = z
+  .object({
+    name: z.string().trim().min(2).max(120).optional(),
+    industry: z.string().max(120).nullable().optional(),
+    size: z.string().max(60).nullable().optional(),
+    notes: z.string().max(500).nullable().optional(),
+  })
+  .refine((value) => Object.values(value).some((item) => item !== undefined), {
+    message: "At least one field must be provided.",
+  });
 
 const addMemberSchema = z.object({
   identifier: z.string().min(2),
@@ -54,6 +67,17 @@ const updateJobSchema = z.object({
   assignedProviderId: z.string().uuid().optional(),
 });
 
+const listJobsQuerySchema = z.object({
+  status: z.enum(["open", "assigned", "closed", "cancelled"]).optional(),
+  category: z.string().trim().min(1).max(120).optional(),
+  page: z.coerce.number().int().min(1).optional(),
+  limit: z.coerce.number().int().min(1).max(50).optional(),
+});
+
+const cancelJobSchema = z.object({
+  reason: z.string().trim().min(3).max(500),
+});
+
 const createOrderSchema = z.object({
   serviceId: z.string().uuid(),
   tierId: z.string().uuid(),
@@ -64,6 +88,14 @@ const createInvoiceSchema = z.object({
   periodStart: z.string().min(1),
   periodEnd: z.string().min(1),
   status: z.enum(["draft", "issued"]).optional(),
+});
+
+const voidInvoiceSchema = z.object({
+  reason: z.string().trim().min(3).max(500).optional(),
+});
+
+const businessAnalyticsQuerySchema = z.object({
+  months: z.coerce.number().int().min(1).max(24).optional(),
 });
 
 const checkoutInvoiceSchema = z.object({
@@ -78,7 +110,7 @@ const slugify = (value: string) =>
     .replace(/(^-|-$)+/g, "")
     .slice(0, 64);
 
-const ensureUniqueSlug = async (name: string) => {
+const ensureUniqueSlug = async (name: string, excludeAccountId?: string) => {
   const base = slugify(name) || `business-${Date.now()}`;
   let candidate = base;
   let counter = 1;
@@ -88,7 +120,7 @@ const ensureUniqueSlug = async (name: string) => {
       where: { slug: candidate },
       select: { id: true },
     });
-    if (!existing) {
+    if (!existing || existing.id === excludeAccountId) {
       return candidate;
     }
     counter += 1;
@@ -163,6 +195,57 @@ const toMinorUnits = (amount: Prisma.Decimal) => {
 
 const toJsonInput = (value: Prisma.JsonValue) =>
   value === null ? Prisma.JsonNull : (value as Prisma.InputJsonValue);
+
+const isActiveOwnerMembership = (role: string, status: string) =>
+  role === "owner" && status === "active";
+
+const canTransitionMembership = async (params: {
+  accountId: string;
+  currentRole: string;
+  currentStatus: string;
+  nextRole: string;
+  nextStatus: string;
+}) => {
+  if (!isActiveOwnerMembership(params.currentRole, params.currentStatus)) {
+    return true;
+  }
+
+  if (isActiveOwnerMembership(params.nextRole, params.nextStatus)) {
+    return true;
+  }
+
+  const ownerCount = await prisma.businessMember.count({
+    where: { accountId: params.accountId, role: "owner", status: "active" },
+  });
+
+  return ownerCount > 1;
+};
+
+const serializeBusinessJob = (job: {
+  id: string;
+  title: string;
+  description: string;
+  category: string;
+  budget: Prisma.Decimal | null;
+  currency: string;
+  status: string;
+  assignedProviderId: string | null;
+  orderId: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}) => ({
+  id: job.id,
+  title: job.title,
+  description: job.description,
+  category: job.category,
+  budget: job.budget?.toString() ?? null,
+  currency: job.currency,
+  status: job.status,
+  assignedProviderId: job.assignedProviderId ?? null,
+  orderId: job.orderId ?? null,
+  createdAt: job.createdAt,
+  updatedAt: job.updatedAt,
+});
 
 businessRouter.post(
   "/accounts",
@@ -331,19 +414,115 @@ businessRouter.get(
           status: member.status,
           user: member.user,
         })),
-        jobs: account.jobs.map((job) => ({
-          id: job.id,
-          title: job.title,
-          description: job.description,
-          category: job.category,
-          budget: job.budget?.toString() ?? null,
-          currency: job.currency,
-          status: job.status,
-          assignedProviderId: job.assignedProviderId ?? null,
-          orderId: job.orderId ?? null,
-          createdAt: job.createdAt,
-          updatedAt: job.updatedAt,
-        })),
+        jobs: account.jobs.map(serializeBusinessJob),
+      },
+    });
+  }),
+);
+
+businessRouter.patch(
+  "/accounts/:id",
+  authRequired,
+  requireRole("buyer", "admin"),
+  asyncHandler(async (req, res) => {
+    const accountId = req.params.id;
+    const data = updateAccountSchema.parse(req.body);
+    const access = await ensureAccountAccess(accountId, req.user!);
+    if (!access) {
+      return res.status(403).json({ error: "You do not have access to this business account." });
+    }
+
+    if (!access.canManage) {
+      return res.status(403).json({ error: "Only account admins can update business accounts." });
+    }
+
+    const account = await prisma.businessAccount.findUnique({
+      where: { id: accountId },
+      select: { id: true, name: true },
+    });
+
+    if (!account) {
+      return res.status(404).json({ error: "Business account not found." });
+    }
+
+    const slug = data.name && data.name !== account.name
+      ? await ensureUniqueSlug(data.name, accountId)
+      : undefined;
+
+    const updated = await prisma.businessAccount.update({
+      where: { id: accountId },
+      data: {
+        name: data.name,
+        slug,
+        industry: data.industry === undefined ? undefined : data.industry,
+        size: data.size === undefined ? undefined : data.size,
+        notes: data.notes === undefined ? undefined : data.notes,
+      },
+      include: {
+        _count: { select: { members: true, jobs: true } },
+        members: {
+          where: { userId: req.user!.id },
+          select: { role: true, status: true },
+        },
+      },
+    });
+
+    res.json({
+      account: {
+        id: updated.id,
+        name: updated.name,
+        slug: updated.slug,
+        status: updated.status,
+        industry: updated.industry,
+        size: updated.size,
+        notes: updated.notes,
+        memberCount: updated._count.members,
+        jobCount: updated._count.jobs,
+        membership: updated.members[0] ?? null,
+        createdAt: updated.createdAt,
+        updatedAt: updated.updatedAt,
+      },
+    });
+  }),
+);
+
+businessRouter.delete(
+  "/accounts/:id",
+  authRequired,
+  requireRole("buyer", "admin"),
+  asyncHandler(async (req, res) => {
+    const accountId = req.params.id;
+    const access = await ensureAccountAccess(accountId, req.user!);
+    if (!access) {
+      return res.status(403).json({ error: "You do not have access to this business account." });
+    }
+
+    if (!access.canManage) {
+      return res.status(403).json({ error: "Only account admins can deactivate business accounts." });
+    }
+
+    const account = await prisma.businessAccount.findUnique({
+      where: { id: accountId },
+      select: { id: true, status: true },
+    });
+
+    if (!account) {
+      return res.status(404).json({ error: "Business account not found." });
+    }
+
+    const updated = account.status === "suspended"
+      ? account
+      : await prisma.businessAccount.update({
+          where: { id: accountId },
+          data: { status: "suspended" },
+          select: { id: true, status: true, updatedAt: true },
+        });
+
+    return res.json({
+      status: "ok",
+      account: {
+        id: updated.id,
+        status: updated.status,
       },
     });
   }),
@@ -427,18 +606,34 @@ businessRouter.patch(
 
     const member = await prisma.businessMember.findUnique({
       where: { id: memberId },
-      select: { id: true, accountId: true, userId: true },
+      select: { id: true, accountId: true, userId: true, role: true, status: true },
     });
 
     if (!member || member.accountId !== accountId) {
       return res.status(404).json({ error: "Member not found." });
     }
 
+    const nextRole = data.role ?? member.role;
+    const nextStatus = data.status ?? member.status;
+    const canTransition = await canTransitionMembership({
+      accountId,
+      currentRole: member.role,
+      currentStatus: member.status,
+      nextRole,
+      nextStatus,
+    });
+
+    if (!canTransition) {
+      return res
+        .status(400)
+        .json({ error: "This account must always have at least one active owner." });
+    }
+
     const updated = await prisma.businessMember.update({
       where: { id: memberId },
       data: {
-        role: data.role,
-        status: data.status,
+        role: nextRole,
+        status: nextStatus,
       },
       include: {
         user: {
@@ -476,11 +671,25 @@ businessRouter.delete(
 
     const member = await prisma.businessMember.findUnique({
       where: { id: memberId },
-      select: { id: true, accountId: true },
+      select: { id: true, accountId: true, role: true, status: true },
     });
 
     if (!member || member.accountId !== accountId) {
       return res.status(404).json({ error: "Member not found." });
+    }
+
+    const canTransition = await canTransitionMembership({
+      accountId,
+      currentRole: member.role,
+      currentStatus: member.status,
+      nextRole: member.role,
+      nextStatus: "removed",
+    });
+
+    if (!canTransition) {
+      return res
+        .status(400)
+        .json({ error: "This account must always have at least one active owner." });
     }
 
     await prisma.businessMember.update({
@@ -519,21 +728,7 @@ businessRouter.post(
       },
     });
 
-    res.status(201).json({
-      job: {
-        id: job.id,
-        title: job.title,
-        description: job.description,
-        category: job.category,
-        budget: job.budget?.toString() ?? null,
-        currency: job.currency,
-        status: job.status,
-        assignedProviderId: job.assignedProviderId ?? null,
-        orderId: job.orderId ?? null,
-        createdAt: job.createdAt,
-        updatedAt: job.updatedAt,
-      },
-    });
+    res.status(201).json({ job: serializeBusinessJob(job) });
   }),
 );
 
@@ -548,26 +743,187 @@ businessRouter.get(
       return res.status(403).json({ error: "You do not have access to this business account." });
     }
 
-    const jobs = await prisma.businessJob.findMany({
-      where: { accountId },
-      orderBy: { createdAt: "desc" },
-      take: 50,
-    });
+    const query = listJobsQuerySchema.parse(req.query);
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 20;
+    const skip = (page - 1) * limit;
+    const where: Prisma.BusinessJobWhereInput = {
+      accountId,
+      ...(query.status ? { status: query.status } : {}),
+      ...(query.category
+        ? {
+            category: {
+              contains: query.category,
+              mode: "insensitive",
+            },
+          }
+        : {}),
+    };
+
+    const [jobs, total] = await prisma.$transaction([
+      prisma.businessJob.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+        skip,
+        take: limit,
+      }),
+      prisma.businessJob.count({ where }),
+    ]);
 
     res.json({
-      jobs: jobs.map((job) => ({
-        id: job.id,
-        title: job.title,
-        description: job.description,
-        category: job.category,
-        budget: job.budget?.toString() ?? null,
-        currency: job.currency,
-        status: job.status,
-        assignedProviderId: job.assignedProviderId ?? null,
-        orderId: job.orderId ?? null,
-        createdAt: job.createdAt,
-        updatedAt: job.updatedAt,
-      })),
+      jobs: jobs.map(serializeBusinessJob),
+      filters: {
+        status: query.status ?? null,
+        category: query.category ?? null,
+      },
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.max(1, Math.ceil(total / limit)),
+        hasPrev: page > 1,
+        hasNext: skip + jobs.length < total,
+      },
+    });
+  }),
+);
+
+businessRouter.get(
+  "/accounts/:id/jobs/:jobId",
+  authRequired,
+  requireRole("buyer", "admin"),
+  asyncHandler(async (req, res) => {
+    const accountId = req.params.id;
+    const jobId = req.params.jobId;
+    const access = await ensureAccountAccess(accountId, req.user!);
+    if (!access) {
+      return res.status(403).json({ error: "You do not have access to this business account." });
+    }
+
+    const job = await prisma.businessJob.findUnique({
+      where: { id: jobId },
+      include: {
+        requestedBy: { select: publicUserSelect },
+        assignedProvider: { select: publicUserSelect },
+        order: {
+          select: {
+            id: true,
+            status: true,
+            amountGross: true,
+            currency: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+        },
+      },
+    });
+
+    if (!job || job.accountId !== accountId) {
+      return res.status(404).json({ error: "Job not found." });
+    }
+
+    return res.json({
+      job: {
+        ...serializeBusinessJob(job),
+        requestedBy: job.requestedBy,
+        assignedProvider: job.assignedProvider,
+        order: job.order
+          ? {
+              id: job.order.id,
+              status: job.order.status,
+              amountGross: job.order.amountGross.toString(),
+              currency: job.order.currency,
+              createdAt: job.order.createdAt,
+              updatedAt: job.order.updatedAt,
+            }
+          : null,
+      },
+    });
+  }),
+);
+
+businessRouter.post(
+  "/accounts/:id/jobs/:jobId/cancel",
+  authRequired,
+  requireRole("buyer", "admin"),
+  asyncHandler(async (req, res) => {
+    const accountId = req.params.id;
+    const jobId = req.params.jobId;
+    const data = cancelJobSchema.parse(req.body);
+    const access = await ensureAccountAccess(accountId, req.user!);
+    if (!access) {
+      return res.status(403).json({ error: "You do not have access to this business account." });
+    }
+
+    if (!access.canManage) {
+      return res.status(403).json({ error: "Only account admins can cancel jobs." });
+    }
+
+    const job = await prisma.businessJob.findUnique({
+      where: { id: jobId },
+      select: {
+        id: true,
+        accountId: true,
+        title: true,
+        status: true,
+        orderId: true,
+        requestedById: true,
+        assignedProviderId: true,
+      },
+    });
+
+    if (!job || job.accountId !== accountId) {
+      return res.status(404).json({ error: "Job not found." });
+    }
+
+    if (job.status === "closed") {
+      return res.status(400).json({ error: "Closed jobs cannot be cancelled." });
+    }
+    if (job.status === "cancelled") {
+      return res.status(400).json({ error: "Job is already cancelled." });
+    }
+    if (job.orderId) {
+      return res.status(409).json({
+        error: "This job already has an order linked and cannot be cancelled here.",
+      });
+    }
+
+    const updated = await prisma.businessJob.update({
+      where: { id: jobId },
+      data: { status: "cancelled" },
+    });
+
+    const recipientIds = [...new Set([job.requestedById, job.assignedProviderId])]
+      .filter((value): value is string => Boolean(value))
+      .filter((value) => value !== req.user!.id);
+
+    if (recipientIds.length > 0) {
+      await Promise.all(
+        recipientIds.map((userId) =>
+          createNotification({
+            userId,
+            actorId: req.user!.id,
+            type: "order_status",
+            title: "Business job cancelled",
+            body: `${job.title} was cancelled. Reason: ${data.reason}`,
+            data: {
+              accountId,
+              jobId: job.id,
+              reason: data.reason,
+              status: "cancelled",
+            },
+          }),
+        ),
+      );
+    }
+
+    return res.json({
+      job: serializeBusinessJob(updated),
+      cancellation: {
+        reason: data.reason,
+        cancelledById: req.user!.id,
+        cancelledAt: updated.updatedAt,
+      },
     });
   }),
 );
@@ -606,21 +962,7 @@ businessRouter.patch(
       },
     });
 
-    res.json({
-      job: {
-        id: updated.id,
-        title: updated.title,
-        description: updated.description,
-        category: updated.category,
-        budget: updated.budget?.toString() ?? null,
-        currency: updated.currency,
-        status: updated.status,
-        assignedProviderId: updated.assignedProviderId ?? null,
-        orderId: updated.orderId ?? null,
-        createdAt: updated.createdAt,
-        updatedAt: updated.updatedAt,
-      },
-    });
+    res.json({ job: serializeBusinessJob(updated) });
   }),
 );
 
@@ -749,6 +1091,138 @@ businessRouter.post(
     ]);
 
     res.status(201).json({ order });
+  }),
+);
+
+businessRouter.get(
+  "/accounts/:id/analytics",
+  authRequired,
+  requireRole("buyer", "admin"),
+  asyncHandler(async (req, res) => {
+    const accountId = req.params.id;
+    const query = businessAnalyticsQuerySchema.parse(req.query);
+    const access = await ensureAccountAccess(accountId, req.user!);
+    if (!access) {
+      return res.status(403).json({ error: "You do not have access to this business account." });
+    }
+
+    const now = new Date();
+    const periodStart = query.months
+      ? new Date(now.getFullYear(), now.getMonth() - query.months, now.getDate())
+      : null;
+    const periodFilter = periodStart ? { gte: periodStart, lte: now } : undefined;
+
+    const [jobStatusRows, orderSpendRows, invoiceRows] = await Promise.all([
+      prisma.businessJob.groupBy({
+        by: ["status"],
+        where: { accountId },
+        _count: { _all: true },
+      }),
+      prisma.order.groupBy({
+        by: ["currency"],
+        where: {
+          businessAccountId: accountId,
+          ...(periodFilter ? { createdAt: periodFilter } : {}),
+        },
+        _sum: { amountGross: true },
+        _count: { _all: true },
+      }),
+      prisma.businessInvoice.groupBy({
+        by: ["status", "currency"],
+        where: {
+          accountId,
+          ...(periodFilter ? { createdAt: periodFilter } : {}),
+        },
+        _sum: { total: true },
+        _count: { _all: true },
+      }),
+    ]);
+
+    const jobCounts: Record<"open" | "assigned" | "closed" | "cancelled", number> = {
+      open: 0,
+      assigned: 0,
+      closed: 0,
+      cancelled: 0,
+    };
+    for (const row of jobStatusRows) {
+      jobCounts[row.status] = row._count._all;
+    }
+
+    const addCurrencyAmount = (
+      target: Map<string, Prisma.Decimal>,
+      currency: string,
+      amount: Prisma.Decimal,
+    ) => {
+      const current = target.get(currency) ?? new Prisma.Decimal(0);
+      target.set(currency, current.add(amount));
+    };
+    const toCurrencyTotals = (target: Map<string, Prisma.Decimal>) =>
+      [...target.entries()].map(([currency, total]) => ({
+        currency,
+        total: total.toString(),
+      }));
+
+    const invoiceCounts: Record<"draft" | "issued" | "paid" | "void", number> = {
+      draft: 0,
+      issued: 0,
+      paid: 0,
+      void: 0,
+    };
+    const paidInvoiceTotals = new Map<string, Prisma.Decimal>();
+    const unpaidInvoiceTotals = new Map<string, Prisma.Decimal>();
+
+    for (const row of invoiceRows) {
+      invoiceCounts[row.status] += row._count._all;
+      const amount = row._sum.total ?? new Prisma.Decimal(0);
+
+      if (row.status === "paid") {
+        addCurrencyAmount(paidInvoiceTotals, row.currency, amount);
+      }
+      if (row.status === "draft" || row.status === "issued") {
+        addCurrencyAmount(unpaidInvoiceTotals, row.currency, amount);
+      }
+    }
+
+    const totalOrders = orderSpendRows.reduce((sum, row) => sum + row._count._all, 0);
+    const totalInvoices =
+      invoiceCounts.draft + invoiceCounts.issued + invoiceCounts.paid + invoiceCounts.void;
+
+    return res.json({
+      analytics: {
+        period: {
+          months: query.months ?? null,
+          from: periodStart,
+          to: now,
+        },
+        jobs: {
+          total: jobCounts.open + jobCounts.assigned + jobCounts.closed + jobCounts.cancelled,
+          open: jobCounts.open,
+          assigned: jobCounts.assigned,
+          closed: jobCounts.closed,
+          cancelled: jobCounts.cancelled,
+        },
+        spending: {
+          orderCount: totalOrders,
+          totalsByCurrency: orderSpendRows.map((row) => ({
+            currency: row.currency,
+            total: (row._sum.amountGross ?? new Prisma.Decimal(0)).toString(),
+            orderCount: row._count._all,
+          })),
+        },
+        invoices: {
+          counts: {
+            total: totalInvoices,
+            draft: invoiceCounts.draft,
+            issued: invoiceCounts.issued,
+            paid: invoiceCounts.paid,
+            void: invoiceCounts.void,
+            unpaid: invoiceCounts.draft + invoiceCounts.issued,
+          },
+          paidTotalsByCurrency: toCurrencyTotals(paidInvoiceTotals),
+          unpaidTotalsByCurrency: toCurrencyTotals(unpaidInvoiceTotals),
+        },
+      },
+    });
   }),
 );
 
@@ -882,6 +1356,125 @@ businessRouter.post(
   }),
 );
 
+businessRouter.get(
+  "/invoices/:invoiceId",
+  authRequired,
+  requireRole("buyer", "admin"),
+  asyncHandler(async (req, res) => {
+    const invoiceId = req.params.invoiceId;
+
+    const invoice = await prisma.businessInvoice.findUnique({
+      where: { id: invoiceId },
+      include: {
+        _count: { select: { orders: true } },
+        orders: {
+          orderBy: { createdAt: "desc" },
+          select: {
+            id: true,
+            status: true,
+            amountGross: true,
+            currency: true,
+            buyerId: true,
+            providerId: true,
+            serviceId: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+        },
+      },
+    });
+
+    if (!invoice) {
+      return res.status(404).json({ error: "Invoice not found." });
+    }
+
+    const access = await ensureAccountAccess(invoice.accountId, req.user!);
+    if (!access) {
+      return res.status(403).json({ error: "You do not have access to this invoice." });
+    }
+
+    return res.json({
+      invoice: {
+        ...serializeInvoice(invoice),
+        orders: invoice.orders.map((order) => ({
+          id: order.id,
+          status: order.status,
+          amountGross: order.amountGross.toString(),
+          currency: order.currency,
+          buyerId: order.buyerId,
+          providerId: order.providerId,
+          serviceId: order.serviceId,
+          createdAt: order.createdAt,
+          updatedAt: order.updatedAt,
+        })),
+      },
+    });
+  }),
+);
+
+businessRouter.post(
+  "/invoices/:invoiceId/void",
+  authRequired,
+  requireRole("buyer", "admin"),
+  asyncHandler(async (req, res) => {
+    const invoiceId = req.params.invoiceId;
+    const data = voidInvoiceSchema.parse(req.body ?? {});
+
+    const invoice = await prisma.businessInvoice.findUnique({
+      where: { id: invoiceId },
+      include: {
+        _count: { select: { orders: true } },
+        orders: { select: { id: true } },
+      },
+    });
+
+    if (!invoice) {
+      return res.status(404).json({ error: "Invoice not found." });
+    }
+
+    const access = await ensureAccountAccess(invoice.accountId, req.user!);
+    if (!access) {
+      return res.status(403).json({ error: "You do not have access to this invoice." });
+    }
+
+    if (!access.canManage) {
+      return res.status(403).json({ error: "Only account admins can void invoices." });
+    }
+
+    if (invoice.status === "paid") {
+      return res.status(400).json({ error: "Paid invoices cannot be voided." });
+    }
+
+    if (invoice.status === "void") {
+      return res.json({
+        invoice: serializeInvoice(invoice),
+        releasedOrderCount: 0,
+        reason: data.reason ?? null,
+      });
+    }
+
+    const releasedOrderCount = invoice.orders.length;
+    const updated = await prisma.$transaction(async (tx) => {
+      await tx.order.updateMany({
+        where: { businessInvoiceId: invoice.id },
+        data: { businessInvoiceId: null },
+      });
+
+      return tx.businessInvoice.update({
+        where: { id: invoice.id },
+        data: { status: "void" },
+        include: { _count: { select: { orders: true } } },
+      });
+    });
+
+    return res.json({
+      invoice: serializeInvoice(updated),
+      releasedOrderCount,
+      reason: data.reason ?? null,
+    });
+  }),
+);
+
 businessRouter.post(
   "/invoices/:invoiceId/checkout",
   authRequired,
@@ -952,6 +1545,10 @@ businessRouter.post(
 
     if (invoice.status === "paid" || invoice.status === "void") {
       return res.status(400).json({ error: "Invoice is not payable." });
+    }
+    const providerCurrencyError = getProviderCurrencyError(data.provider, invoice.currency);
+    if (providerCurrencyError) {
+      return res.status(400).json({ error: providerCurrencyError });
     }
 
     const paymentIntent = await prisma.paymentIntent.create({
@@ -1116,10 +1713,6 @@ businessRouter.post(
       }
 
       if (data.provider === "expresspay") {
-        if (paymentIntent.currency !== "GHS") {
-          return res.status(400).json({ error: "ExpressPay supports GHS only." });
-        }
-
         const redirectUrl = `${appUrl}/payment/verify?provider=expresspay&purpose=invoice`;
         const postUrl = `${appUrl}/api/webhooks/expresspay`;
         const customer = buildExpresspayCustomer(req.user!);
@@ -1160,10 +1753,6 @@ businessRouter.post(
       }
 
       if (data.provider === "hubtel") {
-        if (paymentIntent.currency !== "GHS") {
-          return res.status(400).json({ error: "Hubtel supports GHS only." });
-        }
-
         const callbackUrl = `${appUrl}/api/webhooks/hubtel`;
         const returnUrl = `${appUrl}/payment/verify?provider=hubtel&purpose=invoice&reference=${paymentIntent.id}`;
         const cancellationUrl = `${appUrl}/business?payment=cancelled`;

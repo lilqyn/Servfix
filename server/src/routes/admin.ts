@@ -1,11 +1,12 @@
 import { Router } from "express";
 import { z } from "zod";
 import { Prisma, SupportDepartment, SupportTicketPriority, UserRole } from "@prisma/client";
+import { createHash, randomBytes } from "crypto";
 import { prisma } from "../db.js";
 import { asyncHandler } from "../utils/async-handler.js";
 import { authRequired } from "../middleware/auth.js";
 import { requirePermission } from "../middleware/permissions.js";
-import { ADMIN_ROLES } from "../utils/permissions.js";
+import { ADMIN_ROLES, canAssignRole, canManageRole } from "../utils/permissions.js";
 import { env } from "../config.js";
 import { createNotification } from "../utils/notifications.js";
 import { sendEmail } from "../utils/email.js";
@@ -18,6 +19,7 @@ import {
   type StaticPageKey,
   type BlogPost,
   type StaffProfile,
+  type AboutPageConfig,
   type ProviderResourcesContent,
   type ProviderResourceSection,
   type ProviderLaunchChecklistItem,
@@ -29,6 +31,17 @@ import {
   type AdminPageKey,
   type BusinessFunctionKey,
 } from "../utils/platform-settings.js";
+import { logWarn } from "../observability/logger.js";
+import {
+  allocateDisbursementToOrders,
+  markOrderReleaseApproved,
+  resolveReviewDeadlineAt,
+} from "../utils/order-flow.js";
+import {
+  evaluateProviderDeletionEligibility,
+  softDeleteUserAccount,
+  type ProviderDeletionEligibility,
+} from "../utils/account-deletion.js";
 
 export const adminRouter = Router();
 
@@ -58,14 +71,20 @@ const ordersQuerySchema = paginationSchema.extend({
   status: z
     .enum([
       "created",
+      "payment_pending",
       "paid_to_escrow",
       "accepted",
       "in_progress",
+      "delivery_submitted",
       "delivered",
+      "release_approved",
       "approved",
       "released",
+      "disbursement_initiated",
+      "disbursed",
       "cancelled",
       "expired",
+      "dispute_open",
       "disputed",
       "refund_pending",
       "refunded",
@@ -101,6 +120,15 @@ const supportTicketsQuerySchema = paginationSchema.extend({
   priority: z.nativeEnum(SupportTicketPriority).optional(),
   assignedRole: z.nativeEnum(UserRole).optional(),
   assignedUserId: z.string().uuid().optional(),
+});
+
+const payoutComplianceCasesQuerySchema = z.object({
+  status: z
+    .enum(["open", "investigating", "cleared", "escalated", "reported", "closed"])
+    .optional(),
+  severity: z.enum(["low", "medium", "high", "critical"]).optional(),
+  type: z.enum(["aml_payout", "sanctions_match"]).optional(),
+  limit: z.coerce.number().int().min(1).max(200).optional(),
 });
 
 const analyticsQuerySchema = z.object({
@@ -192,6 +220,7 @@ const blogPostSchema = z.object({
   summary: z.string().trim().max(240).optional().nullable(),
   body: z.string().trim().max(5000),
   imageUrl: z.string().trim().max(500).optional().nullable(),
+  videoUrl: z.string().trim().url().max(500).optional().nullable(),
   publishedAt: z.string().trim().min(1).max(40),
 });
 
@@ -202,8 +231,34 @@ const staffProfileSchema = z.object({
   photoUrl: z.string().trim().max(500).optional().nullable(),
 });
 
+const aboutFontOptionSchema = z.enum([
+  "space_grotesk",
+  "plus_jakarta_sans",
+  "georgia_serif",
+  "times_serif",
+  "system_sans",
+  "mono",
+]);
+
+const aboutPageConfigSchema = z.object({
+  introLabel: z.string().trim().min(1).max(80),
+  heroImageUrl: z.string().trim().max(500).optional().nullable(),
+  missionTitle: z.string().trim().min(1).max(120),
+  missionBody: z.string().trim().min(1).max(1200),
+  missionBullets: z.array(z.string().trim().min(1).max(260)).min(1).max(12),
+  whatWeDoTitle: z.string().trim().min(1).max(120),
+  whatWeDoLeft: z.array(z.string().trim().min(1).max(260)).min(1).max(20),
+  whatWeDoRight: z.array(z.string().trim().min(1).max(260)).min(1).max(20),
+  visionTitle: z.string().trim().min(1).max(120),
+  visionLeft: z.string().trim().min(1).max(1200),
+  visionRight: z.array(z.string().trim().min(1).max(260)).min(1).max(12),
+  headingFont: aboutFontOptionSchema,
+  bodyFont: aboutFontOptionSchema,
+});
+
 const aboutPageSchema = pageContentSchema.extend({
   staff: z.array(staffProfileSchema).max(12).optional(),
+  aboutConfig: aboutPageConfigSchema.optional(),
 });
 
 const blogPageSchema = pageContentSchema.extend({
@@ -252,6 +307,7 @@ const providerResourcesPageSchema = pageContentSchema.extend({
 const pagesSchema = z.object({
   about: aboutPageSchema,
   blog: blogPageSchema,
+  academy: blogPageSchema,
   providerResources: providerResourcesPageSchema,
 });
 
@@ -299,6 +355,37 @@ const updateRoleSchema = z.object({
   role: z.nativeEnum(UserRole),
 });
 
+const deleteUserParamsSchema = z.object({
+  id: z.string().uuid(),
+});
+
+const staffInvitationsQuerySchema = z.object({
+  status: z.enum(["pending", "accepted", "revoked", "expired"]).optional(),
+  limit: z.coerce.number().int().min(1).max(200).optional(),
+});
+
+const createStaffInvitationSchema = z.object({
+  email: z.string().trim().email(),
+  role: z.nativeEnum(UserRole),
+});
+
+const staffInvitationParamsSchema = z.object({
+  id: z.string().uuid(),
+});
+
+const accountDeletionRequestsQuerySchema = z.object({
+  status: z.enum(["pending", "approved", "rejected"]).optional(),
+  limit: z.coerce.number().int().min(1).max(200).optional(),
+});
+
+const reviewAccountDeletionRequestSchema = z.object({
+  note: z.string().trim().max(500).optional(),
+});
+
+const accountDeletionRequestParamsSchema = z.object({
+  id: z.string().uuid(),
+});
+
 const updateProviderVerificationSchema = z.object({
   status: z.enum(["unverified", "pending", "verified", "rejected"]),
 });
@@ -310,14 +397,20 @@ const updateServiceStatusSchema = z.object({
 const updateOrderStatusSchema = z.object({
   status: z.enum([
     "created",
+    "payment_pending",
     "paid_to_escrow",
     "accepted",
     "in_progress",
+    "delivery_submitted",
     "delivered",
+    "release_approved",
     "approved",
     "released",
+    "disbursement_initiated",
+    "disbursed",
     "cancelled",
     "expired",
+    "dispute_open",
     "disputed",
     "refund_pending",
     "refunded",
@@ -334,6 +427,7 @@ const updateReportStatusSchema = z.object({
 const updateDisputeStatusSchema = z.object({
   status: z.enum(["open", "investigating", "resolved", "cancelled"]),
   resolution: z.enum(["refund", "release", "partial_refund", "deny"]).optional(),
+  releaseAmountNet: z.coerce.number().positive().optional(),
   note: z.string().trim().max(500).optional(),
 });
 
@@ -361,6 +455,156 @@ const supportTicketMeetingSchema = z.object({
   durationMinutes: z.coerce.number().int().min(5).max(480).optional(),
   meetingUrl: z.string().trim().url().optional(),
   notes: z.string().trim().max(1000).optional(),
+});
+
+const updatePayoutComplianceCaseSchema = z.object({
+  status: z.enum(["open", "investigating", "cleared", "escalated", "reported", "closed"]),
+  assignedToId: z.string().uuid().nullable().optional(),
+  note: z.string().trim().max(1000).optional(),
+});
+
+const STAFF_INVITE_TTL_DAYS = 7;
+const STAFF_INVITABLE_ROLES: UserRole[] = ADMIN_ROLES.filter((role) => role !== "super_admin");
+const STAFF_INVITABLE_ROLE_SET = new Set<UserRole>(STAFF_INVITABLE_ROLES);
+const STAFF_DELETABLE_ROLE_SET = new Set<UserRole>(STAFF_INVITABLE_ROLES);
+const appUrlBase = env.APP_URL.trim().replace(/\/+$/, "");
+const staffInviteBaseUrl = `${appUrlBase.split("#")[0].replace(/\/+$/, "")}/#/staff-invite`;
+
+const normalizeInviteEmail = (value: string) => value.trim().toLowerCase();
+
+const createStaffInviteToken = () => randomBytes(32).toString("base64url");
+
+const hashStaffInviteToken = (token: string) =>
+  createHash("sha256").update(`staff-invite:${token}`).digest("hex");
+
+const canInviteStaffRole = (targetRole: UserRole, actorRole: UserRole) =>
+  (targetRole === "super_admin" || STAFF_INVITABLE_ROLE_SET.has(targetRole)) &&
+  canAssignRole(actorRole, targetRole);
+
+const canDeleteStaffRole = (targetRole: UserRole) => STAFF_DELETABLE_ROLE_SET.has(targetRole);
+
+const formatRoleLabel = (role: UserRole) =>
+  role
+    .split("_")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+
+type StaffInvitationRecord = {
+  id: string;
+  email: string;
+  role: UserRole;
+  expiresAt: Date;
+  acceptedAt: Date | null;
+  revokedAt: Date | null;
+  createdAt: Date;
+  invitedBy: {
+    id: string;
+    email: string | null;
+    username: string | null;
+  };
+  acceptedBy: {
+    id: string;
+    email: string | null;
+    username: string | null;
+  } | null;
+};
+
+const getStaffInvitationStatus = (
+  invitation: Pick<StaffInvitationRecord, "acceptedAt" | "revokedAt" | "expiresAt">,
+  now: Date,
+) => {
+  if (invitation.acceptedAt) {
+    return "accepted" as const;
+  }
+  if (invitation.revokedAt) {
+    return "revoked" as const;
+  }
+  if (invitation.expiresAt <= now) {
+    return "expired" as const;
+  }
+  return "pending" as const;
+};
+
+const serializeStaffInvitation = (invitation: StaffInvitationRecord, now = new Date()) => ({
+  id: invitation.id,
+  email: invitation.email,
+  role: invitation.role,
+  status: getStaffInvitationStatus(invitation, now),
+  expiresAt: invitation.expiresAt,
+  acceptedAt: invitation.acceptedAt,
+  revokedAt: invitation.revokedAt,
+  createdAt: invitation.createdAt,
+  invitedBy: invitation.invitedBy,
+  acceptedBy: invitation.acceptedBy,
+});
+
+const accountDeletionRequestSelect = {
+  id: true,
+  status: true,
+  reason: true,
+  requestedAt: true,
+  reviewedAt: true,
+  reviewNote: true,
+  user: {
+    select: {
+      id: true,
+      role: true,
+      status: true,
+      email: true,
+      username: true,
+      phone: true,
+      providerProfile: {
+        select: { displayName: true },
+      },
+    },
+  },
+  reviewedBy: {
+    select: {
+      id: true,
+      email: true,
+      username: true,
+    },
+  },
+} satisfies Prisma.AccountDeletionRequestSelect;
+
+type AccountDeletionRequestRecord = {
+  id: string;
+  status: "pending" | "approved" | "rejected";
+  reason: string | null;
+  requestedAt: Date;
+  reviewedAt: Date | null;
+  reviewNote: string | null;
+  user: {
+    id: string;
+    role: UserRole;
+    status: "active" | "suspended" | "deleted";
+    email: string | null;
+    username: string | null;
+    phone: string | null;
+    providerProfile: {
+      displayName: string;
+    } | null;
+  };
+  reviewedBy: {
+    id: string;
+    email: string | null;
+    username: string | null;
+  } | null;
+};
+
+const serializeAccountDeletionRequest = (
+  request: AccountDeletionRequestRecord,
+  eligibility: ProviderDeletionEligibility | null = null,
+) => ({
+  id: request.id,
+  status: request.status,
+  reason: request.reason,
+  requestedAt: request.requestedAt,
+  reviewedAt: request.reviewedAt,
+  reviewNote: request.reviewNote,
+  user: request.user,
+  reviewedBy: request.reviewedBy,
+  eligibility,
 });
 
 const buildAdminTrend = async (months: number, locale: string, timeZone: string) => {
@@ -460,6 +704,96 @@ const getPayoutFailureReason = (metadata: Prisma.JsonValue | null): string | nul
   }
   return null;
 };
+
+const extractDisputeEvidence = (payload: Prisma.JsonValue | null): string[] => {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return [];
+  }
+  const record = payload as Record<string, unknown>;
+  const evidence = record.evidence;
+  if (!Array.isArray(evidence)) {
+    return [];
+  }
+  return evidence.filter((item): item is string => typeof item === "string" && item.length > 0);
+};
+
+const OPEN_PAYOUT_COMPLIANCE_STATUSES = ["open", "investigating", "escalated", "reported"] as const;
+
+const serializePayoutComplianceCase = (
+  item: {
+    id: string;
+    type: "aml_payout" | "sanctions_match";
+    status: "open" | "investigating" | "cleared" | "escalated" | "reported" | "closed";
+    severity: "low" | "medium" | "high" | "critical";
+    riskScore: number | null;
+    title: string;
+    summary: string | null;
+    reasons: string[];
+    metadata: Prisma.JsonValue | null;
+    resolvedAt: Date | null;
+    createdAt: Date;
+    updatedAt: Date;
+    provider: {
+      id: string;
+      email: string | null;
+      phone: string | null;
+      username: string | null;
+      providerProfile: {
+        displayName: string;
+        verificationStatus: "unverified" | "pending" | "verified" | "rejected";
+      } | null;
+    };
+    payoutRequest: {
+      id: string;
+      amount: Prisma.Decimal;
+      currency: "GHS" | "USD" | "EUR";
+      status: "requested" | "processing" | "paid" | "failed" | "cancelled";
+      createdAt: Date;
+      destinationMomo: string;
+      momoNetwork: "mtn" | "vodafone" | "airteltigo" | null;
+    } | null;
+    screening: {
+      id: string;
+      status: "pending" | "clear" | "possible_match" | "confirmed_match" | "error";
+      matchScore: number;
+      watchlistSource: string | null;
+      screenedAt: Date;
+      reviewedAt: Date | null;
+    } | null;
+    assignedTo: { id: string; email: string | null; username: string | null } | null;
+    createdBy: { id: string; email: string | null; username: string | null } | null;
+    closedBy: { id: string; email: string | null; username: string | null } | null;
+  },
+) => ({
+  id: item.id,
+  type: item.type,
+  status: item.status,
+  severity: item.severity,
+  riskScore: item.riskScore,
+  title: item.title,
+  summary: item.summary,
+  reasons: item.reasons,
+  metadata: item.metadata,
+  resolvedAt: item.resolvedAt,
+  createdAt: item.createdAt,
+  updatedAt: item.updatedAt,
+  provider: item.provider,
+  payoutRequest: item.payoutRequest
+    ? {
+        id: item.payoutRequest.id,
+        amount: item.payoutRequest.amount.toString(),
+        currency: item.payoutRequest.currency,
+        status: item.payoutRequest.status,
+        createdAt: item.payoutRequest.createdAt,
+        destinationMomo: item.payoutRequest.destinationMomo,
+        momoNetwork: item.payoutRequest.momoNetwork,
+      }
+    : null,
+  screening: item.screening,
+  assignedTo: item.assignedTo,
+  createdBy: item.createdBy,
+  closedBy: item.closedBy,
+});
 
 const initiateFlutterwaveTransfer = async (params: {
   amount: Prisma.Decimal;
@@ -749,6 +1083,19 @@ adminRouter.patch(
       return res.status(400).json({ error: "You cannot change your own status." });
     }
 
+    const existing = await prisma.user.findUnique({
+      where: { id: params.id },
+      select: { id: true, role: true },
+    });
+
+    if (!existing) {
+      return res.status(404).json({ error: "User not found." });
+    }
+
+    if (!canManageRole(req.user!.role, existing.role)) {
+      return res.status(403).json({ error: "You cannot change this user's status." });
+    }
+
     const user = await prisma.user.update({
       where: { id: params.id },
       data: { status: data.status },
@@ -781,6 +1128,23 @@ adminRouter.patch(
       return res.status(400).json({ error: "You cannot change your own role." });
     }
 
+    const existing = await prisma.user.findUnique({
+      where: { id: params.id },
+      select: { id: true, role: true },
+    });
+
+    if (!existing) {
+      return res.status(404).json({ error: "User not found." });
+    }
+
+    if (!canManageRole(req.user!.role, existing.role)) {
+      return res.status(403).json({ error: "You cannot change this user's role." });
+    }
+
+    if (!canAssignRole(req.user!.role, data.role)) {
+      return res.status(403).json({ error: "You cannot assign this role." });
+    }
+
     const user = await prisma.user.update({
       where: { id: params.id },
       data: { role: data.role },
@@ -796,6 +1160,518 @@ adminRouter.patch(
     });
 
     res.json({ user });
+  }),
+);
+
+adminRouter.post(
+  "/users/:id/delete",
+  authRequired,
+  requirePermission("users.write"),
+  requireAdminPageAccess("users"),
+  requireBusinessFunctionAccess("human_resources"),
+  asyncHandler(async (req, res) => {
+    const params = deleteUserParamsSchema.parse(req.params);
+
+    if (params.id === req.user!.id) {
+      return res.status(400).json({ error: "You cannot delete your own account." });
+    }
+
+    const target = await prisma.user.findUnique({
+      where: { id: params.id },
+      select: {
+        id: true,
+        role: true,
+        status: true,
+      },
+    });
+
+    if (!target) {
+      return res.status(404).json({ error: "User not found." });
+    }
+
+    if (target.status === "deleted") {
+      return res.status(400).json({ error: "Account already deleted." });
+    }
+
+    if (!canManageRole(req.user!.role, target.role)) {
+      return res.status(403).json({ error: "You cannot delete this staff account." });
+    }
+
+    if (!canDeleteStaffRole(target.role)) {
+      return res.status(400).json({
+        error: "Only staff accounts can be deleted from this action.",
+      });
+    }
+
+    const now = new Date();
+    await prisma.$transaction(async (tx) => {
+      await tx.accountDeletionRequest.create({
+        data: {
+          userId: target.id,
+          status: "approved",
+          requestedAt: now,
+          reviewedAt: now,
+          reviewedById: req.user!.id,
+          reviewNote: "Admin-initiated staff offboarding deletion.",
+        },
+      });
+
+      await softDeleteUserAccount(tx, target.id, { now });
+    });
+
+    await logAdminAction({
+      actorId: req.user!.id,
+      action: "user.staff.delete",
+      entityType: "User",
+      entityId: target.id,
+      payload: {
+        role: target.role,
+      },
+    });
+
+    res.json({
+      user: {
+        id: target.id,
+        status: "deleted",
+      },
+    });
+  }),
+);
+
+adminRouter.post(
+  "/staff-invitations",
+  authRequired,
+  requirePermission("users.role"),
+  requireAdminPageAccess("users"),
+  requireBusinessFunctionAccess("human_resources"),
+  asyncHandler(async (req, res) => {
+    const data = createStaffInvitationSchema.parse(req.body);
+
+    if (!canInviteStaffRole(data.role, req.user!.role)) {
+      return res.status(403).json({ error: "You cannot invite this role." });
+    }
+
+    const now = new Date();
+    const email = normalizeInviteEmail(data.email);
+    const token = createStaffInviteToken();
+    const tokenHash = hashStaffInviteToken(token);
+    const expiresAt = new Date(now.getTime() + STAFF_INVITE_TTL_DAYS * 24 * 60 * 60 * 1000);
+
+    const invitation = await prisma.$transaction(async (tx) => {
+      await tx.staffInvitation.updateMany({
+        where: {
+          email,
+          acceptedAt: null,
+          revokedAt: null,
+          expiresAt: { gt: now },
+        },
+        data: { revokedAt: now },
+      });
+
+      return tx.staffInvitation.create({
+        data: {
+          email,
+          role: data.role,
+          tokenHash,
+          invitedById: req.user!.id,
+          expiresAt,
+        },
+        select: {
+          id: true,
+          email: true,
+          role: true,
+          expiresAt: true,
+          acceptedAt: true,
+          revokedAt: true,
+          createdAt: true,
+          invitedBy: { select: { id: true, email: true, username: true } },
+          acceptedBy: { select: { id: true, email: true, username: true } },
+        },
+      });
+    });
+
+    const inviteUrl = `${staffInviteBaseUrl}?token=${encodeURIComponent(token)}`;
+    const invitedRoleLabel = formatRoleLabel(data.role);
+    const inviterName = req.user!.username ?? req.user!.email ?? "Servfix admin";
+    const subject = `Servfix staff invitation (${invitedRoleLabel})`;
+    const text = [
+      "You have been invited to join Servfix staff.",
+      "",
+      `Role: ${invitedRoleLabel}`,
+      `Invited by: ${inviterName}`,
+      "",
+      `Accept invitation: ${inviteUrl}`,
+      "",
+      `This link expires on ${expiresAt.toISOString()}.`,
+      "If you were not expecting this invitation, you can ignore this email.",
+    ].join("\n");
+
+    let emailResult: Awaited<ReturnType<typeof sendEmail>>;
+    try {
+      emailResult = await sendEmail({
+        to: email,
+        subject,
+        text,
+        tag: "staff_invitation",
+        metadata: {
+          invitationId: invitation.id,
+          role: data.role,
+          inviterId: req.user!.id,
+        },
+      });
+    } catch (error) {
+      await prisma.staffInvitation.update({
+        where: { id: invitation.id },
+        data: { revokedAt: new Date() },
+      });
+      logWarn("staff_invitation_email_send_failed", {
+        invitationId: invitation.id,
+        inviterId: req.user!.id,
+        inviteeEmail: email,
+        message: error instanceof Error ? error.message : "Unknown error",
+      });
+      return res
+        .status(503)
+        .json({ error: "Staff invitation email delivery failed. Check email integration settings." });
+    }
+
+    if (!emailResult.sent) {
+      await prisma.staffInvitation.update({
+        where: { id: invitation.id },
+        data: { revokedAt: new Date() },
+      });
+      return res.status(503).json({ error: "Staff invitation email delivery is not configured." });
+    }
+
+    await logAdminAction({
+      actorId: req.user!.id,
+      action: "staff.invitation.create",
+      entityType: "StaffInvitation",
+      entityId: invitation.id,
+      payload: {
+        email,
+        role: data.role,
+        expiresAt: expiresAt.toISOString(),
+      },
+    });
+
+    res.status(201).json({ invitation: serializeStaffInvitation(invitation, now) });
+  }),
+);
+
+adminRouter.get(
+  "/staff-invitations",
+  authRequired,
+  requirePermission("users.read"),
+  requireAdminPageAccess("users"),
+  requireBusinessFunctionAccess("human_resources"),
+  asyncHandler(async (req, res) => {
+    const query = staffInvitationsQuerySchema.parse(req.query);
+    const limit = query.limit ?? 100;
+    const now = new Date();
+
+    const where: Prisma.StaffInvitationWhereInput = {};
+    if (query.status === "pending") {
+      where.acceptedAt = null;
+      where.revokedAt = null;
+      where.expiresAt = { gt: now };
+    } else if (query.status === "accepted") {
+      where.acceptedAt = { not: null };
+    } else if (query.status === "revoked") {
+      where.revokedAt = { not: null };
+    } else if (query.status === "expired") {
+      where.acceptedAt = null;
+      where.revokedAt = null;
+      where.expiresAt = { lte: now };
+    }
+
+    const invitations = await prisma.staffInvitation.findMany({
+      where,
+      take: limit,
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      select: {
+        id: true,
+        email: true,
+        role: true,
+        expiresAt: true,
+        acceptedAt: true,
+        revokedAt: true,
+        createdAt: true,
+        invitedBy: { select: { id: true, email: true, username: true } },
+        acceptedBy: { select: { id: true, email: true, username: true } },
+      },
+    });
+    const invitableRoles: UserRole[] = [
+      ...STAFF_INVITABLE_ROLES.filter((role) => canInviteStaffRole(role, req.user!.role)),
+      ...(canInviteStaffRole("super_admin", req.user!.role) ? (["super_admin"] as const) : []),
+    ];
+
+    res.json({
+      invitations: invitations.map((invitation) => serializeStaffInvitation(invitation, now)),
+      invitableRoles,
+    });
+  }),
+);
+
+adminRouter.patch(
+  "/staff-invitations/:id/revoke",
+  authRequired,
+  requirePermission("users.role"),
+  requireAdminPageAccess("users"),
+  requireBusinessFunctionAccess("human_resources"),
+  asyncHandler(async (req, res) => {
+    const params = staffInvitationParamsSchema.parse(req.params);
+    const now = new Date();
+
+    const existing = await prisma.staffInvitation.findUnique({
+      where: { id: params.id },
+      select: {
+        id: true,
+        email: true,
+        role: true,
+        expiresAt: true,
+        acceptedAt: true,
+        revokedAt: true,
+        createdAt: true,
+        invitedBy: { select: { id: true, email: true, username: true } },
+        acceptedBy: { select: { id: true, email: true, username: true } },
+      },
+    });
+
+    if (!existing) {
+      return res.status(404).json({ error: "Staff invitation not found." });
+    }
+
+    if (!canInviteStaffRole(existing.role, req.user!.role)) {
+      return res.status(403).json({ error: "You cannot revoke this invitation." });
+    }
+
+    if (existing.acceptedAt) {
+      return res.status(400).json({ error: "Accepted invitations cannot be revoked." });
+    }
+
+    if (existing.revokedAt) {
+      return res.json({ invitation: serializeStaffInvitation(existing, now) });
+    }
+
+    const invitation = await prisma.staffInvitation.update({
+      where: { id: params.id },
+      data: { revokedAt: now },
+      select: {
+        id: true,
+        email: true,
+        role: true,
+        expiresAt: true,
+        acceptedAt: true,
+        revokedAt: true,
+        createdAt: true,
+        invitedBy: { select: { id: true, email: true, username: true } },
+        acceptedBy: { select: { id: true, email: true, username: true } },
+      },
+    });
+
+    await logAdminAction({
+      actorId: req.user!.id,
+      action: "staff.invitation.revoke",
+      entityType: "StaffInvitation",
+      entityId: invitation.id,
+      payload: {
+        email: invitation.email,
+        role: invitation.role,
+      },
+    });
+
+    res.json({ invitation: serializeStaffInvitation(invitation, now) });
+  }),
+);
+
+adminRouter.get(
+  "/account-deletion-requests",
+  authRequired,
+  requirePermission("users.read"),
+  requireAdminPageAccess("users"),
+  requireBusinessFunctionAccess("human_resources"),
+  asyncHandler(async (req, res) => {
+    const query = accountDeletionRequestsQuerySchema.parse(req.query);
+    const limit = query.limit ?? 100;
+    const where: Prisma.AccountDeletionRequestWhereInput = {};
+    if (query.status) {
+      where.status = query.status;
+    }
+
+    const requests = await prisma.accountDeletionRequest.findMany({
+      where,
+      take: limit,
+      orderBy: [{ requestedAt: "desc" }, { id: "desc" }],
+      select: accountDeletionRequestSelect,
+    });
+
+    const eligibilityByRequestId = new Map<string, ProviderDeletionEligibility>();
+    await Promise.all(
+      requests.map(async (request) => {
+        if (request.status !== "pending" || request.user.role !== "provider") {
+          return;
+        }
+        const eligibility = await evaluateProviderDeletionEligibility(prisma, request.user.id);
+        eligibilityByRequestId.set(request.id, eligibility);
+      }),
+    );
+
+    res.json({
+      requests: requests.map((request) =>
+        serializeAccountDeletionRequest(
+          request,
+          eligibilityByRequestId.get(request.id) ?? null,
+        ),
+      ),
+    });
+  }),
+);
+
+adminRouter.post(
+  "/account-deletion-requests/:id/approve",
+  authRequired,
+  requirePermission("users.write"),
+  requireAdminPageAccess("users"),
+  requireBusinessFunctionAccess("human_resources"),
+  asyncHandler(async (req, res) => {
+    const params = accountDeletionRequestParamsSchema.parse(req.params);
+    const data = reviewAccountDeletionRequestSchema.parse(req.body ?? {});
+
+    const request = await prisma.accountDeletionRequest.findUnique({
+      where: { id: params.id },
+      select: accountDeletionRequestSelect,
+    });
+
+    if (!request) {
+      return res.status(404).json({ error: "Account deletion request not found." });
+    }
+
+    if (request.status !== "pending") {
+      return res.status(400).json({ error: "Only pending requests can be approved." });
+    }
+
+    if (request.user.role !== "provider") {
+      return res.status(400).json({ error: "Only provider deletion requests require approval." });
+    }
+
+    const eligibility = await evaluateProviderDeletionEligibility(prisma, request.user.id);
+    if (!eligibility.eligible) {
+      return res.status(409).json({
+        error: "Provider does not qualify for deletion yet.",
+        eligibility,
+      });
+    }
+
+    const now = new Date();
+    let reviewedRequest: AccountDeletionRequestRecord;
+
+    try {
+      reviewedRequest = await prisma.$transaction(async (tx) => {
+        const updated = await tx.accountDeletionRequest.updateMany({
+          where: {
+            id: params.id,
+            status: "pending",
+          },
+          data: {
+            status: "approved",
+            reviewedAt: now,
+            reviewedById: req.user!.id,
+            reviewNote: data.note?.trim() || null,
+          },
+        });
+
+        if (updated.count === 0) {
+          throw new Error("account_deletion_request_already_reviewed");
+        }
+
+        const nextReviewedRequest = await tx.accountDeletionRequest.findUnique({
+          where: { id: params.id },
+          select: accountDeletionRequestSelect,
+        });
+
+        if (!nextReviewedRequest) {
+          throw new Error("account_deletion_request_not_found_after_update");
+        }
+
+        await softDeleteUserAccount(tx, request.user.id, { now });
+        return nextReviewedRequest;
+      });
+    } catch (error) {
+      if (error instanceof Error && error.message === "account_deletion_request_already_reviewed") {
+        return res.status(409).json({ error: "This request has already been reviewed." });
+      }
+      throw error;
+    }
+
+    await logAdminAction({
+      actorId: req.user!.id,
+      action: "account.deletion.approve",
+      entityType: "AccountDeletionRequest",
+      entityId: reviewedRequest.id,
+      payload: {
+        userId: request.user.id,
+        role: request.user.role,
+        note: data.note?.trim() || null,
+      },
+    });
+
+    res.json({
+      request: serializeAccountDeletionRequest(reviewedRequest, eligibility),
+    });
+  }),
+);
+
+adminRouter.post(
+  "/account-deletion-requests/:id/reject",
+  authRequired,
+  requirePermission("users.write"),
+  requireAdminPageAccess("users"),
+  requireBusinessFunctionAccess("human_resources"),
+  asyncHandler(async (req, res) => {
+    const params = accountDeletionRequestParamsSchema.parse(req.params);
+    const data = reviewAccountDeletionRequestSchema.parse(req.body ?? {});
+    const now = new Date();
+
+    const existing = await prisma.accountDeletionRequest.findUnique({
+      where: { id: params.id },
+      select: accountDeletionRequestSelect,
+    });
+
+    if (!existing) {
+      return res.status(404).json({ error: "Account deletion request not found." });
+    }
+
+    if (existing.status !== "pending") {
+      return res.status(400).json({ error: "Only pending requests can be rejected." });
+    }
+
+    const updated = await prisma.accountDeletionRequest.update({
+      where: { id: params.id },
+      data: {
+        status: "rejected",
+        reviewedAt: now,
+        reviewedById: req.user!.id,
+        reviewNote: data.note?.trim() || null,
+      },
+      select: accountDeletionRequestSelect,
+    });
+
+    await logAdminAction({
+      actorId: req.user!.id,
+      action: "account.deletion.reject",
+      entityType: "AccountDeletionRequest",
+      entityId: updated.id,
+      payload: {
+        userId: existing.user.id,
+        role: existing.user.role,
+        note: data.note?.trim() || null,
+      },
+    });
+
+    res.json({
+      request: serializeAccountDeletionRequest(updated, null),
+    });
   }),
 );
 
@@ -1087,6 +1963,7 @@ adminRouter.patch(
         amountPaid: true,
         amountPaidNet: true,
         amountReleasedNet: true,
+        amountDisbursedNet: true,
         currency: true,
         depositAmount: true,
       },
@@ -1099,9 +1976,19 @@ adminRouter.patch(
     const timestampUpdates: Prisma.OrderUpdateInput = {};
     const now = new Date();
     if (data.status === "accepted") timestampUpdates.acceptedAt = now;
+    if (data.status === "delivery_submitted") {
+      timestampUpdates.deliverySubmittedAt = now;
+      timestampUpdates.reviewDeadlineAt = resolveReviewDeadlineAt(order.amountGross, now);
+    }
     if (data.status === "delivered") timestampUpdates.deliveredAt = now;
+    if (data.status === "dispute_open") timestampUpdates.disputeOpenedAt = now;
+    if (data.status === "release_approved") {
+      timestampUpdates.approvedAt = now;
+      timestampUpdates.releasedAt = now;
+    }
     if (data.status === "approved") timestampUpdates.approvedAt = now;
     if (data.status === "released") timestampUpdates.releasedAt = now;
+    if (data.status === "disbursed") timestampUpdates.disbursedAt = now;
     if (data.status === "cancelled") timestampUpdates.cancelledAt = now;
 
     const updated = await prisma.$transaction(async (tx) => {
@@ -1164,37 +2051,22 @@ adminRouter.patch(
         }
       }
 
-      if (data.status === "released" && order.status !== "released") {
-        const wallet = await tx.providerWallet.upsert({
-          where: { providerId: order.providerId },
-          create: {
-            providerId: order.providerId,
-            availableBalance: new Prisma.Decimal(0),
-            pendingBalance: new Prisma.Decimal(0),
-            currency: order.currency,
-          },
-          update: {},
+      if (
+        ["release_approved", "released"].includes(data.status) &&
+        !["release_approved", "released", "disbursed"].includes(order.status)
+      ) {
+        await markOrderReleaseApproved(tx, {
+          orderId: order.id,
+          actorId: req.user!.id,
+          source: "admin",
         });
 
-        const releaseAmount = order.amountPaidNet.sub(order.amountReleasedNet);
-        if (releaseAmount.lte(0)) {
-          return next;
+        if (data.status === "released") {
+          await tx.order.update({
+            where: { id: order.id },
+            data: { status: "released" },
+          });
         }
-        const pendingAfter = wallet.pendingBalance.sub(releaseAmount);
-        await tx.providerWallet.update({
-          where: { providerId: order.providerId },
-          data: {
-            availableBalance: { increment: releaseAmount },
-            pendingBalance: pendingAfter.gte(0) ? pendingAfter : new Prisma.Decimal(0),
-          },
-        });
-
-        await tx.order.update({
-          where: { id: order.id },
-          data: {
-            amountReleasedNet: order.amountReleasedNet.add(releaseAmount),
-          },
-        });
       }
 
       return next;
@@ -1993,16 +2865,38 @@ adminRouter.get(
       ...(query.cursor ? { cursor: { id: query.cursor }, skip: 1 } : {}),
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       include: {
-        order: { select: { id: true, status: true } },
+        order: {
+          select: {
+            id: true,
+            status: true,
+            events: {
+              where: { type: "dispute_opened" },
+              orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+              take: 1,
+              select: { payload: true },
+            },
+          },
+        },
         openedBy: { select: { id: true, email: true, username: true } },
       },
     });
 
     const hasNext = disputes.length > limit;
     const trimmed = hasNext ? disputes.slice(0, limit) : disputes;
+    const serialized = trimmed.map((dispute) => {
+      const evidencePayload = dispute.order.events[0]?.payload ?? null;
+      return {
+        ...dispute,
+        evidence: extractDisputeEvidence(evidencePayload),
+        order: {
+          id: dispute.order.id,
+          status: dispute.order.status,
+        },
+      };
+    });
     const nextCursor = hasNext ? trimmed[trimmed.length - 1]?.id ?? null : null;
 
-    res.json({ disputes: trimmed, nextCursor });
+    res.json({ disputes: serialized, nextCursor });
   }),
 );
 
@@ -2030,14 +2924,184 @@ adminRouter.patch(
         ? data.resolution ?? settings.disputePolicy.defaultResolution ?? null
         : null;
 
-    const dispute = await prisma.dispute.update({
+    if (data.status === "resolved" && resolvedResolution === "partial_refund") {
+      if (data.releaseAmountNet === undefined) {
+        return res.status(400).json({ error: "releaseAmountNet is required for partial refunds." });
+      }
+
+      const preview = await prisma.dispute.findUnique({
+        where: { id: params.id },
+        include: {
+          order: {
+            select: {
+              id: true,
+              amountPaidNet: true,
+              amountReleasedNet: true,
+            },
+          },
+        },
+      });
+
+      if (!preview || !preview.order) {
+        return res.status(404).json({ error: "Dispute not found." });
+      }
+
+      const releasableNet = preview.order.amountPaidNet.sub(preview.order.amountReleasedNet);
+      const requestedRelease = new Prisma.Decimal(data.releaseAmountNet);
+
+      if (releasableNet.lte(0)) {
+        return res.status(400).json({ error: "No releasable amount remains on this order." });
+      }
+
+      if (requestedRelease.lte(0) || requestedRelease.gte(releasableNet)) {
+        return res.status(400).json({
+          error:
+            "Partial refund requires releaseAmountNet greater than 0 and less than the current releasable amount.",
+        });
+      }
+    }
+
+    const disputeExists = await prisma.dispute.findUnique({
       where: { id: params.id },
-      data: {
-        status: data.status,
-        resolution: resolvedResolution,
-        resolvedAt: ["resolved", "cancelled"].includes(data.status) ? new Date() : null,
-      },
-      select: { id: true, status: true, resolution: true },
+      select: { id: true },
+    });
+    if (!disputeExists) {
+      return res.status(404).json({ error: "Dispute not found." });
+    }
+
+    const dispute = await prisma.$transaction(async (tx) => {
+      const existing = await tx.dispute.findUnique({
+        where: { id: params.id },
+        include: {
+          order: {
+            select: {
+              id: true,
+              buyerId: true,
+              providerId: true,
+              serviceId: true,
+              status: true,
+              currency: true,
+              amountPaidNet: true,
+              amountReleasedNet: true,
+              service: { select: { title: true } },
+            },
+          },
+        },
+      });
+
+      if (!existing || !existing.order) {
+        throw new Error("Dispute not found.");
+      }
+      const now = new Date();
+      const releasableNet = existing.order.amountPaidNet.sub(existing.order.amountReleasedNet);
+      const backoutPending = async (amount: Prisma.Decimal) => {
+        if (amount.lte(0)) {
+          return;
+        }
+        const wallet = await tx.providerWallet.upsert({
+          where: { providerId: existing.order!.providerId },
+          create: {
+            providerId: existing.order!.providerId,
+            availableBalance: new Prisma.Decimal(0),
+            pendingBalance: new Prisma.Decimal(0),
+            currency: existing.order!.currency,
+          },
+          update: {},
+        });
+
+        const pendingAfter = wallet.pendingBalance.sub(amount);
+        await tx.providerWallet.update({
+          where: { providerId: existing.order!.providerId },
+          data: {
+            pendingBalance: pendingAfter.gte(0) ? pendingAfter : new Prisma.Decimal(0),
+          },
+        });
+      };
+
+      const updated = await tx.dispute.update({
+        where: { id: params.id },
+        data: {
+          status: data.status,
+          resolution: resolvedResolution,
+          resolvedAt: ["resolved", "cancelled"].includes(data.status) ? now : null,
+        },
+        select: { id: true, status: true, resolution: true },
+      });
+
+      if (data.status === "resolved" && resolvedResolution === "release") {
+        await markOrderReleaseApproved(tx, {
+          orderId: existing.order.id,
+          actorId: req.user!.id,
+          source: "dispute_resolution",
+        });
+      }
+
+      if (data.status === "resolved" && resolvedResolution === "partial_refund") {
+        const requestedRelease = new Prisma.Decimal(data.releaseAmountNet ?? 0);
+        const releaseResult = await markOrderReleaseApproved(tx, {
+          orderId: existing.order.id,
+          actorId: req.user!.id,
+          source: "dispute_resolution",
+          amountOverride: requestedRelease,
+        });
+        const refundedNet = releasableNet.sub(releaseResult.amountReleased);
+        await backoutPending(refundedNet);
+
+        await tx.order.update({
+          where: { id: existing.order.id },
+          data: {
+            status: "release_approved",
+            amountPaidNet: releaseResult.order.amountReleasedNet,
+            refundRequestedAt: now,
+            refundCompletedAt: now,
+          },
+        });
+      }
+
+      if (data.status === "resolved" && resolvedResolution === "refund") {
+        await backoutPending(releasableNet);
+        await tx.order.update({
+          where: { id: existing.order.id },
+          data: {
+            status: "refunded",
+            refundRequestedAt: now,
+            refundCompletedAt: now,
+            amountPaid: new Prisma.Decimal(0),
+            amountPaidNet: new Prisma.Decimal(0),
+          },
+        });
+      }
+
+      if (
+        data.status === "resolved" &&
+        resolvedResolution === "deny" &&
+        existing.order.status === "dispute_open"
+      ) {
+        await tx.order.update({
+          where: { id: existing.order.id },
+          data: { status: "delivery_submitted" },
+        });
+      }
+
+      if (data.status === "resolved") {
+        await tx.orderEvent.create({
+          data: {
+            orderId: existing.order.id,
+            type: "dispute_resolved",
+            payload: {
+              actorId: req.user!.id,
+              resolution: resolvedResolution,
+              releaseAmountNet:
+                resolvedResolution === "partial_refund" && data.releaseAmountNet !== undefined
+                  ? data.releaseAmountNet
+                  : null,
+              note: data.note ?? null,
+            },
+          },
+        });
+      }
+
+      return { ...updated, order: existing.order };
     });
 
     await logAdminAction({
@@ -2047,6 +3111,29 @@ adminRouter.patch(
       entityId: dispute.id,
       payload: { status: data.status, resolution: data.resolution ?? null, note: data.note ?? null },
     });
+
+    if (dispute.order && data.status === "resolved") {
+      const serviceTitle = dispute.order.service?.title ?? "service";
+      const resolutionLabel = dispute.resolution ?? "resolved";
+      await Promise.all([
+        createNotification({
+          userId: dispute.order.providerId,
+          actorId: req.user!.id,
+          type: "order_status",
+          title: "Dispute resolved",
+          body: `Dispute resolution for ${serviceTitle}: ${resolutionLabel}.`,
+          data: { orderId: dispute.order.id, disputeId: dispute.id, serviceId: dispute.order.serviceId },
+        }),
+        createNotification({
+          userId: dispute.order.buyerId,
+          actorId: req.user!.id,
+          type: "order_status",
+          title: "Dispute resolved",
+          body: `Your dispute for ${serviceTitle} was resolved: ${resolutionLabel}.`,
+          data: { orderId: dispute.order.id, disputeId: dispute.id, serviceId: dispute.order.serviceId },
+        }),
+      ]);
+    }
 
     res.json({ dispute });
   }),
@@ -2072,20 +3159,22 @@ adminRouter.get(
       },
     });
 
-    const payoutSummary = await prisma.order.groupBy({
+    const payoutSummary = await prisma.earningsLedger.groupBy({
       by: ["providerId"],
-      _sum: { amountPaidNet: true, amountReleasedNet: true },
+      _sum: { netAmount: true },
+      where: { state: "disbursed" },
+    });
+    const pendingSummary = await prisma.earningsLedger.groupBy({
+      by: ["providerId"],
+      _sum: { netAmount: true },
+      where: { state: { in: ["payable", "reserved"] } },
     });
 
     const releasedMap = new Map(
-      payoutSummary.map((row) => [row.providerId, row._sum.amountReleasedNet?.toString() ?? "0"]),
+      payoutSummary.map((row) => [row.providerId, row._sum.netAmount?.toString() ?? "0"]),
     );
     const pendingMap = new Map(
-      payoutSummary.map((row) => {
-        const paid = row._sum.amountPaidNet ?? new Prisma.Decimal(0);
-        const released = row._sum.amountReleasedNet ?? new Prisma.Decimal(0);
-        return [row.providerId, paid.sub(released).toString()];
-      }),
+      pendingSummary.map((row) => [row.providerId, row._sum.netAmount?.toString() ?? "0"]),
     );
 
     res.json({
@@ -2141,11 +3230,241 @@ adminRouter.get(
           destinationMomo: request.destinationMomo,
           momoNetwork: request.momoNetwork,
           reference: request.reference,
+          orderId: request.orderId,
+          pspTransferRef: request.pspTransferRef,
+          idempotencyKey: request.idempotencyKey,
           failureReason: request.status === "failed" ? getPayoutFailureReason(request.metadata) : null,
           createdAt: request.createdAt,
           provider: request.provider,
         })),
       });
+  }),
+);
+
+adminRouter.get(
+  "/payout-compliance-cases",
+  authRequired,
+  requirePermission("payouts.read"),
+  requireAdminPageAccess("payouts"),
+  requireBusinessFunctionAccess("finance"),
+  asyncHandler(async (req, res) => {
+    const query = payoutComplianceCasesQuerySchema.parse(req.query);
+    const limit = query.limit ?? 100;
+
+    const where: Prisma.ComplianceCaseWhereInput = {};
+    if (query.status) {
+      where.status = query.status;
+    }
+    if (query.severity) {
+      where.severity = query.severity;
+    }
+    if (query.type) {
+      where.type = query.type;
+    }
+
+    const cases = await prisma.complianceCase.findMany({
+      where,
+      orderBy: [{ createdAt: "desc" }],
+      take: limit,
+      include: {
+        provider: {
+          select: {
+            id: true,
+            email: true,
+            phone: true,
+            username: true,
+            providerProfile: {
+              select: {
+                displayName: true,
+                verificationStatus: true,
+              },
+            },
+          },
+        },
+        payoutRequest: {
+          select: {
+            id: true,
+            amount: true,
+            currency: true,
+            status: true,
+            createdAt: true,
+            destinationMomo: true,
+            momoNetwork: true,
+          },
+        },
+        screening: {
+          select: {
+            id: true,
+            status: true,
+            matchScore: true,
+            watchlistSource: true,
+            screenedAt: true,
+            reviewedAt: true,
+          },
+        },
+        assignedTo: {
+          select: {
+            id: true,
+            email: true,
+            username: true,
+          },
+        },
+        createdBy: {
+          select: {
+            id: true,
+            email: true,
+            username: true,
+          },
+        },
+        closedBy: {
+          select: {
+            id: true,
+            email: true,
+            username: true,
+          },
+        },
+      },
+    });
+
+    res.json({
+      cases: cases.map((item) => serializePayoutComplianceCase(item)),
+    });
+  }),
+);
+
+adminRouter.patch(
+  "/payout-compliance-cases/:id",
+  authRequired,
+  requirePermission("payouts.update"),
+  requireAdminPageAccess("payouts"),
+  requireBusinessFunctionAccess("finance"),
+  asyncHandler(async (req, res) => {
+    const params = z.object({ id: z.string().uuid() }).parse(req.params);
+    const data = updatePayoutComplianceCaseSchema.parse(req.body);
+
+    const existing = await prisma.complianceCase.findUnique({
+      where: { id: params.id },
+      select: { id: true, metadata: true },
+    });
+    if (!existing) {
+      return res.status(404).json({ error: "Compliance case not found." });
+    }
+
+    if (data.assignedToId) {
+      const assignee = await prisma.user.findUnique({
+        where: { id: data.assignedToId },
+        select: { id: true, role: true },
+      });
+      if (!assignee || !ADMIN_ROLES.includes(assignee.role)) {
+        return res.status(400).json({ error: "Assigned user must be an admin user." });
+      }
+    }
+
+    const existingMetadata =
+      existing.metadata && typeof existing.metadata === "object" && !Array.isArray(existing.metadata)
+        ? (existing.metadata as Record<string, unknown>)
+        : {};
+    const existingNotes = Array.isArray(existingMetadata.adminNotes)
+      ? (existingMetadata.adminNotes as Array<Record<string, unknown>>)
+      : [];
+    const shouldClose = data.status === "cleared" || data.status === "closed";
+    const updatedMetadata: Prisma.InputJsonValue | undefined = data.note
+      ? ({
+          ...existingMetadata,
+          adminNotes: [
+            ...existingNotes.slice(-24),
+            {
+              at: new Date().toISOString(),
+              by: req.user!.id,
+              status: data.status,
+              note: data.note,
+            },
+          ],
+        } as Prisma.InputJsonValue)
+      : undefined;
+
+    const updated = await prisma.complianceCase.update({
+      where: { id: params.id },
+      data: {
+        status: data.status,
+        assignedToId: data.assignedToId !== undefined ? data.assignedToId : undefined,
+        resolvedAt: shouldClose ? new Date() : null,
+        closedById: shouldClose ? req.user!.id : null,
+        metadata: updatedMetadata,
+      },
+      include: {
+        provider: {
+          select: {
+            id: true,
+            email: true,
+            phone: true,
+            username: true,
+            providerProfile: {
+              select: {
+                displayName: true,
+                verificationStatus: true,
+              },
+            },
+          },
+        },
+        payoutRequest: {
+          select: {
+            id: true,
+            amount: true,
+            currency: true,
+            status: true,
+            createdAt: true,
+            destinationMomo: true,
+            momoNetwork: true,
+          },
+        },
+        screening: {
+          select: {
+            id: true,
+            status: true,
+            matchScore: true,
+            watchlistSource: true,
+            screenedAt: true,
+            reviewedAt: true,
+          },
+        },
+        assignedTo: {
+          select: {
+            id: true,
+            email: true,
+            username: true,
+          },
+        },
+        createdBy: {
+          select: {
+            id: true,
+            email: true,
+            username: true,
+          },
+        },
+        closedBy: {
+          select: {
+            id: true,
+            email: true,
+            username: true,
+          },
+        },
+      },
+    });
+
+    await logAdminAction({
+      actorId: req.user!.id,
+      action: "payout.compliance_case.update",
+      entityType: "ComplianceCase",
+      entityId: updated.id,
+      payload: {
+        status: data.status,
+        assignedToId: data.assignedToId ?? null,
+        note: data.note ?? null,
+      },
+    });
+
+    res.json({ case: serializePayoutComplianceCase(updated) });
   }),
 );
 
@@ -2173,11 +3492,25 @@ adminRouter.post(
       });
 
     if (!request) {
-      return res.status(404).json({ error: "Payout request not found." });
+      return res.status(404).json({ error: "Disbursement request not found." });
     }
 
     if (request.status !== "requested") {
-      return res.status(400).json({ error: "Payout request is not pending." });
+      return res.status(400).json({ error: "Disbursement request is not pending." });
+    }
+
+    const blockingCase = await prisma.complianceCase.findFirst({
+      where: {
+        providerId: request.providerId,
+        status: { in: [...OPEN_PAYOUT_COMPLIANCE_STATUSES] },
+        OR: [{ payoutRequestId: request.id }, { type: "sanctions_match" }],
+      },
+      select: { id: true, status: true, title: true },
+    });
+    if (blockingCase) {
+      return res.status(409).json({
+        error: `Compliance review pending (${blockingCase.status}): ${blockingCase.title}`,
+      });
     }
 
     const momoNumber = request.destinationMomo ?? request.provider.providerProfile?.momoNumber ?? null;
@@ -2203,7 +3536,7 @@ adminRouter.post(
         request.provider.email ||
         "Provider payout";
 
-      const transferRef = `scg_payout_${request.id}`;
+      const transferRef = request.reference ?? `scg_payout_${request.id}`;
 
       let payload: Prisma.JsonValue | null = null;
       let nextStatus: "processing" | "paid" | "failed" = "processing";
@@ -2263,6 +3596,7 @@ adminRouter.post(
         } as Prisma.JsonValue;
         nextStatus = "failed";
       }
+      const payoutTrackingRef = transferId ?? transferRef;
 
     await prisma.$transaction(async (tx) => {
       const wallet = await tx.providerWallet.upsert({
@@ -2284,6 +3618,17 @@ adminRouter.post(
             pendingBalance: pendingAfter.gte(0) ? pendingAfter : new Prisma.Decimal(0),
           },
         });
+
+        if (request.orderId) {
+          await tx.earningsLedger.updateMany({
+            where: { orderId: request.orderId, providerId: request.providerId },
+            data: {
+              state: "disbursed",
+              disbursedAt: new Date(),
+              pspPayoutRef: payoutTrackingRef,
+            },
+          });
+        }
       }
 
       if (nextStatus === "failed") {
@@ -2295,10 +3640,36 @@ adminRouter.post(
             pendingBalance: pendingAfter.gte(0) ? pendingAfter : new Prisma.Decimal(0),
           },
         });
+
+        if (request.orderId) {
+          await tx.earningsLedger.updateMany({
+            where: { orderId: request.orderId, providerId: request.providerId },
+            data: {
+              state: "payable",
+              reservedAt: null,
+              disbursedAt: null,
+              pspPayoutRef: null,
+            },
+          });
+        }
       }
 
+      if (nextStatus === "paid") {
+        await allocateDisbursementToOrders(tx, {
+          providerId: request.providerId,
+          orderId: request.orderId ?? undefined,
+          amount: request.amount,
+          currency: request.currency,
+          reference: payoutTrackingRef,
+        });
+      }
+
+      const previousMetadata =
+        request.metadata && typeof request.metadata === "object"
+          ? (request.metadata as Record<string, unknown>)
+          : {};
       const metadata = payload
-        ? ({ transferId, payload } as Prisma.InputJsonValue)
+        ? ({ ...previousMetadata, transferId: payoutTrackingRef, payload } as Prisma.InputJsonValue)
         : request.metadata ?? Prisma.JsonNull;
 
       await tx.payoutRequest.update({
@@ -2306,6 +3677,7 @@ adminRouter.post(
         data: {
           status: nextStatus,
           reference: transferRef,
+          pspTransferRef: payoutTrackingRef,
           metadata,
         },
       });
@@ -2316,8 +3688,8 @@ adminRouter.post(
         userId: request.providerId,
         actorId: req.user!.id,
         type: "payout_update",
-        title: "Payout sent",
-        body: `Your payout of ${request.currency} ${request.amount.toFixed(2)} was sent.`,
+        title: "Disbursement sent",
+        body: `Your disbursement of ${request.currency} ${request.amount.toFixed(2)} was sent.`,
         data: { payoutRequestId: request.id },
       });
     } else if (nextStatus === "processing") {
@@ -2325,8 +3697,8 @@ adminRouter.post(
         userId: request.providerId,
         actorId: req.user!.id,
         type: "payout_update",
-        title: "Payout initiated",
-        body: `Your payout of ${request.currency} ${request.amount.toFixed(2)} is being processed.`,
+        title: "Disbursement initiated",
+        body: `Your disbursement of ${request.currency} ${request.amount.toFixed(2)} is being processed.`,
         data: { payoutRequestId: request.id },
       });
     } else {
@@ -2334,8 +3706,8 @@ adminRouter.post(
         userId: request.providerId,
         actorId: req.user!.id,
         type: "payout_update",
-        title: "Payout failed",
-        body: "Your payout could not be completed. Funds have been returned to your balance.",
+        title: "Disbursement failed",
+        body: "Your disbursement could not be completed. Funds have been returned to your payable amount.",
         data: { payoutRequestId: request.id },
       });
     }
@@ -2358,7 +3730,7 @@ adminRouter.post(
     });
 
     if (!request) {
-      return res.status(404).json({ error: "Payout request not found." });
+      return res.status(404).json({ error: "Disbursement request not found." });
     }
 
     if (request.status !== "requested") {
@@ -2386,6 +3758,18 @@ adminRouter.post(
         },
       });
 
+      if (request.orderId) {
+        await tx.earningsLedger.updateMany({
+          where: { orderId: request.orderId, providerId: request.providerId },
+          data: {
+            state: "payable",
+            reservedAt: null,
+            disbursedAt: null,
+            pspPayoutRef: null,
+          },
+        });
+      }
+
       await tx.payoutRequest.update({
         where: { id: request.id },
         data: { status: "cancelled" },
@@ -2396,8 +3780,8 @@ adminRouter.post(
       userId: request.providerId,
       actorId: req.user!.id,
       type: "payout_update",
-      title: "Payout request denied",
-      body: "Your payout request was denied. Funds have been returned to your balance.",
+      title: "Disbursement request denied",
+      body: "Your disbursement request was denied. Funds have been returned to your payable amount.",
       data: { payoutRequestId: request.id },
     });
 
@@ -2515,6 +3899,19 @@ adminRouter.get(
         })),
       );
 
+    const resolveAboutHeroImage = async (value?: string | null) => {
+      if (!value) {
+        return { heroImageUrl: null, heroImageSignedUrl: null };
+      }
+      if (value.startsWith("http") || value.startsWith("/")) {
+        return { heroImageUrl: value, heroImageSignedUrl: null };
+      }
+      return {
+        heroImageUrl: value,
+        heroImageSignedUrl: await signS3Key(value),
+      };
+    };
+
     const payloadEntries = await Promise.all(
       PAGE_KEYS.map(async (slug) => {
         const existing = pageMap.get(slug);
@@ -2536,6 +3933,7 @@ adminRouter.get(
                   summary: rest.length > 0 ? rest.join(" ") : null,
                   body: "",
                   imageUrl: item.url ?? null,
+                  videoUrl: null,
                   publishedAt: new Date().toISOString().slice(0, 10),
                 };
               })
@@ -2546,6 +3944,16 @@ adminRouter.get(
             ? legacyPosts
             : fallback.posts ?? [];
         const staff = Array.isArray(content.staff) ? content.staff : fallback.staff ?? [];
+        const aboutConfigSource =
+          content.aboutConfig && typeof content.aboutConfig === "object"
+            ? (content.aboutConfig as AboutPageConfig)
+            : fallback.aboutConfig;
+        const aboutConfig = aboutConfigSource
+          ? {
+              ...aboutConfigSource,
+              ...(await resolveAboutHeroImage(aboutConfigSource.heroImageUrl ?? null)),
+            }
+          : undefined;
         const resourcesConfig =
           content.resourcesConfig && typeof content.resourcesConfig === "object"
             ? (content.resourcesConfig as ProviderResourcesContent)
@@ -2559,6 +3967,7 @@ adminRouter.get(
             body: existing?.body ?? fallback.body,
             posts: await resolvePosts(posts),
             staff: await resolveStaff(staff),
+            aboutConfig,
             resourcesConfig,
             updatedAt: existing?.updatedAt ?? null,
           },
@@ -2574,6 +3983,7 @@ adminRouter.get(
         body: string;
         posts: Array<BlogPost & { imageSignedUrl?: string | null }>;
         staff: Array<StaffProfile & { photoSignedUrl?: string | null }>;
+        aboutConfig?: AboutPageConfig & { heroImageSignedUrl?: string | null };
         resourcesConfig?: ProviderResourcesContent;
         updatedAt: Date | null;
       }
@@ -2586,7 +3996,7 @@ adminRouter.get(
 adminRouter.put(
   "/pages",
   authRequired,
-  requirePermission("settings.update"),
+  requirePermission("settings.content.update"),
   requireAdminPageAccess("pages"),
   asyncHandler(async (req, res) => {
     const payload = pagesSchema.parse(req.body);
@@ -2598,6 +4008,7 @@ adminRouter.put(
           summary: post.summary?.trim() || null,
           body: post.body.trim(),
           imageUrl: normalizeS3Key(post.imageUrl?.trim() ?? ""),
+          videoUrl: post.videoUrl?.trim() || null,
           publishedAt: post.publishedAt.trim(),
         }))
         .filter((post) => post.title)
@@ -2667,12 +4078,49 @@ adminRouter.put(
       };
     };
 
+    const normalizeLines = (items: string[], maxItems: number) =>
+      items
+        .map((item) => item.trim())
+        .filter(Boolean)
+        .slice(0, maxItems);
+
+    const normalizeAboutConfig = (config: AboutPageConfig | undefined): AboutPageConfig => {
+      const fallback = DEFAULT_PAGES.about.aboutConfig;
+
+      if (!fallback) {
+        throw new Error("Missing default about config.");
+      }
+
+      const source = config ?? fallback;
+
+      return {
+        introLabel: source.introLabel.trim(),
+        heroImageUrl: normalizeS3Key(source.heroImageUrl?.trim() ?? "") || null,
+        missionTitle: source.missionTitle.trim(),
+        missionBody: source.missionBody.trim(),
+        missionBullets: normalizeLines(source.missionBullets, 12),
+        whatWeDoTitle: source.whatWeDoTitle.trim(),
+        whatWeDoLeft: normalizeLines(source.whatWeDoLeft, 20),
+        whatWeDoRight: normalizeLines(source.whatWeDoRight, 20),
+        visionTitle: source.visionTitle.trim(),
+        visionLeft: source.visionLeft.trim(),
+        visionRight: normalizeLines(source.visionRight, 12),
+        headingFont: source.headingFont,
+        bodyFont: source.bodyFont,
+      };
+    };
+
     const aboutContent = {
       staff: normalizeStaff(payload.about.staff ?? []),
+      aboutConfig: normalizeAboutConfig(payload.about.aboutConfig),
     };
 
     const blogContent = {
       posts: normalizePosts(payload.blog.posts ?? []),
+    };
+
+    const academyContent = {
+      posts: normalizePosts(payload.academy.posts ?? []),
     };
 
     const providerResourcesContent = {
@@ -2685,6 +4133,9 @@ adminRouter.put(
       }
       if (slug === "blog") {
         return blogContent;
+      }
+      if (slug === "academy") {
+        return academyContent;
       }
       return providerResourcesContent;
     };
@@ -2715,7 +4166,7 @@ adminRouter.put(
 adminRouter.put(
   "/home-content",
   authRequired,
-  requirePermission("settings.update"),
+  requirePermission("settings.content.update"),
   requireAdminPageAccess("home"),
   asyncHandler(async (req, res) => {
     const payload = homeContentSchema.parse(req.body);
@@ -2773,7 +4224,7 @@ adminRouter.get(
 adminRouter.put(
   "/settings",
   authRequired,
-  requirePermission("settings.update"),
+  requirePermission("settings.config.update"),
   requireAdminPageAccess("settings"),
   asyncHandler(async (req, res) => {
     const { record } = await updatePlatformSettings(req.body);

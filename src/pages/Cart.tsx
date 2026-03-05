@@ -8,7 +8,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { useCart } from "@/contexts/CartContext";
-import { createPaymentCheckout } from "@/lib/api";
+import { createPaymentCheckout, type CheckoutProvider } from "@/lib/api";
+import { formatCurrencyAmount, type CurrencyCode } from "@/lib/currency";
 import { usePublicSettings } from "@/hooks/usePublicSettings";
 import {
   ShoppingCart,
@@ -37,11 +38,16 @@ const Cart = () => {
 
   const [isCheckingOut, setIsCheckingOut] = useState(false);
   const [checkoutStep, setCheckoutStep] = useState<"cart" | "details" | "payment" | "success">("cart");
-  const [paymentProvider, setPaymentProvider] = useState<
-    "flutterwave" | "stripe" | "paystack" | "hubtel" | "expresspay"
-  >("flutterwave");
+  const [paymentProvider, setPaymentProvider] = useState<CheckoutProvider>("flutterwave");
   const [paymentMethod, setPaymentMethod] = useState<"mobile_money" | "card">("mobile_money");
   const { data: publicSettings } = usePublicSettings();
+
+  const isProviderCurrencySupported = (provider: CheckoutProvider, currency: CurrencyCode) => {
+    if (provider === "hubtel" || provider === "expresspay") {
+      return currency === "GHS";
+    }
+    return true;
+  };
 
   const paymentConfig = publicSettings?.payments;
   const availableProviders = useMemo(
@@ -55,24 +61,41 @@ const Cart = () => {
       ],
     [paymentConfig?.enabledProviders],
   );
+  const cartCurrencies = useMemo(
+    () =>
+      Array.from(
+        new Set((cart ?? []).map((item) => item.currency ?? "GHS")),
+      ) as CurrencyCode[],
+    [cart],
+  );
+  const checkoutCurrency = cartCurrencies.length === 1 ? cartCurrencies[0] : null;
   const defaultProvider = paymentConfig?.defaultProvider ?? "flutterwave";
-  const safeDefaultProvider = availableProviders.includes(defaultProvider)
+  const compatibleProviders = checkoutCurrency
+    ? availableProviders.filter((provider) =>
+        isProviderCurrencySupported(provider, checkoutCurrency),
+      )
+    : availableProviders;
+  const safeDefaultProvider = compatibleProviders.includes(defaultProvider)
     ? defaultProvider
-    : availableProviders[0];
+    : compatibleProviders[0];
   const flutterwaveEnabled = availableProviders.includes("flutterwave");
   const stripeEnabled = availableProviders.includes("stripe");
   const paystackEnabled = availableProviders.includes("paystack");
   const hubtelEnabled = availableProviders.includes("hubtel");
   const expresspayEnabled = availableProviders.includes("expresspay");
+  const hubtelCurrencySupported =
+    !checkoutCurrency || isProviderCurrencySupported("hubtel", checkoutCurrency);
+  const expresspayCurrencySupported =
+    !checkoutCurrency || isProviderCurrencySupported("expresspay", checkoutCurrency);
 
   useEffect(() => {
-    if (availableProviders.length === 0) {
+    if (compatibleProviders.length === 0) {
       return;
     }
-    if (!availableProviders.includes(paymentProvider)) {
+    if (!compatibleProviders.includes(paymentProvider)) {
       setPaymentProvider(safeDefaultProvider);
     }
-  }, [availableProviders, paymentProvider, safeDefaultProvider]);
+  }, [compatibleProviders, paymentProvider, safeDefaultProvider]);
 
   useEffect(() => {
     if (paymentProvider === "stripe") {
@@ -104,6 +127,15 @@ const Cart = () => {
   const handleCompleteOrder = async () => {
     if (availableProviders.length === 0) {
       toast.error("No payment providers are currently available.");
+      return;
+    }
+    if (!checkoutCurrency) {
+      toast.error("Mixed currencies in one checkout are not supported. Keep one currency per order.");
+      return;
+    }
+    if (!isProviderCurrencySupported(paymentProvider, checkoutCurrency)) {
+      const providerLabel = paymentProvider === "hubtel" ? "Hubtel" : "ExpressPay";
+      toast.error(`${providerLabel} supports GHS only.`);
       return;
     }
     const missingTier = cart.filter((item) => !item.tierId);
@@ -142,9 +174,13 @@ const Cart = () => {
     }
   };
 
-  const formatPrice = (amount: number) => {
-    return `GH₵ ${amount.toLocaleString("en-GH")}`;
-  };
+  const formatPrice = (amount: number, currency: CurrencyCode = "GHS") =>
+    formatCurrencyAmount(amount, currency, {
+      currencyDisplay: "code",
+      maximumFractionDigits: 0,
+    });
+  const formatCartTotal = (amount: number) =>
+    checkoutCurrency ? formatPrice(amount, checkoutCurrency) : "Mixed currencies";
 
   // Success State
   if (checkoutStep === "success") {
@@ -314,14 +350,14 @@ const Cart = () => {
                                 <div className="text-sm text-muted-foreground">
                                   {item.pricingType === "per_unit" ? (
                                     <>
-                                      {formatPrice(item.price)} per {item.unitLabel ?? "unit"}
+                                      {formatPrice(item.price, item.currency ?? "GHS")} per {item.unitLabel ?? "unit"}
                                     </>
                                   ) : (
-                                    <>{formatPrice(item.price)} flat</>
+                                    <>{formatPrice(item.price, item.currency ?? "GHS")} flat</>
                                   )}
                                 </div>
                                 <span className="text-lg font-bold text-primary">
-                                  {formatPrice(getLineTotal(item))}
+                                  {formatPrice(getLineTotal(item), item.currency ?? "GHS")}
                                 </span>
                               </div>
                             </div>
@@ -424,6 +460,7 @@ const Cart = () => {
                       </h2>
                       <p className="text-sm text-muted-foreground mt-1">
                         Choose a payment provider. You will be redirected to complete payment.
+                        All funds are processed by licensed PSPs.
                       </p>
                     </div>
                     <div className="p-6 space-y-6">
@@ -507,7 +544,10 @@ const Cart = () => {
                                   paymentProvider === "hubtel"
                                     ? "border-primary bg-primary/5"
                                     : "border-border/50 hover:border-primary/50"
+                                } ${
+                                  hubtelCurrencySupported ? "" : "opacity-50 cursor-not-allowed"
                                 }`}
+                                disabled={!hubtelCurrencySupported}
                                 onClick={() => setPaymentProvider("hubtel")}
                               >
                                 <div className="flex items-center gap-3">
@@ -517,7 +557,7 @@ const Cart = () => {
                                   <div>
                                     <p className="font-semibold">Hubtel</p>
                                     <p className="text-xs text-muted-foreground">
-                                      Mobile Money
+                                      {hubtelCurrencySupported ? "Mobile Money" : "GHS only"}
                                     </p>
                                   </div>
                                 </div>
@@ -529,7 +569,10 @@ const Cart = () => {
                                   paymentProvider === "expresspay"
                                     ? "border-primary bg-primary/5"
                                     : "border-border/50 hover:border-primary/50"
+                                } ${
+                                  expresspayCurrencySupported ? "" : "opacity-50 cursor-not-allowed"
                                 }`}
+                                disabled={!expresspayCurrencySupported}
                                 onClick={() => setPaymentProvider("expresspay")}
                               >
                                 <div className="flex items-center gap-3">
@@ -539,12 +582,24 @@ const Cart = () => {
                                   <div>
                                     <p className="font-semibold">ExpressPay</p>
                                     <p className="text-xs text-muted-foreground">
-                                      Mobile Money + Card
+                                      {expresspayCurrencySupported ? "Mobile Money + Card" : "GHS only"}
                                     </p>
                                   </div>
                                 </div>
                               </button>
                             )}
+                          </div>
+                        )}
+
+                        {!checkoutCurrency && cart.length > 0 && (
+                          <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
+                            Mixed currencies in one checkout are not supported. Keep one currency per order.
+                          </div>
+                        )}
+
+                        {checkoutCurrency && checkoutCurrency !== "GHS" && (
+                          <div className="rounded-xl border border-border/60 bg-muted/30 p-4 text-sm text-muted-foreground">
+                            Hubtel and ExpressPay support GHS only.
                           </div>
                         )}
 
@@ -646,7 +701,9 @@ const Cart = () => {
                         <span className="text-muted-foreground truncate max-w-[60%]">
                           {item.name}
                         </span>
-                        <span className="font-medium">{formatPrice(getLineTotal(item))}</span>
+                        <span className="font-medium">
+                          {formatPrice(getLineTotal(item), item.currency ?? "GHS")}
+                        </span>
                       </div>
                     ))}
                   </div>
@@ -657,7 +714,7 @@ const Cart = () => {
                   <div className="space-y-3">
                     <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">Subtotal</span>
-                      <span className="font-medium">{formatPrice(getCartTotal())}</span>
+                      <span className="font-medium">{formatCartTotal(getCartTotal())}</span>
                     </div>
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">Service fee included</span>
@@ -667,7 +724,7 @@ const Cart = () => {
                     <div className="flex justify-between">
                       <span className="font-semibold">Total</span>
                       <span className="text-xl font-bold text-primary">
-                        {formatPrice(getCartTotal())}
+                        {formatCartTotal(getCartTotal())}
                       </span>
                     </div>
                   </div>
@@ -678,7 +735,7 @@ const Cart = () => {
                       <Lock className="w-4 h-4 text-secondary" />
                       <span className="text-muted-foreground">
                         <span className="font-medium text-foreground">
-                          {formatPrice(getEscrowAmount())}
+                          {formatCartTotal(getEscrowAmount())}
                         </span>{" "}
                         held in escrow
                       </span>

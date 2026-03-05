@@ -49,7 +49,7 @@ import {
 } from "@/lib/api";
 import { ADMIN_ROLES, getRoleLabel } from "@/lib/roles";
 import { hasPermission } from "@/lib/permissions";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth } from "@/contexts/useAuth";
 
 const BUSINESS_FUNCTIONS: Array<{
   key: BusinessFunctionKey;
@@ -327,7 +327,7 @@ const ADMIN_PAGE_ACCESS: Array<{
   { key: "support", title: "Support", description: "Buyer support tickets and replies." },
   { key: "payouts", title: "Payouts", description: "Payout approvals and history." },
   { key: "analytics", title: "Analytics", description: "Analytics dashboards and insights." },
-  { key: "pages", title: "Pages", description: "About and blog page content." },
+  { key: "pages", title: "Pages", description: "About, blog, academy, and resource content." },
   { key: "home", title: "Home content", description: "Homepage and marketing content." },
   { key: "settings", title: "Settings", description: "Platform-wide settings and controls." },
 ];
@@ -371,8 +371,33 @@ const DEFAULT_INTEGRATIONS: Integrations = {
 
 const DEFAULT_LOCALIZATION: LocalizationSettings = {
   currency: "GHS",
+  enabledCurrencies: ["GHS", "USD", "EUR"],
   locale: "en-GH",
   timezone: "Africa/Accra",
+};
+
+const normalizeLocalizationDraft = (
+  localization: LocalizationSettings | undefined,
+): LocalizationSettings => {
+  const enabledSet = new Set(
+    localization?.enabledCurrencies ?? DEFAULT_LOCALIZATION.enabledCurrencies,
+  );
+  const enabledCurrencies = CURRENCY_OPTIONS.map((option) => option.value).filter((currency) =>
+    enabledSet.has(currency),
+  );
+  const normalizedEnabledCurrencies =
+    enabledCurrencies.length > 0 ? enabledCurrencies : [...DEFAULT_LOCALIZATION.enabledCurrencies];
+  const currency =
+    localization?.currency && normalizedEnabledCurrencies.includes(localization.currency)
+      ? localization.currency
+      : normalizedEnabledCurrencies[0];
+
+  return {
+    currency,
+    enabledCurrencies: normalizedEnabledCurrencies,
+    locale: localization?.locale ?? DEFAULT_LOCALIZATION.locale,
+    timezone: localization?.timezone ?? DEFAULT_LOCALIZATION.timezone,
+  };
 };
 
 const DEFAULT_SECRET_DRAFTS = {
@@ -483,7 +508,7 @@ const parseList = (value: string) =>
 const AdminSettings = () => {
   const { user } = useAuth();
   const { section } = useParams();
-  const canUpdate = hasPermission(user?.role ?? null, "settings.update");
+  const canUpdate = hasPermission(user?.role ?? null, "settings.config.update");
   const [draft, setDraft] = useState<SettingsDraft>(DEFAULT_SETTINGS);
   const [isSaving, setIsSaving] = useState(false);
   const [secretDrafts, setSecretDrafts] = useState(DEFAULT_SECRET_DRAFTS);
@@ -511,7 +536,7 @@ const AdminSettings = () => {
         securityControls: data.securityControls ?? DEFAULT_SECURITY_CONTROLS,
         adminAccess: { ...DEFAULT_ADMIN_ACCESS, ...(data.adminAccess ?? {}) },
         integrations: data.integrations ?? DEFAULT_INTEGRATIONS,
-        localization: data.localization ?? DEFAULT_LOCALIZATION,
+        localization: normalizeLocalizationDraft(data.localization),
       });
       setSecretDrafts(DEFAULT_SECRET_DRAFTS);
     }
@@ -690,6 +715,42 @@ const AdminSettings = () => {
       ...prev,
       localization: { ...prev.localization, ...updates },
     }));
+  };
+
+  const toggleVisibleCurrency = (
+    currency: LocalizationSettings["currency"],
+    checked: boolean,
+  ) => {
+    if (!canUpdate) return;
+
+    setDraft((prev) => {
+      const currencySet = new Set(prev.localization.enabledCurrencies);
+      if (checked) {
+        currencySet.add(currency);
+      } else {
+        currencySet.delete(currency);
+      }
+
+      const enabledCurrencies = CURRENCY_OPTIONS.map((option) => option.value).filter((value) =>
+        currencySet.has(value),
+      );
+      const normalizedEnabledCurrencies =
+        enabledCurrencies.length > 0
+          ? enabledCurrencies
+          : [prev.localization.currency];
+      const defaultCurrency = normalizedEnabledCurrencies.includes(prev.localization.currency)
+        ? prev.localization.currency
+        : normalizedEnabledCurrencies[0];
+
+      return {
+        ...prev,
+        localization: {
+          ...prev.localization,
+          currency: defaultCurrency,
+          enabledCurrencies: normalizedEnabledCurrencies,
+        },
+      };
+    });
   };
 
   const handleToggle = (key: BusinessFunctionKey, enabled: boolean) => {
@@ -963,7 +1024,7 @@ const AdminSettings = () => {
         securityControls: data.securityControls ?? DEFAULT_SECURITY_CONTROLS,
         adminAccess: { ...DEFAULT_ADMIN_ACCESS, ...(data.adminAccess ?? {}) },
         integrations: data.integrations ?? DEFAULT_INTEGRATIONS,
-        localization: data.localization ?? DEFAULT_LOCALIZATION,
+        localization: normalizeLocalizationDraft(data.localization),
       });
       setSecretDrafts(DEFAULT_SECRET_DRAFTS);
     } else {
@@ -991,6 +1052,10 @@ const AdminSettings = () => {
 
   const enabledPaymentProviders = new Set(draft.integrations.payments.enabledProviders);
   const socialLinks = draft.integrations.socialLinks ?? [];
+  const enabledCurrencySet = new Set(draft.localization.enabledCurrencies);
+  const visibleCurrencyOptions = CURRENCY_OPTIONS.filter((option) =>
+    enabledCurrencySet.has(option.value),
+  );
   const navItems = SETTINGS_NAV.flatMap((group) => group.items);
   const defaultSection = navItems[0]?.slug ?? "";
   const sectionParam = section ?? "";
@@ -1442,7 +1507,12 @@ const AdminSettings = () => {
                         <SelectValue placeholder="Select currency" />
                       </SelectTrigger>
                       <SelectContent>
-                        {CURRENCY_OPTIONS.map((option) => (
+                        {(visibleCurrencyOptions.some((option) => option.value === boost.currency)
+                          ? visibleCurrencyOptions
+                          : [
+                              ...visibleCurrencyOptions,
+                              ...CURRENCY_OPTIONS.filter((option) => option.value === boost.currency),
+                            ]).map((option) => (
                           <SelectItem key={option.value} value={option.value}>
                             {option.label}
                           </SelectItem>
@@ -2286,7 +2356,7 @@ const AdminSettings = () => {
                   />
                 </div>
                 <div className="space-y-2 md:col-span-2">
-                  <Label>Outbound signing key</Label>
+                  <Label>Email webhook signing key / token</Label>
                   <Input
                     type="password"
                     value={secretDrafts.outboundSigningKey}
@@ -2299,7 +2369,7 @@ const AdminSettings = () => {
                     placeholder={
                       draft.integrations.webhooks.outboundSigningKey
                         ? "•••••••• (saved)"
-                        : "Optional signing key"
+                        : "SendGrid public key, Mailgun signing key, or shared token"
                     }
                     disabled={!canUpdate}
                   />
@@ -2409,12 +2479,41 @@ const AdminSettings = () => {
         <Card className="border-border/60" id="settings-localization">
         <CardContent className="p-6 space-y-6">
           <div>
-            <h3 className="text-lg font-semibold text-foreground">Localization (Analytics)</h3>
+            <h3 className="text-lg font-semibold text-foreground">Localization & currency visibility</h3>
             <p className="text-sm text-muted-foreground">
-              Set the default currency, locale, and timezone used in admin analytics.
+              Control which currencies are selectable and set locale/timezone for analytics.
             </p>
           </div>
           <div className="grid gap-4 md:grid-cols-3">
+            <div className="space-y-2 md:col-span-3">
+              <Label>Visible currencies</Label>
+              <div className="flex flex-wrap gap-3">
+                {CURRENCY_OPTIONS.map((option) => {
+                  const isChecked = draft.localization.enabledCurrencies.includes(option.value);
+                  const isLastVisible =
+                    isChecked && draft.localization.enabledCurrencies.length === 1;
+
+                  return (
+                    <label
+                      key={option.value}
+                      className="flex items-center gap-2 rounded-lg border border-border/60 px-3 py-2 text-xs text-foreground"
+                    >
+                      <Checkbox
+                        checked={isChecked}
+                        onCheckedChange={(value) =>
+                          toggleVisibleCurrency(option.value, Boolean(value))
+                        }
+                        disabled={!canUpdate || isLastVisible}
+                      />
+                      <span>{option.label}</span>
+                    </label>
+                  );
+                })}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Controls which currencies providers can select while creating or editing services.
+              </p>
+            </div>
             <div className="space-y-2">
               <Label>Default currency</Label>
               <Select
@@ -2430,7 +2529,7 @@ const AdminSettings = () => {
                   <SelectValue placeholder="Select currency" />
                 </SelectTrigger>
                 <SelectContent>
-                  {CURRENCY_OPTIONS.map((option) => (
+                  {visibleCurrencyOptions.map((option) => (
                     <SelectItem key={option.value} value={option.value}>
                       {option.label}
                     </SelectItem>

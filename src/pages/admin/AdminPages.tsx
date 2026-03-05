@@ -6,6 +6,8 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/components/ui/use-toast";
 import {
+  type AboutFontOption,
+  type AboutPageConfig,
   fetchAdminPages,
   updateAdminPages,
   uploadPageImage,
@@ -16,12 +18,13 @@ import {
   type StaffProfileView,
 } from "@/lib/api";
 import { DEFAULT_PAGES } from "@/lib/pageDefaults";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth } from "@/contexts/useAuth";
 import { hasPermission } from "@/lib/permissions";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { defaultProviderResourcesContent } from "@/data/providerResources";
 
 const MAX_BLOG_POSTS = 12;
+const MAX_ACADEMY_POSTS = 20;
 const MAX_STAFF = 12;
 const PROVIDER_CHECKLIST_KEY_OPTIONS: Array<{
   value: ProviderLaunchChecklistKey;
@@ -37,10 +40,68 @@ const PROVIDER_CHECKLIST_KEY_OPTIONS: Array<{
   { value: "tax_record_process_started", label: "Tax record process started" },
 ];
 
+const ABOUT_FONT_OPTIONS: Array<{ value: AboutFontOption; label: string }> = [
+  { value: "space_grotesk", label: "Space Grotesk" },
+  { value: "plus_jakarta_sans", label: "Plus Jakarta Sans" },
+  { value: "georgia_serif", label: "Georgia Serif" },
+  { value: "times_serif", label: "Times New Roman" },
+  { value: "system_sans", label: "System Sans" },
+  { value: "mono", label: "Monospace" },
+];
+
 type DraftPages = {
-  about: Omit<AdminPagesPayload["about"], "staff"> & { staff: StaffProfileView[] };
+  about: Omit<AdminPagesPayload["about"], "staff" | "aboutConfig"> & {
+    staff: StaffProfileView[];
+    aboutConfig: AboutPageConfig;
+  };
   blog: Omit<AdminPagesPayload["blog"], "posts"> & { posts: BlogPostView[] };
+  academy: Omit<AdminPagesPayload["academy"], "posts"> & { posts: BlogPostView[] };
   providerResources: AdminPagesPayload["providerResources"];
+};
+
+const cloneAboutConfig = (value?: AboutPageConfig): AboutPageConfig => {
+  const fallback = DEFAULT_PAGES.about.aboutConfig;
+  const source = value ?? fallback;
+  if (!source) {
+    return {
+      introLabel: "About Me",
+      heroImageUrl: "/hero-ghana-marketplace.png",
+      heroImageSignedUrl: null,
+      missionTitle: "Our Mission",
+      missionBody:
+        "To empower every Ghanaian by making the hiring of skilled professionals safe, secure, and trustworthy.",
+      missionBullets: ["To offer transparent access to professionals across Ghana."],
+      whatWeDoTitle: "What We Do",
+      whatWeDoLeft: [
+        "Trusted, seamless, and reliable services.",
+        "Veteran professionals providing quality service.",
+      ],
+      whatWeDoRight: ["Transparent payments."],
+      visionTitle: "Our SERVFIX",
+      visionLeft:
+        "To be Ghana's premier digital bridge, open and mindful of community participation and payment security.",
+      visionRight: ["To be secure with service experience, fair opportunities and exposure."],
+      headingFont: "space_grotesk",
+      bodyFont: "plus_jakarta_sans",
+    };
+  }
+
+  return {
+    introLabel: source.introLabel ?? "",
+    heroImageUrl: source.heroImageUrl ?? "",
+    heroImageSignedUrl: source.heroImageSignedUrl ?? null,
+    missionTitle: source.missionTitle ?? "",
+    missionBody: source.missionBody ?? "",
+    missionBullets: Array.isArray(source.missionBullets) ? [...source.missionBullets] : [],
+    whatWeDoTitle: source.whatWeDoTitle ?? "",
+    whatWeDoLeft: Array.isArray(source.whatWeDoLeft) ? [...source.whatWeDoLeft] : [],
+    whatWeDoRight: Array.isArray(source.whatWeDoRight) ? [...source.whatWeDoRight] : [],
+    visionTitle: source.visionTitle ?? "",
+    visionLeft: source.visionLeft ?? "",
+    visionRight: Array.isArray(source.visionRight) ? [...source.visionRight] : [],
+    headingFont: source.headingFont ?? "space_grotesk",
+    bodyFont: source.bodyFont ?? "plus_jakarta_sans",
+  };
 };
 
 const cloneProviderResourcesConfig = (
@@ -76,17 +137,23 @@ const cloneProviderResourcesConfig = (
 
 const AdminPages = () => {
   const { user } = useAuth();
-  const canUpdate = hasPermission(user?.role ?? null, "settings.update");
+  const canUpdate = hasPermission(user?.role ?? null, "settings.content.update");
   const [draft, setDraft] = useState<DraftPages>({
     about: {
       title: DEFAULT_PAGES.about.title,
       body: DEFAULT_PAGES.about.body,
       staff: DEFAULT_PAGES.about.staff ?? [],
+      aboutConfig: cloneAboutConfig(DEFAULT_PAGES.about.aboutConfig),
     },
     blog: {
       title: DEFAULT_PAGES.blog.title,
       body: DEFAULT_PAGES.blog.body,
       posts: DEFAULT_PAGES.blog.posts ?? [],
+    },
+    academy: {
+      title: DEFAULT_PAGES.academy.title,
+      body: DEFAULT_PAGES.academy.body,
+      posts: DEFAULT_PAGES.academy.posts ?? [],
     },
     providerResources: {
       title: DEFAULT_PAGES.providerResources.title,
@@ -98,9 +165,12 @@ const AdminPages = () => {
   });
   const [isSavingAbout, setIsSavingAbout] = useState(false);
   const [isSavingBlog, setIsSavingBlog] = useState(false);
+  const [isSavingAcademy, setIsSavingAcademy] = useState(false);
   const [isSavingProviderResources, setIsSavingProviderResources] = useState(false);
+  const [isAboutHeroUploading, setIsAboutHeroUploading] = useState(false);
   const [staffUploadIndex, setStaffUploadIndex] = useState<number | null>(null);
   const [postUploadIndex, setPostUploadIndex] = useState<number | null>(null);
+  const [academyUploadIndex, setAcademyUploadIndex] = useState<number | null>(null);
 
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ["admin-pages"],
@@ -114,11 +184,17 @@ const AdminPages = () => {
           title: data.pages.about.title,
           body: data.pages.about.body,
           staff: data.pages.about.staff ?? [],
+          aboutConfig: cloneAboutConfig(data.pages.about.aboutConfig),
         },
         blog: {
           title: data.pages.blog.title,
           body: data.pages.blog.body,
           posts: data.pages.blog.posts ?? [],
+        },
+        academy: {
+          title: data.pages.academy.title,
+          body: data.pages.academy.body,
+          posts: data.pages.academy.posts ?? [],
         },
         providerResources: {
           title: data.pages.providerResources.title,
@@ -137,6 +213,31 @@ const AdminPages = () => {
       ...prev,
       [key]: { ...prev[key], ...updates },
     }));
+  };
+
+  const updateAboutConfig = (updates: Partial<AboutPageConfig>) => {
+    updatePage("about", {
+      aboutConfig: {
+        ...draft.about.aboutConfig,
+        ...updates,
+      },
+    });
+  };
+
+  const updateAboutConfigLines = (
+    key:
+      | "missionBullets"
+      | "whatWeDoLeft"
+      | "whatWeDoRight"
+      | "visionRight",
+    value: string,
+  ) => {
+    updateAboutConfig({
+      [key]: value
+        .split("\n")
+        .map((line) => line.trim())
+        .filter(Boolean),
+    });
   };
 
   const updateProviderResourcesConfig = (
@@ -354,6 +455,30 @@ const AdminPages = () => {
     }
   };
 
+  const handleAboutHeroImageUpload = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (!canUpdate) {
+      toast({ title: "You do not have permission to update settings." });
+      return;
+    }
+
+    try {
+      setIsAboutHeroUploading(true);
+      const upload = await uploadPageImage(file);
+      updateAboutConfig({
+        heroImageUrl: upload.key,
+        heroImageSignedUrl: upload.signedUrl ?? null,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unable to upload about hero image.";
+      toast({ title: message });
+    } finally {
+      setIsAboutHeroUploading(false);
+      event.target.value = "";
+    }
+  };
+
   const addBlogPost = () => {
     if (draft.blog.posts.length >= MAX_BLOG_POSTS) {
       toast({ title: `You can add up to ${MAX_BLOG_POSTS} posts.` });
@@ -368,6 +493,7 @@ const AdminPages = () => {
           summary: "",
           body: "",
           imageUrl: "",
+          videoUrl: "",
           publishedAt: today,
         },
       ],
@@ -415,6 +541,68 @@ const AdminPages = () => {
     }
   };
 
+  const addAcademyPost = () => {
+    if (draft.academy.posts.length >= MAX_ACADEMY_POSTS) {
+      toast({ title: `You can add up to ${MAX_ACADEMY_POSTS} academy materials.` });
+      return;
+    }
+    const today = new Date().toISOString().slice(0, 10);
+    updatePage("academy", {
+      posts: [
+        ...draft.academy.posts,
+        {
+          title: "",
+          summary: "",
+          body: "",
+          imageUrl: "",
+          videoUrl: "",
+          publishedAt: today,
+        },
+      ],
+    });
+  };
+
+  const updateAcademyPost = (index: number, updates: Partial<BlogPostView>) => {
+    updatePage("academy", {
+      posts: draft.academy.posts.map((post, idx) =>
+        idx === index ? { ...post, ...updates } : post,
+      ),
+    });
+  };
+
+  const removeAcademyPost = (index: number) => {
+    updatePage("academy", {
+      posts: draft.academy.posts.filter((_, idx) => idx !== index),
+    });
+  };
+
+  const handleAcademyPostImageUpload = async (
+    index: number,
+    event: ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (!canUpdate) {
+      toast({ title: "You do not have permission to update settings." });
+      return;
+    }
+
+    try {
+      setAcademyUploadIndex(index);
+      const upload = await uploadPageImage(file);
+      updateAcademyPost(index, {
+        imageUrl: upload.key,
+        imageSignedUrl: upload.signedUrl ?? null,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unable to upload academy image.";
+      toast({ title: message });
+    } finally {
+      setAcademyUploadIndex(null);
+      event.target.value = "";
+    }
+  };
+
   const buildStaffPayload = (items: StaffProfileView[]) =>
     items
       .map((member) => ({
@@ -432,9 +620,37 @@ const AdminPages = () => {
         summary: post.summary?.trim() || undefined,
         body: post.body?.trim() ?? "",
         imageUrl: post.imageUrl?.trim() || undefined,
+        videoUrl: post.videoUrl?.trim() || undefined,
         publishedAt: post.publishedAt?.trim() || new Date().toISOString().slice(0, 10),
       }))
       .filter((post) => post.title);
+
+  const buildAboutConfigPayload = (config: AboutPageConfig): AboutPageConfig => {
+    const fallback = cloneAboutConfig(DEFAULT_PAGES.about.aboutConfig);
+    const trimLines = (items: string[]) =>
+      items.map((item) => item.trim()).filter(Boolean);
+
+    const missionBullets = trimLines(config.missionBullets);
+    const whatWeDoLeft = trimLines(config.whatWeDoLeft);
+    const whatWeDoRight = trimLines(config.whatWeDoRight);
+    const visionRight = trimLines(config.visionRight);
+
+    return {
+      introLabel: config.introLabel.trim() || fallback.introLabel,
+      heroImageUrl: config.heroImageUrl?.trim() || undefined,
+      missionTitle: config.missionTitle.trim() || fallback.missionTitle,
+      missionBody: config.missionBody.trim() || fallback.missionBody,
+      missionBullets: missionBullets.length > 0 ? missionBullets : fallback.missionBullets,
+      whatWeDoTitle: config.whatWeDoTitle.trim() || fallback.whatWeDoTitle,
+      whatWeDoLeft: whatWeDoLeft.length > 0 ? whatWeDoLeft : fallback.whatWeDoLeft,
+      whatWeDoRight: whatWeDoRight.length > 0 ? whatWeDoRight : fallback.whatWeDoRight,
+      visionTitle: config.visionTitle.trim() || fallback.visionTitle,
+      visionLeft: config.visionLeft.trim() || fallback.visionLeft,
+      visionRight: visionRight.length > 0 ? visionRight : fallback.visionRight,
+      headingFont: config.headingFont ?? fallback.headingFont,
+      bodyFont: config.bodyFont ?? fallback.bodyFont,
+    };
+  };
 
   const getSavedAboutDraft = (): DraftPages["about"] => {
     if (data?.pages?.about) {
@@ -447,6 +663,7 @@ const AdminPages = () => {
           bio: member.bio ?? "",
           photoUrl: member.photoUrl ?? "",
         })),
+        aboutConfig: cloneAboutConfig(data.pages.about.aboutConfig),
       };
     }
     return draft.about;
@@ -462,12 +679,32 @@ const AdminPages = () => {
           summary: post.summary ?? "",
           body: post.body,
           imageUrl: post.imageUrl ?? "",
+          videoUrl: post.videoUrl ?? "",
           imageSignedUrl: post.imageSignedUrl ?? null,
           publishedAt: post.publishedAt ?? "",
         })),
       };
     }
     return draft.blog;
+  };
+
+  const getSavedAcademyDraft = (): DraftPages["academy"] => {
+    if (data?.pages?.academy) {
+      return {
+        title: data.pages.academy.title,
+        body: data.pages.academy.body,
+        posts: (data.pages.academy.posts ?? []).map((post) => ({
+          title: post.title,
+          summary: post.summary ?? "",
+          body: post.body,
+          imageUrl: post.imageUrl ?? "",
+          videoUrl: post.videoUrl ?? "",
+          imageSignedUrl: post.imageSignedUrl ?? null,
+          publishedAt: post.publishedAt ?? "",
+        })),
+      };
+    }
+    return draft.academy;
   };
 
   const getSavedProviderResourcesDraft = (): DraftPages["providerResources"] => {
@@ -500,11 +737,17 @@ const AdminPages = () => {
         title: draft.about.title,
         body: draft.about.body,
         staff: buildStaffPayload(draft.about.staff),
+        aboutConfig: buildAboutConfigPayload(draft.about.aboutConfig),
       },
       blog: {
         title: getSavedBlogDraft().title,
         body: getSavedBlogDraft().body,
         posts: buildPostPayload(getSavedBlogDraft().posts),
+      },
+      academy: {
+        title: getSavedAcademyDraft().title,
+        body: getSavedAcademyDraft().body,
+        posts: buildPostPayload(getSavedAcademyDraft().posts),
       },
       providerResources: {
         title: getSavedProviderResourcesDraft().title,
@@ -536,11 +779,17 @@ const AdminPages = () => {
         title: getSavedAboutDraft().title,
         body: getSavedAboutDraft().body,
         staff: buildStaffPayload(getSavedAboutDraft().staff),
+        aboutConfig: buildAboutConfigPayload(getSavedAboutDraft().aboutConfig),
       },
       blog: {
         title: draft.blog.title,
         body: draft.blog.body,
         posts: buildPostPayload(draft.blog.posts),
+      },
+      academy: {
+        title: getSavedAcademyDraft().title,
+        body: getSavedAcademyDraft().body,
+        posts: buildPostPayload(getSavedAcademyDraft().posts),
       },
       providerResources: {
         title: getSavedProviderResourcesDraft().title,
@@ -562,6 +811,48 @@ const AdminPages = () => {
     }
   };
 
+  const handleSaveAcademy = async () => {
+    if (!canUpdate) {
+      toast({ title: "You do not have permission to update settings." });
+      return;
+    }
+    const payload: AdminPagesPayload = {
+      about: {
+        title: getSavedAboutDraft().title,
+        body: getSavedAboutDraft().body,
+        staff: buildStaffPayload(getSavedAboutDraft().staff),
+        aboutConfig: buildAboutConfigPayload(getSavedAboutDraft().aboutConfig),
+      },
+      blog: {
+        title: getSavedBlogDraft().title,
+        body: getSavedBlogDraft().body,
+        posts: buildPostPayload(getSavedBlogDraft().posts),
+      },
+      academy: {
+        title: draft.academy.title,
+        body: draft.academy.body,
+        posts: buildPostPayload(draft.academy.posts),
+      },
+      providerResources: {
+        title: getSavedProviderResourcesDraft().title,
+        body: getSavedProviderResourcesDraft().body,
+        resourcesConfig: getSavedProviderResourcesDraft().resourcesConfig,
+      },
+    };
+
+    try {
+      setIsSavingAcademy(true);
+      await updateAdminPages(payload);
+      toast({ title: "Academy page updated." });
+      await refetch();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unable to update pages.";
+      toast({ title: message });
+    } finally {
+      setIsSavingAcademy(false);
+    }
+  };
+
   const handleSaveProviderResources = async () => {
     if (!canUpdate) {
       toast({ title: "You do not have permission to update settings." });
@@ -577,11 +868,17 @@ const AdminPages = () => {
         title: getSavedAboutDraft().title,
         body: getSavedAboutDraft().body,
         staff: buildStaffPayload(getSavedAboutDraft().staff),
+        aboutConfig: buildAboutConfigPayload(getSavedAboutDraft().aboutConfig),
       },
       blog: {
         title: getSavedBlogDraft().title,
         body: getSavedBlogDraft().body,
         posts: buildPostPayload(getSavedBlogDraft().posts),
+      },
+      academy: {
+        title: getSavedAcademyDraft().title,
+        body: getSavedAcademyDraft().body,
+        posts: buildPostPayload(getSavedAcademyDraft().posts),
       },
       providerResources: {
         title: draft.providerResources.title,
@@ -611,11 +908,17 @@ const AdminPages = () => {
           title: data.pages.about.title,
           body: data.pages.about.body,
           staff: data.pages.about.staff ?? [],
+          aboutConfig: cloneAboutConfig(data.pages.about.aboutConfig),
         },
         blog: {
           title: data.pages.blog.title,
           body: data.pages.blog.body,
           posts: data.pages.blog.posts ?? [],
+        },
+        academy: {
+          title: data.pages.academy.title,
+          body: data.pages.academy.body,
+          posts: data.pages.academy.posts ?? [],
         },
         providerResources: {
           title: data.pages.providerResources.title,
@@ -632,11 +935,17 @@ const AdminPages = () => {
           title: DEFAULT_PAGES.about.title,
           body: DEFAULT_PAGES.about.body,
           staff: DEFAULT_PAGES.about.staff ?? [],
+          aboutConfig: cloneAboutConfig(DEFAULT_PAGES.about.aboutConfig),
         },
         blog: {
           title: DEFAULT_PAGES.blog.title,
           body: DEFAULT_PAGES.blog.body,
           posts: DEFAULT_PAGES.blog.posts ?? [],
+        },
+        academy: {
+          title: DEFAULT_PAGES.academy.title,
+          body: DEFAULT_PAGES.academy.body,
+          posts: DEFAULT_PAGES.academy.posts ?? [],
         },
         providerResources: {
           title: DEFAULT_PAGES.providerResources.title,
@@ -653,6 +962,7 @@ const AdminPages = () => {
     draft.providerResources.resourcesConfig ??
       DEFAULT_PAGES.providerResources.resourcesConfig,
   );
+  const aboutConfig = cloneAboutConfig(draft.about.aboutConfig);
 
   if (isLoading) {
     return <div className="text-sm text-muted-foreground">Loading pages...</div>;
@@ -675,7 +985,7 @@ const AdminPages = () => {
         <div>
           <h2 className="text-2xl font-semibold text-foreground">Pages</h2>
           <p className="text-sm text-muted-foreground">
-            Update About, Blog, and Provider Resources content.
+            Update About, Blog, Academy, and Provider Resources content.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -716,6 +1026,209 @@ const AdminPages = () => {
               onChange={(e) => updatePage("about", { body: e.target.value })}
               rows={6}
             />
+          </div>
+          <div className="rounded-md border border-border/60 p-4 space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h4 className="text-sm font-semibold text-foreground">Layout content and fonts</h4>
+                <p className="text-xs text-muted-foreground">
+                  Edit mission sections and choose heading/body fonts for the About page.
+                </p>
+              </div>
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-2">
+              <div className="space-y-1">
+                <label className="text-xs text-muted-foreground">Intro label</label>
+                <Input
+                  value={aboutConfig.introLabel}
+                  onChange={(e) => updateAboutConfig({ introLabel: e.target.value })}
+                  disabled={!canUpdate}
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs text-muted-foreground">Hero image URL or key</label>
+                <Input
+                  value={aboutConfig.heroImageUrl ?? ""}
+                  onChange={(e) =>
+                    updateAboutConfig({
+                      heroImageUrl: e.target.value,
+                      heroImageSignedUrl: null,
+                    })
+                  }
+                  disabled={!canUpdate}
+                />
+              </div>
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-2">
+              <div className="space-y-1">
+                <label className="text-xs text-muted-foreground">Heading font</label>
+                <select
+                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  value={aboutConfig.headingFont}
+                  onChange={(e) =>
+                    updateAboutConfig({ headingFont: e.target.value as AboutFontOption })
+                  }
+                  disabled={!canUpdate}
+                >
+                  {ABOUT_FONT_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs text-muted-foreground">Body font</label>
+                <select
+                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  value={aboutConfig.bodyFont}
+                  onChange={(e) =>
+                    updateAboutConfig({ bodyFont: e.target.value as AboutFontOption })
+                  }
+                  disabled={!canUpdate}
+                >
+                  {ABOUT_FONT_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-2">
+              <div className="space-y-2">
+                <Input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleAboutHeroImageUpload}
+                  disabled={!canUpdate || isAboutHeroUploading}
+                />
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => updateAboutConfig({ heroImageUrl: "", heroImageSignedUrl: null })}
+                    disabled={!canUpdate || (!aboutConfig.heroImageUrl && !aboutConfig.heroImageSignedUrl)}
+                  >
+                    Remove hero image
+                  </Button>
+                  {isAboutHeroUploading ? (
+                    <span className="text-xs text-muted-foreground">Uploading...</span>
+                  ) : null}
+                </div>
+              </div>
+              <div className="h-24 overflow-hidden rounded-md border border-border/60 bg-muted">
+                {aboutConfig.heroImageSignedUrl || aboutConfig.heroImageUrl ? (
+                  <img
+                    src={aboutConfig.heroImageSignedUrl ?? aboutConfig.heroImageUrl ?? ""}
+                    alt="About hero preview"
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center text-xs text-muted-foreground">
+                    No hero image selected
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-2">
+              <div className="space-y-1">
+                <label className="text-xs text-muted-foreground">Mission title</label>
+                <Input
+                  value={aboutConfig.missionTitle}
+                  onChange={(e) => updateAboutConfig({ missionTitle: e.target.value })}
+                  disabled={!canUpdate}
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs text-muted-foreground">What we do title</label>
+                <Input
+                  value={aboutConfig.whatWeDoTitle}
+                  onChange={(e) => updateAboutConfig({ whatWeDoTitle: e.target.value })}
+                  disabled={!canUpdate}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs text-muted-foreground">Mission paragraph</label>
+              <Textarea
+                rows={3}
+                value={aboutConfig.missionBody}
+                onChange={(e) => updateAboutConfig({ missionBody: e.target.value })}
+                disabled={!canUpdate}
+              />
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-2">
+              <div className="space-y-1">
+                <label className="text-xs text-muted-foreground">Mission bullets (one per line)</label>
+                <Textarea
+                  rows={5}
+                  value={aboutConfig.missionBullets.join("\n")}
+                  onChange={(e) => updateAboutConfigLines("missionBullets", e.target.value)}
+                  disabled={!canUpdate}
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs text-muted-foreground">
+                  What we do (left column, one per line)
+                </label>
+                <Textarea
+                  rows={5}
+                  value={aboutConfig.whatWeDoLeft.join("\n")}
+                  onChange={(e) => updateAboutConfigLines("whatWeDoLeft", e.target.value)}
+                  disabled={!canUpdate}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs text-muted-foreground">
+                What we do (right column, one per line)
+              </label>
+              <Textarea
+                rows={4}
+                value={aboutConfig.whatWeDoRight.join("\n")}
+                onChange={(e) => updateAboutConfigLines("whatWeDoRight", e.target.value)}
+                disabled={!canUpdate}
+              />
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-2">
+              <div className="space-y-1">
+                <label className="text-xs text-muted-foreground">Vision title</label>
+                <Input
+                  value={aboutConfig.visionTitle}
+                  onChange={(e) => updateAboutConfig({ visionTitle: e.target.value })}
+                  disabled={!canUpdate}
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs text-muted-foreground">Vision left paragraph</label>
+                <Textarea
+                  rows={3}
+                  value={aboutConfig.visionLeft}
+                  onChange={(e) => updateAboutConfig({ visionLeft: e.target.value })}
+                  disabled={!canUpdate}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs text-muted-foreground">Vision right items (one per line)</label>
+              <Textarea
+                rows={4}
+                value={aboutConfig.visionRight.join("\n")}
+                onChange={(e) => updateAboutConfigLines("visionRight", e.target.value)}
+                disabled={!canUpdate}
+              />
+            </div>
           </div>
           <div className="space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -793,6 +1306,169 @@ const AdminPages = () => {
                           variant="ghost"
                           size="sm"
                           onClick={() => removeStaffMember(index)}
+                          disabled={!canUpdate}
+                        >
+                          Remove
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="border-border/60">
+        <CardContent className="p-6 space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h3 className="text-lg font-semibold text-foreground">Academy</h3>
+              <p className="text-sm text-muted-foreground">
+                Educational materials displayed on the Academy page.
+              </p>
+            </div>
+            <Button
+              onClick={handleSaveAcademy}
+              disabled={!canUpdate || isSavingAcademy}
+              size="sm"
+            >
+              {isSavingAcademy ? "Saving..." : "Save Academy"}
+            </Button>
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Title</label>
+            <Input
+              value={draft.academy.title}
+              onChange={(e) => updatePage("academy", { title: e.target.value })}
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Body</label>
+            <Textarea
+              value={draft.academy.body}
+              onChange={(e) => updatePage("academy", { body: e.target.value })}
+              rows={6}
+            />
+          </div>
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <label className="text-sm font-medium">Learning materials</label>
+                <p className="text-xs text-muted-foreground">
+                  Add guides, lessons, and tutorials with image, summary, full content, and optional YouTube links.
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={addAcademyPost}
+                  disabled={!canUpdate || draft.academy.posts.length >= MAX_ACADEMY_POSTS}
+                >
+                  Add material
+                </Button>
+                <span className="text-xs text-muted-foreground">
+                  {draft.academy.posts.length}/{MAX_ACADEMY_POSTS}
+                </span>
+              </div>
+            </div>
+            {draft.academy.posts.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No academy materials added yet.</p>
+            ) : (
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                {draft.academy.posts.map((post, index) => {
+                  const preview = post.imageSignedUrl ?? post.imageUrl ?? "";
+                  return (
+                    <div
+                      key={`academy-post-${index}`}
+                      className="rounded-md border border-border/60 p-4 space-y-3"
+                    >
+                      <div className="aspect-[4/3] w-full overflow-hidden rounded-md bg-muted">
+                        {preview ? (
+                          <img
+                            src={preview}
+                            alt={post.title || "Academy material"}
+                            className="h-full w-full object-cover"
+                          />
+                        ) : (
+                          <div className="flex h-full w-full items-center justify-center text-sm text-muted-foreground">
+                            No preview
+                          </div>
+                        )}
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs text-muted-foreground">Title</label>
+                        <Input
+                          placeholder="Material title"
+                          value={post.title ?? ""}
+                          onChange={(e) => updateAcademyPost(index, { title: e.target.value })}
+                          disabled={!canUpdate}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs text-muted-foreground">Publish date</label>
+                        <Input
+                          type="date"
+                          value={post.publishedAt ?? ""}
+                          onChange={(e) => updateAcademyPost(index, { publishedAt: e.target.value })}
+                          disabled={!canUpdate}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs text-muted-foreground">YouTube link</label>
+                        <Input
+                          type="url"
+                          placeholder="https://www.youtube.com/watch?v=..."
+                          value={post.videoUrl ?? ""}
+                          onChange={(e) => updateAcademyPost(index, { videoUrl: e.target.value })}
+                          disabled={!canUpdate}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs text-muted-foreground">Summary</label>
+                        <Textarea
+                          placeholder="Short summary shown on the card"
+                          value={post.summary ?? ""}
+                          onChange={(e) => updateAcademyPost(index, { summary: e.target.value })}
+                          rows={2}
+                          disabled={!canUpdate}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs text-muted-foreground">Material body</label>
+                        <Textarea
+                          placeholder="Full material content (shown when opened)"
+                          value={post.body ?? ""}
+                          onChange={(e) => updateAcademyPost(index, { body: e.target.value })}
+                          rows={4}
+                          disabled={!canUpdate}
+                        />
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Input
+                          type="file"
+                          accept="image/*"
+                          onChange={(event) => handleAcademyPostImageUpload(index, event)}
+                          disabled={!canUpdate || academyUploadIndex === index}
+                        />
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() =>
+                            updateAcademyPost(index, { imageUrl: "", imageSignedUrl: null })
+                          }
+                          disabled={!canUpdate || (!post.imageUrl && !post.imageSignedUrl)}
+                        >
+                          Remove image
+                        </Button>
+                      </div>
+                      <div className="flex items-center justify-between gap-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => removeAcademyPost(index)}
                           disabled={!canUpdate}
                         >
                           Remove

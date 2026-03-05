@@ -8,6 +8,7 @@ import { env } from "../config.js";
 import { createNotification } from "../utils/notifications.js";
 import { ADMIN_ROLES, hasPermission } from "../utils/permissions.js";
 import { getPlatformSettings } from "../utils/platform-settings.js";
+import { markOrderReleaseApproved, resolveReviewDeadlineAt } from "../utils/order-flow.js";
 
 export const ordersRouter = Router();
 
@@ -44,6 +45,19 @@ ordersRouter.get(
       include: {
         service: true,
         tier: true,
+        paymentIntent: {
+          select: {
+            id: true,
+            provider: true,
+            providerRef: true,
+            status: true,
+            events: {
+              orderBy: { receivedAt: "desc" },
+              take: 1,
+              select: { providerEventId: true },
+            },
+          },
+        },
         buyer: {
           select: publicUserSelect,
         },
@@ -77,6 +91,12 @@ const releaseRequestSchema = z.object({
 
 const updateStatusSchema = z.object({
   status: z.enum(["accepted", "cancelled", "delivered"]),
+});
+
+const openDisputeSchema = z.object({
+  reason: z.string().trim().min(5).max(200),
+  details: z.string().trim().max(2000).optional(),
+  evidence: z.array(z.string().trim().url().max(2000)).max(8).optional(),
 });
 
 const orderIdSchema = z.object({
@@ -381,27 +401,41 @@ ordersRouter.patch(
     }
 
     if (data.status === "delivered") {
-      if (!["accepted", "in_progress"].includes(order.status)) {
+      if (["delivery_submitted", "delivered"].includes(order.status)) {
+        return res.json({ order });
+      }
+
+      if (!["paid_to_escrow", "accepted", "in_progress"].includes(order.status)) {
         return res.status(400).json({ error: "Order cannot be marked complete yet." });
       }
       if (order.amountPaid.lessThan(order.amountGross)) {
-        return res.status(400).json({ error: "Balance payment is still due for this order." });
+        return res.status(400).json({ error: "Remaining payable amount is still due for this order." });
       }
+
+      const now = new Date();
+      const deliveredAt = order.deliveredAt ?? now;
+      const reviewDeadlineAt = order.reviewDeadlineAt ?? resolveReviewDeadlineAt(order.amountGross, deliveredAt);
 
       const updated = await prisma.$transaction(async (tx) => {
         const updatedOrder = await tx.order.update({
           where: { id: order.id },
           data: {
-            status: "delivered",
-            deliveredAt: new Date(),
+            status: "delivery_submitted",
+            deliverySubmittedAt: order.deliverySubmittedAt ?? now,
+            deliveredAt,
+            reviewNotifiedAt: order.reviewNotifiedAt ?? now,
+            reviewDeadlineAt,
           },
         });
 
         await tx.orderEvent.create({
           data: {
             orderId: order.id,
-            type: "delivered",
-            payload: { actorId: req.user!.id },
+            type: "delivery_submitted",
+            payload: {
+              actorId: req.user!.id,
+              reviewDeadlineAt: reviewDeadlineAt.toISOString(),
+            },
           },
         });
 
@@ -413,8 +447,8 @@ ordersRouter.patch(
         userId: order.buyerId,
         actorId: req.user!.id,
         type: "order_status",
-        title: "Order delivered",
-        body: `Your order for ${serviceTitle} was marked complete.`,
+        title: "Delivery submitted",
+        body: `Delivery was submitted for ${serviceTitle}. Please review before ${reviewDeadlineAt.toISOString()}.`,
         data: { orderId: order.id, serviceId: order.serviceId },
       });
 
@@ -553,6 +587,183 @@ ordersRouter.patch(
     });
 
     res.json({ order: updated });
+  }),
+);
+
+ordersRouter.post(
+  "/:id/approve-completion",
+  authRequired,
+  requireRole("buyer", "admin"),
+  asyncHandler(async (req, res) => {
+    const params = orderIdSchema.parse(req.params);
+    const actorId = req.user!.id;
+
+    const order = await prisma.order.findUnique({
+      where: { id: params.id },
+      include: { service: true },
+    });
+
+    if (!order) {
+      return res.status(404).json({ error: "Order not found" });
+    }
+
+    if (req.user!.role !== "admin" && order.buyerId !== actorId) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+
+    if (!["delivery_submitted", "delivered"].includes(order.status)) {
+      return res.status(400).json({ error: "Order is not awaiting buyer review." });
+    }
+
+    const openDispute = await prisma.dispute.findFirst({
+      where: {
+        orderId: order.id,
+        status: { in: ["open", "investigating"] },
+      },
+      select: { id: true },
+    });
+    if (openDispute) {
+      return res.status(400).json({ error: "Cannot approve while a dispute is open." });
+    }
+
+    const updated = await prisma.$transaction(async (tx) => {
+      const releaseResult = await markOrderReleaseApproved(tx, {
+        orderId: order.id,
+        actorId,
+        source: "buyer_approval",
+      });
+      return releaseResult.order;
+    });
+
+    const serviceTitle = order.service?.title ?? "service";
+    await Promise.all([
+      createNotification({
+        userId: order.providerId,
+        actorId,
+        type: "order_status",
+        title: "Completion approved",
+        body: `Buyer approved completion for ${serviceTitle}. Earnings are now payable.`,
+        data: { orderId: order.id, serviceId: order.serviceId },
+      }),
+      createNotification({
+        userId: order.buyerId,
+        actorId: order.providerId,
+        type: "order_status",
+        title: "Completion approved",
+        body: `You approved completion for ${serviceTitle}.`,
+        data: { orderId: order.id, serviceId: order.serviceId },
+      }),
+    ]);
+
+    res.json({ order: updated, status: "release_approved" });
+  }),
+);
+
+ordersRouter.post(
+  "/:id/disputes",
+  authRequired,
+  requireRole("buyer", "admin"),
+  asyncHandler(async (req, res) => {
+    const params = orderIdSchema.parse(req.params);
+    const data = openDisputeSchema.parse(req.body);
+    const actorId = req.user!.id;
+
+    const order = await prisma.order.findUnique({
+      where: { id: params.id },
+      include: { service: true },
+    });
+
+    if (!order) {
+      return res.status(404).json({ error: "Order not found" });
+    }
+
+    if (req.user!.role !== "admin" && order.buyerId !== actorId) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+
+    if (!["delivery_submitted", "delivered"].includes(order.status)) {
+      return res.status(400).json({ error: "Disputes can only be opened during buyer review." });
+    }
+    const now = new Date();
+    if (!order.reviewDeadlineAt || now > order.reviewDeadlineAt) {
+      return res.status(400).json({ error: "Review window has ended. Disputes can no longer be opened." });
+    }
+
+    const existing = await prisma.dispute.findFirst({
+      where: {
+        orderId: order.id,
+        status: { in: ["open", "investigating"] },
+      },
+      select: { id: true },
+    });
+    if (existing) {
+      return res.status(409).json({ error: "A dispute is already open for this order." });
+    }
+
+    const dispute = await prisma.$transaction(async (tx) => {
+      const created = await tx.dispute.create({
+        data: {
+          orderId: order.id,
+          openedById: actorId,
+          reason: data.reason.trim(),
+          details: data.details?.trim() || null,
+        },
+      });
+
+      await tx.order.update({
+        where: { id: order.id },
+        data: {
+          status: "dispute_open",
+          disputeOpenedAt: new Date(),
+        },
+      });
+
+      await tx.orderEvent.create({
+        data: {
+          orderId: order.id,
+          type: "dispute_opened",
+          payload: {
+            disputeId: created.id,
+            actorId,
+            evidence: data.evidence ?? [],
+          },
+        },
+      });
+
+      return created;
+    });
+
+    const adminUsers = await prisma.user.findMany({
+      where: { role: { in: ADMIN_ROLES }, status: "active" },
+      select: { id: true, role: true },
+    });
+    const adminRecipients = adminUsers
+      .filter((admin) => hasPermission(admin.role, "orders.update"))
+      .map((admin) => admin.id);
+
+    const serviceTitle = order.service?.title ?? "service";
+    await Promise.all([
+      ...adminRecipients.map((adminId) =>
+        createNotification({
+          userId: adminId,
+          actorId,
+          type: "order_status",
+          title: "New order dispute",
+          body: `A buyer opened a dispute for ${serviceTitle}.`,
+          data: { orderId: order.id, disputeId: dispute.id, serviceId: order.serviceId },
+        }),
+      ),
+      createNotification({
+        userId: order.providerId,
+        actorId,
+        type: "order_status",
+        title: "Dispute opened",
+        body: `A dispute was opened for ${serviceTitle}.`,
+        data: { orderId: order.id, disputeId: dispute.id, serviceId: order.serviceId },
+      }),
+    ]);
+
+    res.status(201).json({ dispute, status: "dispute_open" });
   }),
 );
 
@@ -702,8 +913,8 @@ ordersRouter.post(
             userId: order.buyerId,
             actorId: userId,
             type: "order_status",
-            title: "Balance payment requested",
-            body: "A progress update was submitted and the remaining balance is now due.",
+            title: "Payable amount requested",
+            body: "A progress update was submitted and the remaining payable amount is now due.",
             data: { orderId: order.id },
           });
         }
@@ -862,8 +1073,8 @@ ordersRouter.post(
           userId: adminId,
           actorId: userId,
           type: "order_status",
-          title: "Deposit release requested",
-          body: "A provider requested a deposit release for an order.",
+          title: "Earnings release requested",
+          body: "A provider requested an earnings release for an order.",
           data: { orderId: order.id, requestId: request.id },
         }),
       ),
@@ -948,8 +1159,8 @@ ordersRouter.post(
       userId: request.order.providerId,
       actorId: userId,
       type: "order_status",
-      title: "Deposit released",
-      body: "Your deposit release request was approved.",
+      title: "Earnings released",
+      body: "Your earnings release request was approved.",
       data: { orderId: request.orderId, requestId: request.id },
     });
 
@@ -1003,8 +1214,8 @@ ordersRouter.post(
       userId: request.order.providerId,
       actorId: userId,
       type: "order_status",
-      title: "Deposit release rejected",
-      body: "Your deposit release request was declined by the buyer.",
+      title: "Earnings release rejected",
+      body: "Your earnings release request was declined by the buyer.",
       data: { orderId: request.orderId, requestId: request.id },
     });
 

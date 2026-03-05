@@ -26,7 +26,8 @@ export type Permission =
   | "payouts.update"
   | "analytics.read"
   | "settings.read"
-  | "settings.update";
+  | "settings.config.update"
+  | "settings.content.update";
 
 const rolePermissions: Record<UserRole, Permission[]> = {
   buyer: [],
@@ -57,12 +58,14 @@ const rolePermissions: Record<UserRole, Permission[]> = {
     "payouts.update",
     "analytics.read",
     "settings.read",
-    "settings.update",
+    "settings.config.update",
+    "settings.content.update",
   ],
   admin: [
     "admin.access",
     "users.read",
     "users.write",
+    "users.role",
     "providers.read",
     "providers.verify",
     "providers.update",
@@ -84,7 +87,8 @@ const rolePermissions: Record<UserRole, Permission[]> = {
     "payouts.update",
     "analytics.read",
     "settings.read",
-    "settings.update",
+    "settings.config.update",
+    "settings.content.update",
   ],
   moderator: [
     "admin.access",
@@ -100,7 +104,6 @@ const rolePermissions: Record<UserRole, Permission[]> = {
   support_agent: [
     "admin.access",
     "users.read",
-    "users.write",
     "orders.read",
     "orders.update",
     "reports.read",
@@ -146,13 +149,12 @@ const rolePermissions: Record<UserRole, Permission[]> = {
     "reports.read",
     "analytics.read",
     "support.read",
-    "support.update",
   ],
-  data_analyst: ["admin.access", "analytics.read", "support.read", "support.update"],
+  data_analyst: ["admin.access", "analytics.read", "support.read"],
   technical_admin: [
     "admin.access",
     "settings.read",
-    "settings.update",
+    "settings.config.update",
     "users.read",
     "services.read",
     "orders.read",
@@ -176,3 +178,4 @@ export const listPermissions = (role: UserRole | null | undefined) => {
 export const canAccessAdmin = (role: UserRole | null | undefined) => {
   return Boolean(role && ADMIN_ROLES.includes(role));
 };
+

@@ -4,8 +4,8 @@ import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import DashboardSidebar from "@/components/dashboard/DashboardSidebar";
 import { Button } from "@/components/ui/button";
 import { Bell } from "lucide-react";
-import { useAuth } from "@/contexts/AuthContext";
-import { useNotifications } from "@/contexts/NotificationsContext";
+import { useAuth } from "@/contexts/useAuth";
+import { useNotifications } from "@/contexts/useNotifications";
 import AccountSettingsContent from "@/components/settings/AccountSettingsContent";
 
 const DashboardSettings = () => {

@@ -448,7 +448,14 @@ servicesRouter.post(
     }
 
     if (req.user!.role === "buyer" || req.user!.role === "provider") {
-      const allowedStatuses: OrderStatus[] = ["delivered", "approved", "released"];
+      const allowedStatuses: OrderStatus[] = [
+        "delivery_submitted",
+        "delivered",
+        "release_approved",
+        "approved",
+        "released",
+        "disbursed",
+      ];
       const order = await prisma.order.findFirst({
         where: {
           buyerId: userId,
@@ -620,6 +627,10 @@ const createSchema = z.object({
   location: locationSchema,
   availability: availabilitySchema,
   tiers: z.array(tierSchema).min(1),
+});
+
+const updateStatusSchema = z.object({
+  status: z.enum(["draft", "published", "suspended"]),
 });
 
 servicesRouter.post(
@@ -885,5 +896,92 @@ servicesRouter.put(
     const signed = await attachSignedMedia(service);
 
     res.json({ service: signed });
+  }),
+);
+
+servicesRouter.patch(
+  "/:id/status",
+  authRequired,
+  requireRole("provider", "admin"),
+  asyncHandler(async (req, res) => {
+    const data = updateStatusSchema.parse(req.body);
+    const existing = await prisma.service.findUnique({
+      where: { id: req.params.id },
+      select: {
+        id: true,
+        providerId: true,
+      },
+    });
+
+    if (!existing) {
+      return res.status(404).json({ error: "Service not found" });
+    }
+
+    if (req.user!.role === "provider" && existing.providerId !== req.user!.id) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+
+    const updated = await prisma.service.update({
+      where: { id: existing.id },
+      data: { status: data.status },
+      include: {
+        tiers: true,
+        media: true,
+        coverMedia: true,
+        provider: {
+          select: {
+            id: true,
+            avatarKey: true,
+            providerProfile: true,
+          },
+        },
+        _count: {
+          select: {
+            orders: true,
+          },
+        },
+      },
+    });
+
+    const signed = await attachSignedMedia(updated);
+    return res.json({ service: signed });
+  }),
+);
+
+servicesRouter.delete(
+  "/:id",
+  authRequired,
+  requireRole("provider", "admin"),
+  asyncHandler(async (req, res) => {
+    const existing = await prisma.service.findUnique({
+      where: { id: req.params.id },
+      select: {
+        id: true,
+        providerId: true,
+        _count: {
+          select: {
+            orders: true,
+          },
+        },
+      },
+    });
+
+    if (!existing) {
+      return res.status(404).json({ error: "Service not found" });
+    }
+
+    if (req.user!.role === "provider" && existing.providerId !== req.user!.id) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+
+    if (existing._count.orders > 0) {
+      return res.status(409).json({ error: "Cannot delete a service with existing orders." });
+    }
+
+    await prisma.service.delete({
+      where: { id: existing.id },
+    });
+
+    return res.status(204).end();
   }),
 );

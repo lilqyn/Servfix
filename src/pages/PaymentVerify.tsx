@@ -22,6 +22,23 @@ const PaymentVerify = () => {
     if (hasRequested.current) return;
     hasRequested.current = true;
 
+    const returnTo = searchParams.get("return_to");
+    if (returnTo === "mobile") {
+      const redirectParams = new URLSearchParams(searchParams);
+      redirectParams.delete("return_to");
+      const deepLink = `servfix://payment/verify${
+        redirectParams.toString() ? `?${redirectParams.toString()}` : ""
+      }`;
+
+      setStatus("loading");
+      setMessage("Returning you to the Servfix app...");
+
+      if (typeof window !== "undefined") {
+        window.location.replace(deepLink);
+      }
+      return;
+    }
+
     const provider = searchParams.get("provider");
     if (
       provider !== "flutterwave" &&
@@ -43,6 +60,7 @@ const PaymentVerify = () => {
 
     verifyPayment({
       provider,
+      paymentIntentId: searchParams.get("payment_intent_id"),
       transactionId: searchParams.get("transaction_id"),
       txRef: searchParams.get("tx_ref"),
       sessionId: searchParams.get("session_id"),

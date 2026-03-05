@@ -18,6 +18,7 @@ import {
   normalizeExpresspayPhone,
   resolveExpresspayConfig,
 } from "../utils/expresspay.js";
+import { getProviderCurrencyError } from "../utils/payment-provider-support.js";
 
 export const subscriptionsRouter = Router();
 
@@ -157,6 +158,10 @@ subscriptionsRouter.post(
 
     if (plan.monthlyPrice.lte(0)) {
       return res.status(400).json({ error: "This plan does not require payment." });
+    }
+    const providerCurrencyError = getProviderCurrencyError(data.provider, plan.currency);
+    if (providerCurrencyError) {
+      return res.status(400).json({ error: providerCurrencyError });
     }
 
     const paymentIntent = await prisma.paymentIntent.create({
@@ -317,10 +322,6 @@ subscriptionsRouter.post(
       }
 
       if (data.provider === "expresspay") {
-        if (paymentIntent.currency !== "GHS") {
-          return res.status(400).json({ error: "ExpressPay supports GHS only." });
-        }
-
         const redirectUrl = `${appUrl}/payment/verify?provider=expresspay&purpose=subscription`;
         const postUrl = `${appUrl}/api/webhooks/expresspay`;
         const customer = buildExpresspayCustomer(req.user!);
@@ -360,10 +361,6 @@ subscriptionsRouter.post(
       }
 
       if (data.provider === "hubtel") {
-        if (paymentIntent.currency !== "GHS") {
-          return res.status(400).json({ error: "Hubtel supports GHS only." });
-        }
-
         const callbackUrl = `${appUrl}/api/webhooks/hubtel`;
         const returnUrl = `${appUrl}/payment/verify?provider=hubtel&purpose=subscription&reference=${paymentIntent.id}`;
         const cancellationUrl = `${appUrl}/dashboard/subscription?payment=cancelled`;

@@ -15,15 +15,15 @@
   "networkConfiguration": {
     "awsvpcConfiguration": {
       "subnets": [
-        "subnet-0c106c7856c877570",
-        "subnet-0a2fc8f69196f8df7"
+        "subnet-01300f23c02e5ca10",
+        "subnet-013f6727c921b72d9"
       ],
-      "assignPublicIp": "ENABLED",
+      "assignPublicIp": "DISABLED",
       "securityGroups": [
         "sg-06cafa2fea812346f"
       ]
     }
   },
   "launchType": "FARGATE",
-  "taskDefinition": "arn:aws:ecs:us-east-1:258974340169:task-definition/ServfixStagingTaskDefFD8ED30F:48"
+  "taskDefinition": "ServfixStagingTaskDefFD8ED30F"
 }

@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth } from "@/contexts/useAuth";
 import { useCommunityFeed } from "@/hooks/useCommunityFeed";
 import { usePublicSettings } from "@/hooks/usePublicSettings";
 import { Button } from "@/components/ui/button";

@@ -5,6 +5,8 @@ import { env } from "../config.js";
 import { ADMIN_ROLES } from "./permissions.js";
 
 export const PLATFORM_SETTINGS_KEY = "platform-settings";
+const SUPPORTED_CURRENCIES = ["GHS", "USD", "EUR"] as const;
+type SupportedCurrency = (typeof SUPPORTED_CURRENCIES)[number];
 
 export const BUSINESS_FUNCTION_KEYS = [
   "human_resources",
@@ -81,7 +83,7 @@ export type BoostCatalogItem = {
   label: string;
   description: string;
   price: number;
-  currency: "GHS" | "USD" | "EUR";
+  currency: SupportedCurrency;
   durationHours: number;
 };
 
@@ -182,7 +184,8 @@ export type Integrations = {
 };
 
 export type LocalizationSettings = {
-  currency: "GHS" | "USD" | "EUR";
+  currency: SupportedCurrency;
+  enabledCurrencies: SupportedCurrency[];
   locale: string;
   timezone: string;
 };
@@ -430,10 +433,21 @@ const integrationsSchema = z.object({
   socialLinks: z.array(socialLinkSchema).max(12).optional().default([]),
 });
 
+const currencyCodeSchema = z.enum(SUPPORTED_CURRENCIES);
+
 const localizationSchema = z.object({
-  currency: z.enum(["GHS", "USD", "EUR"]),
+  currency: currencyCodeSchema,
+  enabledCurrencies: z.array(currencyCodeSchema).min(1).optional().default([...SUPPORTED_CURRENCIES]),
   locale: z.string().trim().min(2).max(32),
   timezone: z.string().trim().min(2).max(64),
+}).superRefine((value, ctx) => {
+  if (!value.enabledCurrencies.includes(value.currency)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Default currency must be included in enabled currencies.",
+      path: ["currency"],
+    });
+  }
 });
 
 const platformSettingsSchema = z.object({
@@ -588,6 +602,7 @@ const defaultIntegrations: Integrations = {
 
 const defaultLocalization: LocalizationSettings = {
   currency: "GHS",
+  enabledCurrencies: [...SUPPORTED_CURRENCIES],
   locale: "en-GH",
   timezone: "Africa/Accra",
 };
@@ -811,8 +826,21 @@ const normalizeIntegrations = (input: Integrations): Integrations => {
 const normalizeLocalization = (input: LocalizationSettings): LocalizationSettings => {
   const locale = input.locale?.toString().trim() || defaultLocalization.locale;
   const timezone = input.timezone?.toString().trim() || defaultLocalization.timezone;
+  const enabledSet = new Set(
+    (input.enabledCurrencies ?? []).filter((currency): currency is SupportedCurrency =>
+      SUPPORTED_CURRENCIES.includes(currency as SupportedCurrency),
+    ),
+  );
+  const enabledCurrencies = SUPPORTED_CURRENCIES.filter((currency) => enabledSet.has(currency));
+  const normalizedEnabledCurrencies =
+    enabledCurrencies.length > 0 ? enabledCurrencies : [...defaultLocalization.enabledCurrencies];
+  const currency = normalizedEnabledCurrencies.includes(input.currency)
+    ? input.currency
+    : normalizedEnabledCurrencies[0];
+
   return {
-    currency: input.currency ?? defaultLocalization.currency,
+    currency,
+    enabledCurrencies: normalizedEnabledCurrencies,
     locale,
     timezone,
   };

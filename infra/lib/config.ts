@@ -3,6 +3,7 @@
   stackName: string;
   domainName: string;
   subdomain: string;
+  enableFaultInjection: boolean;
   hostedZoneId: string;
   vpcCidr: string;
   taskCpu: number;
@@ -38,6 +39,7 @@ export const environments = {
     stackName: "ServfixProd",
     domainName: "servfixgh.com",
     subdomain: "www",
+    enableFaultInjection: false,
     hostedZoneId: "Z0771344MQYC6EHVNUOI",
     vpcCidr: "10.20.0.0/16",
     taskCpu: 512,
@@ -60,6 +62,7 @@ export const environments = {
     stackName: "ServfixStaging",
     domainName: "servfixgh.com",
     subdomain: "staging",
+    enableFaultInjection: true,
     hostedZoneId: "Z0771344MQYC6EHVNUOI",
     vpcCidr: "10.30.0.0/16",
     taskCpu: 256,

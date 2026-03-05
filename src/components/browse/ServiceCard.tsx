@@ -2,7 +2,7 @@ import { Star, MapPin, Heart, Shield, BadgeCheck, MessageCircle } from "lucide-r
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { useWishlist, WishlistItem } from "@/contexts/WishlistContext";
 import { useMessages } from "@/contexts/MessagesContext";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth } from "@/contexts/useAuth";
 import { toast } from "sonner";
 import {
   Tooltip,

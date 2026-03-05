@@ -23,7 +23,7 @@ import {
   fetchAdminCommunityPosts,
 } from "@/lib/api";
 import { hasPermission } from "@/lib/permissions";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth } from "@/contexts/useAuth";
 
 const AdminCommunity = () => {
   const { user } = useAuth();

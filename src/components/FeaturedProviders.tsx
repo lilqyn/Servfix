@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { useWishlist, WishlistItem } from "@/contexts/WishlistContext";
 import { useMessages } from "@/contexts/MessagesContext";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth } from "@/contexts/useAuth";
 import { useServices } from "@/hooks/useServices";
 import { toast } from "sonner";
 import {

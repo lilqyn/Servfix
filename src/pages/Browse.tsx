@@ -12,7 +12,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/co
 import { SlidersHorizontal, Grid3X3, List } from "lucide-react";
 import { useServices } from "@/hooks/useServices";
 import { cn } from "@/lib/utils";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth } from "@/contexts/useAuth";
 
 const defaultFilters: Filters = {
   categories: [],
@@ -43,7 +43,7 @@ const Browse = () => {
     if (q && q !== searchQuery) {
       setSearchQuery(q);
     }
-  }, [searchParams]);
+  }, [searchParams, searchQuery]);
 
   const { data: services = [], isLoading, isError, error } = useServices();
 

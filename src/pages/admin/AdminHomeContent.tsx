@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -19,12 +19,13 @@ import {
 } from "@/lib/api";
 import { defaultHomeContent } from "@/lib/homeDefaults";
 import { HOME_ICON_NAMES } from "@/lib/homeIcons";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth } from "@/contexts/useAuth";
 import { hasPermission } from "@/lib/permissions";
 
 const AdminHomeContent = () => {
   const { user } = useAuth();
-  const canUpdate = hasPermission(user?.role ?? null, "settings.update");
+  const queryClient = useQueryClient();
+  const canUpdate = hasPermission(user?.role ?? null, "settings.content.update");
   const [draft, setDraft] = useState<HomeContentPayload>(defaultHomeContent);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -51,8 +52,12 @@ const AdminHomeContent = () => {
     try {
       setIsSaving(true);
       await updateAdminHomeContent(draft);
+      queryClient.setQueryData(["home-content"], draft);
       toast({ title: "Home content updated." });
-      await refetch();
+      await Promise.all([
+        refetch(),
+        queryClient.invalidateQueries({ queryKey: ["home-content"] }),
+      ]);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unable to update home content.";
       toast({ title: message });

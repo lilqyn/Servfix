@@ -17,7 +17,10 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Plus, MoreVertical, Edit, Eye, Trash2, ToggleLeft, ToggleRight } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useProviderServices } from "@/hooks/useProviderServices";
+import { formatCurrencyAmount } from "@/lib/currency";
+import { deleteService, updateServiceStatus } from "@/lib/api";
 import { toast } from "sonner";
 import type { ApiService } from "@/lib/api";
 
@@ -26,6 +29,7 @@ interface ServiceRow {
   name: string;
   category: string;
   price: string;
+  apiStatus: ApiService["status"];
   status: "active" | "paused" | "draft";
   bookings: number;
   rating: number;
@@ -60,18 +64,20 @@ const formatPriceRange = (tiers: ApiService["tiers"]) => {
   const minPrice = Math.min(...ranges.map((range) => range.min));
   const maxPrice = Math.max(...ranges.map((range) => range.max));
   const currency = tiers[0]?.currency ?? "GHS";
-  const formatter = new Intl.NumberFormat("en-GH", {
-    style: "currency",
-    currency,
-    currencyDisplay: "code",
-    maximumFractionDigits: 0,
-  });
-
   if (minPrice === maxPrice) {
-    return formatter.format(minPrice);
+    return formatCurrencyAmount(minPrice, currency, {
+      currencyDisplay: "code",
+      maximumFractionDigits: 0,
+    });
   }
 
-  return `${formatter.format(minPrice)} - ${formatter.format(maxPrice)}`;
+  return `${formatCurrencyAmount(minPrice, currency, {
+    currencyDisplay: "code",
+    maximumFractionDigits: 0,
+  })} - ${formatCurrencyAmount(maxPrice, currency, {
+    currencyDisplay: "code",
+    maximumFractionDigits: 0,
+  })}`;
 };
 
 const mapStatus = (status: ApiService["status"]): ServiceRow["status"] => {
@@ -82,7 +88,20 @@ const mapStatus = (status: ApiService["status"]): ServiceRow["status"] => {
 
 const ServicesList = () => {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { data: services = [], isLoading, isError, error } = useProviderServices();
+  const refreshServices = () => queryClient.invalidateQueries({ queryKey: ["services", "mine"] });
+
+  const statusMutation = useMutation({
+    mutationFn: ({ serviceId, status }: { serviceId: string; status: ApiService["status"] }) =>
+      updateServiceStatus(serviceId, status),
+    onSuccess: refreshServices,
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (serviceId: string) => deleteService(serviceId),
+    onSuccess: refreshServices,
+  });
 
   const rows: ServiceRow[] = services.map((service) => {
     const providerProfile = service.provider.providerProfile ?? null;
@@ -94,11 +113,48 @@ const ServicesList = () => {
       name: service.title,
       category: service.category,
       price: formatPriceRange(service.tiers),
+      apiStatus: service.status,
       status: mapStatus(service.status),
       bookings,
       rating: Math.round(rating * 10) / 10,
     };
   });
+
+  const handleToggleStatus = async (service: ServiceRow) => {
+    const nextStatus: ApiService["status"] =
+      service.apiStatus === "published" ? "suspended" : "published";
+    const nextLabel = nextStatus === "published" ? "activated" : "paused";
+
+    try {
+      await statusMutation.mutateAsync({ serviceId: service.id, status: nextStatus });
+      toast.success(`Service ${nextLabel}.`);
+    } catch (mutationError) {
+      const message =
+        mutationError instanceof Error ? mutationError.message : "Unable to update service status.";
+      toast.error(message);
+    }
+  };
+
+  const handleDelete = async (service: ServiceRow) => {
+    if (service.bookings > 0) {
+      toast.error("Cannot delete a service with existing bookings.");
+      return;
+    }
+
+    const confirmed = window.confirm(`Delete "${service.name}"? This action cannot be undone.`);
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      await deleteMutation.mutateAsync(service.id);
+      toast.success("Service deleted.");
+    } catch (mutationError) {
+      const message =
+        mutationError instanceof Error ? mutationError.message : "Unable to delete service.";
+      toast.error(message);
+    }
+  };
 
   const getStatusBadge = (status: ServiceRow["status"]) => {
     switch (status) {
@@ -201,7 +257,10 @@ const ServicesList = () => {
                       </DropdownMenuItem>
                       <DropdownMenuItem
                         className="gap-2"
-                        onClick={() => toast("Service status updates are coming soon.")}
+                        disabled={statusMutation.isPending}
+                        onClick={() => {
+                          void handleToggleStatus(service);
+                        }}
                       >
                         {service.status === "active" ? (
                           <>
@@ -217,7 +276,10 @@ const ServicesList = () => {
                       </DropdownMenuItem>
                       <DropdownMenuItem
                         className="gap-2 text-destructive"
-                        onClick={() => toast("Service deletion is coming soon.")}
+                        disabled={deleteMutation.isPending}
+                        onClick={() => {
+                          void handleDelete(service);
+                        }}
                       >
                         <Trash2 className="h-4 w-4" />
                         Delete

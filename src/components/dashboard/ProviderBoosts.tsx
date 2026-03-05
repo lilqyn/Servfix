@@ -13,17 +13,16 @@ import {
   purchaseBoost,
   type BoostType,
 } from "@/lib/api";
+import { formatCurrencyAmount, type CurrencyCode } from "@/lib/currency";
 import { useProviderServices } from "@/hooks/useProviderServices";
 import { usePublicSettings } from "@/hooks/usePublicSettings";
 import { toast } from "sonner";
 
-const formatCurrency = (amount: number, currency: "GHS" | "USD" | "EUR") =>
-  new Intl.NumberFormat("en-GH", {
-    style: "currency",
-    currency,
+const formatCurrency = (amount: number, currency: CurrencyCode) =>
+  formatCurrencyAmount(amount, currency, {
     currencyDisplay: "code",
     maximumFractionDigits: 0,
-  }).format(amount);
+  });
 
 const formatDuration = (hours: number) => {
   if (hours % 24 === 0) {
@@ -40,7 +39,7 @@ const ProviderBoosts = () => {
     [services],
   );
   const [selectedServiceId, setSelectedServiceId] = useState<string>("");
-  const [paymentMode, setPaymentMode] = useState<"wallet" | "gateway">("wallet");
+  const [paymentMode, setPaymentMode] = useState<"earnings" | "gateway">("earnings");
   const [paymentProvider, setPaymentProvider] = useState<
     "flutterwave" | "stripe" | "paystack" | "hubtel" | "expresspay"
   >("flutterwave");
@@ -78,8 +77,8 @@ const ProviderBoosts = () => {
     }
   }, [publishedServices, selectedServiceId]);
 
-  const walletBalance = payoutData?.wallet ? Number(payoutData.wallet.availableBalance) : 0;
-  const walletCurrency = payoutData?.wallet?.currency ?? "GHS";
+  const payableAmount = payoutData?.earnings ? Number(payoutData.earnings.payable) : 0;
+  const payableCurrency = payoutData?.earnings?.currency ?? "GHS";
   const selectedService = publishedServices.find((service) => service.id === selectedServiceId);
   const paymentConfig = publicSettings?.payments;
   const availableProviders = useMemo(
@@ -124,7 +123,7 @@ const ProviderBoosts = () => {
     }
   }, [paymentProvider]);
 
-  const handleWalletPurchase = async (type: BoostType) => {
+  const handleEarningsPurchase = async (type: BoostType) => {
     if (!selectedService) {
       toast.error("Select a published service to boost.");
       return;
@@ -184,25 +183,25 @@ const ProviderBoosts = () => {
         <CardHeader>
           <CardTitle className="text-lg font-semibold">Boost your visibility</CardTitle>
           <p className="text-sm text-muted-foreground">
-            Promote a service to get more views and bookings. Pay with your wallet balance or online.
+            Promote a service to get more views and bookings. Pay with your earnings or online.
           </p>
         </CardHeader>
         <CardContent className="space-y-5">
           <div className="flex flex-wrap items-center gap-3 rounded-lg border border-border/50 bg-muted/40 px-4 py-3">
-            <span className="text-sm text-muted-foreground">Available balance</span>
+            <span className="text-sm text-muted-foreground">Payable amount</span>
             <span className="text-sm font-semibold text-foreground">
-              {formatCurrency(walletBalance, walletCurrency)}
+              {formatCurrency(payableAmount, payableCurrency)}
             </span>
           </div>
 
           <div className="space-y-2 max-w-md">
             <span className="text-sm font-medium text-foreground">Payment source</span>
-            <Select value={paymentMode} onValueChange={(value) => setPaymentMode(value as "wallet" | "gateway")}>
+            <Select value={paymentMode} onValueChange={(value) => setPaymentMode(value as "earnings" | "gateway")}>
               <SelectTrigger>
                 <SelectValue placeholder="Select payment source" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="wallet">Wallet balance</SelectItem>
+                <SelectItem value="earnings">Payable amount</SelectItem>
                 <SelectItem value="gateway">Pay online</SelectItem>
               </SelectContent>
             </Select>
@@ -412,19 +411,19 @@ const ProviderBoosts = () => {
           ) : (
             <div className="grid gap-4 md:grid-cols-3">
               {options.map((option) => {
-                const insufficient = walletBalance < option.price;
-                const walletDisabled = paymentMode === "wallet" && insufficient;
+                const insufficient = payableAmount < option.price;
+                const earningsDisabled = paymentMode === "earnings" && insufficient;
                 const gatewayDisabled = paymentMode === "gateway" && availableProviders.length === 0;
                 const isDisabled =
                   optionsLoading ||
                   !selectedService ||
                   activePurchase === option.type ||
-                  walletDisabled ||
+                  earningsDisabled ||
                   gatewayDisabled;
                 const buttonLabel =
-                  paymentMode === "wallet"
+                  paymentMode === "earnings"
                     ? insufficient
-                      ? "Insufficient balance"
+                      ? "Insufficient payable amount"
                       : "Activate boost"
                     : "Pay online";
                 return (
@@ -448,8 +447,8 @@ const ProviderBoosts = () => {
                       className="w-full"
                       disabled={isDisabled}
                       onClick={() =>
-                        paymentMode === "wallet"
-                          ? handleWalletPurchase(option.type)
+                        paymentMode === "earnings"
+                          ? handleEarningsPurchase(option.type)
                           : handleGatewayPurchase(option.type)
                       }
                     >

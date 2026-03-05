@@ -4,8 +4,8 @@ import { Loader2 } from "lucide-react";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import { Button } from "@/components/ui/button";
-import { useNotifications } from "@/contexts/NotificationsContext";
-import { useAuth } from "@/contexts/AuthContext";
+import { useNotifications } from "@/contexts/useNotifications";
+import { useAuth } from "@/contexts/useAuth";
 import {
   countUnreadNotifications,
   filterNotificationsForRole,

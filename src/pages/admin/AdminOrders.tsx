@@ -20,19 +20,24 @@ import {
   type AdminOrder,
   type AdminReleaseRequest,
 } from "@/lib/api";
+import { formatCurrencyAmount, type CurrencyCode } from "@/lib/currency";
 import { hasPermission } from "@/lib/permissions";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth } from "@/contexts/useAuth";
 
 const STATUS_OPTIONS: AdminOrder["status"][] = [
   "created",
   "paid_to_escrow",
   "accepted",
   "in_progress",
+  "delivery_submitted",
   "delivered",
+  "release_approved",
   "approved",
   "released",
+  "disbursed",
   "cancelled",
   "expired",
+  "dispute_open",
   "disputed",
   "refund_pending",
   "refunded",
@@ -94,6 +99,17 @@ const AdminOrders = () => {
       user.phone ??
       "-"
     );
+  };
+
+  const formatMoney = (value: number, currency: string) => {
+    try {
+      return formatCurrencyAmount(value, currency as CurrencyCode, {
+        currencyDisplay: "code",
+        maximumFractionDigits: 0,
+      });
+    } catch {
+      return `${currency} ${Number(value).toLocaleString()}`;
+    }
   };
 
   const handleReleaseDecision = async (
@@ -184,7 +200,7 @@ const AdminOrders = () => {
                     <TableCell>{formatUserName(request.order?.provider)}</TableCell>
                     <TableCell>{formatUserName(request.order?.buyer)}</TableCell>
                     <TableCell>
-                      {request.currency} {Number(request.amount).toLocaleString()}
+                      {formatMoney(Number(request.amount), request.currency)}
                     </TableCell>
                     <TableCell className="max-w-[220px]">
                       <span className="text-xs text-muted-foreground">{request.note ?? "-"}</span>
@@ -279,7 +295,7 @@ const AdminOrders = () => {
                       )}
                     </TableCell>
                     <TableCell>
-                      {order.currency} {Number(order.amountGross).toLocaleString()}
+                      {formatMoney(Number(order.amountGross), order.currency)}
                     </TableCell>
                   </TableRow>
                 ))}

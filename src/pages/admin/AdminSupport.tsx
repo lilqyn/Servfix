@@ -29,7 +29,7 @@ import {
   type SupportTicketPriority,
   type SupportTicketStatus,
 } from "@/lib/api";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth } from "@/contexts/useAuth";
 import { hasPermission } from "@/lib/permissions";
 import { getRoleLabel, type UserRole } from "@/lib/roles";
 

@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { useMessages } from "@/contexts/MessagesContext";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth } from "@/contexts/useAuth";
 
 const googleMapsApiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY?.trim() ?? "";
 
@@ -15,6 +15,37 @@ type SelectedPlace = {
   lat?: number;
   lng?: number;
 };
+
+type GoogleMapsPlace = {
+  formatted_address?: string;
+  name?: string;
+  place_id?: string;
+  geometry?: {
+    location?: {
+      lat?: () => number;
+      lng?: () => number;
+    };
+  };
+};
+
+type GoogleMapsAutocomplete = {
+  addListener: (event: "place_changed", handler: () => void) => { remove: () => void };
+  getPlace: () => GoogleMapsPlace;
+};
+
+type GoogleMapsNamespace = {
+  maps?: {
+    places?: {
+      Autocomplete: new (
+        input: HTMLInputElement,
+        options?: { fields?: string[] },
+      ) => GoogleMapsAutocomplete;
+    };
+  };
+};
+
+const getGoogleMaps = () =>
+  (window as Window & { google?: GoogleMapsNamespace }).google;
 
 interface ServiceInquiryFormProps {
   serviceName: string;
@@ -36,7 +67,7 @@ const ServiceInquiryForm = ({
   const { startConversation, sendMessage } = useMessages();
   const { isAuthenticated } = useAuth();
   const locationInputRef = useRef<HTMLInputElement>(null);
-  const autocompleteRef = useRef<any>(null);
+  const autocompleteRef = useRef<GoogleMapsAutocomplete | null>(null);
   const [formData, setFormData] = useState({
     eventDate: "",
     quantityType: "guests",
@@ -62,7 +93,7 @@ const ServiceInquiryForm = ({
     );
 
     if (existingScript) {
-      if ((window as any).google?.maps?.places) {
+      if (getGoogleMaps()?.maps?.places) {
         setPlacesStatus("ready");
         return;
       }
@@ -108,7 +139,7 @@ const ServiceInquiryForm = ({
     return () => {
       cancelled = true;
     };
-  }, [googleMapsApiKey]);
+  }, []);
 
   useEffect(() => {
     if (placesStatus !== "ready") {
@@ -121,7 +152,7 @@ const ServiceInquiryForm = ({
     if (autocompleteRef.current) {
       return;
     }
-    const googleMaps = (window as any).google;
+    const googleMaps = getGoogleMaps();
     if (!googleMaps?.maps?.places) {
       return;
     }

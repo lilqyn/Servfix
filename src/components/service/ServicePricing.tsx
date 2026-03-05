@@ -3,14 +3,16 @@ import { Button } from "@/components/ui/button";
 import { useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useCart } from "@/contexts/CartContext";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth } from "@/contexts/useAuth";
 import { toast } from "sonner";
 import { isCoreAdminRole } from "@/lib/roles";
+import { formatCurrencyAmount, type CurrencyCode } from "@/lib/currency";
 
 interface Package {
   id: string;
   name: string;
   price: number;
+  currency: CurrencyCode;
   priceMax?: number | null;
   description: string;
   features: string[];
@@ -68,6 +70,7 @@ const ServicePricing = ({
   const selected = packages.find(p => p.id === selectedPackage) || packages[0];
   const unitLabel = selected?.unitLabel?.trim() || "unit";
   const pricingModel = selected?.pricingModel ?? "fixed";
+  const selectedCurrency = selected?.currency ?? "GHS";
   const isNegotiable = pricingModel !== "fixed";
   const minPrice = selected?.price ?? 0;
   const maxPrice =
@@ -78,6 +81,11 @@ const ServicePricing = ({
   const { isAuthenticated, user } = useAuth();
   const ratingValue = reviewSummary?.averageRating ?? provider.rating;
   const reviewsValue = reviewSummary?.totalReviews ?? provider.reviews;
+  const formatPrice = (amount: number) =>
+    formatCurrencyAmount(amount, selectedCurrency, {
+      currencyDisplay: "code",
+      maximumFractionDigits: 0,
+    });
 
   const getPackageType = (name: string): "basic" | "standard" | "premium" => {
     const lower = name.toLowerCase();
@@ -130,6 +138,7 @@ const ServicePricing = ({
       packageType: getPackageType(selected.name),
       packageName: selected.name,
       price: selected.price,
+      currency: selected.currency,
       pricingType: selected.pricingType ?? "flat",
       unitLabel: selected.unitLabel ?? null,
       quantity: selected.pricingType === "per_unit" ? 1 : undefined,
@@ -168,8 +177,8 @@ const ServicePricing = ({
         <div className="flex items-baseline justify-between mb-2">
           <div>
             <span className="text-3xl font-display font-bold text-foreground">
-              GH₵ {minPrice.toLocaleString()}
-              {isNegotiable && maxPrice ? ` - GH₵ ${maxPrice.toLocaleString()}` : ""}
+              {formatPrice(minPrice)}
+              {isNegotiable && maxPrice ? ` - ${formatPrice(maxPrice)}` : ""}
             </span>
             {isNegotiable && (
               <span className="ml-2 text-xs uppercase tracking-wide text-secondary">
@@ -223,7 +232,7 @@ const ServicePricing = ({
                 ? "Preview mode"
                 : isNegotiable
                   ? "Request Quote"
-                  : `Book Now - GH₵ ${selected.price.toLocaleString()}`}
+                  : `Book Now - ${formatPrice(selected.price)}`}
             </>
           )}
         </Button>

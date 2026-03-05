@@ -13,7 +13,7 @@ import { Share2, Heart } from "lucide-react";
 import { useService } from "@/hooks/useService";
 import { useServiceReviews } from "@/hooks/useServiceReviews";
 import { mapServiceToDetail } from "@/lib/services";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth } from "@/contexts/useAuth";
 import { isCoreAdminRole } from "@/lib/roles";
 import { usePublicSettings } from "@/hooks/usePublicSettings";
 

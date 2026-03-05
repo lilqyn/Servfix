@@ -10,8 +10,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { useNotifications } from "@/contexts/NotificationsContext";
-import { useAuth } from "@/contexts/AuthContext";
+import { useNotifications } from "@/contexts/useNotifications";
+import { useAuth } from "@/contexts/useAuth";
 import {
   countUnreadNotifications,
   filterNotificationsForRole,

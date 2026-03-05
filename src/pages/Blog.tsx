@@ -10,7 +10,7 @@ const Blog = () => {
     queryKey: ["page", "blog"],
     queryFn: () => fetchStaticPage("blog"),
   });
-  const posts = data?.posts ?? [];
+  const posts = useMemo(() => data?.posts ?? [], [data?.posts]);
   const intro = data?.body ?? "";
   const introExcerpt = intro
     ? intro.replace(/\s+/g, " ").trim().slice(0, 160)
@@ -99,7 +99,7 @@ const Blog = () => {
                     ) : null}
                   </div>
                   <p className="text-sm text-muted-foreground whitespace-pre-wrap leading-relaxed">
-                    {activePost.body || "Post content coming soon."}
+                    {activePost.body || "No additional post content is available yet."}
                   </p>
                 </CardContent>
               </Card>

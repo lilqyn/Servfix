@@ -19,8 +19,9 @@ import ServicePricing from "@/components/service/ServicePricing";
 import ServiceReviews from "@/components/service/ServiceReviews";
 import { apiFetch } from "@/lib/api";
 import { useService } from "@/hooks/useService";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth } from "@/contexts/useAuth";
 import { FALLBACK_IMAGE, type ServiceDetailData } from "@/lib/services";
+import type { CurrencyCode } from "@/lib/currency";
 import type { ApiService } from "@/lib/api";
 
 const pricingTierSchema = z
@@ -70,6 +71,7 @@ const serviceFormSchema = z.object({
   name: z.string().min(3, "Service name must be at least 3 characters"),
   category: z.string().min(1, "Please select a category"),
   description: z.string().min(20, "Description must be at least 20 characters"),
+  currency: z.enum(["GHS", "USD", "EUR"]).default("GHS"),
   tags: z.array(z.string()).optional(),
   images: z
     .array(z.string())
@@ -98,6 +100,7 @@ const defaultValues: Partial<ServiceFormData> = {
   name: "",
   category: "",
   description: "",
+  currency: "GHS",
   tags: [],
   images: [],
   pricingTiers: [
@@ -259,6 +262,11 @@ const mapLocationToCity = (location?: string | null) => {
   return CITY_LABELS[normalized] ?? CITY_VALUE_BY_LABEL[normalized] ?? raw;
 };
 
+const resolveServiceCurrency = (tiers: ApiService["tiers"]): CurrencyCode => {
+  const firstCurrency = tiers[0]?.currency;
+  return firstCurrency ?? "GHS";
+};
+
 const buildPricingTiers = (tiers: ApiService["tiers"]): ServiceFormData["pricingTiers"] => {
   const order: Array<"basic" | "standard" | "premium"> = ["basic", "standard", "premium"];
   const tierMap = new Map(tiers.map((tier) => [tier.name, tier]));
@@ -316,6 +324,7 @@ const mapServiceToForm = (service: ApiService): ServiceFormData => {
     name: service.title,
     category: mapCategoryToValue(service.category),
     description: service.description,
+    currency: resolveServiceCurrency(service.tiers),
     tags: service.tags ?? [],
     images,
     pricingTiers: buildPricingTiers(service.tiers),
@@ -368,7 +377,7 @@ const buildServicePayload = (data: ServiceFormData, status: "draft" | "published
     tiers: data.pricingTiers.map((tier, index) => ({
       name: mapTierName(tier.name, index),
       price: Number(tier.price),
-      currency: "GHS" as const,
+      currency: data.currency,
       deliveryDays: parseDeliveryDays(tier.deliveryTime),
       revisionCount: 0,
       pricingType: tier.pricingType ?? "flat",
@@ -494,6 +503,7 @@ const ServiceForm = () => {
               id: `${name.toLowerCase().replace(/\s+/g, "-")}-${index}`,
               name,
               price: Number.isFinite(tier.price) ? Number(tier.price) : 0,
+              currency: data.currency,
               priceMax:
                 Number.isFinite(tier.priceMax ?? 0) && (tier.priceMax ?? 0) > 0
                   ? Number(tier.priceMax)
@@ -513,6 +523,7 @@ const ServiceForm = () => {
               id: "basic-preview",
               name: "Basic",
               price: 0,
+              currency: data.currency,
               description: "Custom quote required",
               features: ["Flexible delivery", "Custom scope"],
               deliveryTime: "Flexible",

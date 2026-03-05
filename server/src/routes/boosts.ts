@@ -18,6 +18,7 @@ import {
   normalizeExpresspayPhone,
   resolveExpresspayConfig,
 } from "../utils/expresspay.js";
+import { getProviderCurrencyError } from "../utils/payment-provider-support.js";
 
 export const boostsRouter = Router();
 
@@ -192,6 +193,10 @@ boostsRouter.post(
     if (!option) {
       return res.status(400).json({ error: "Invalid boost type." });
     }
+    const providerCurrencyError = getProviderCurrencyError(data.provider, option.currency);
+    if (providerCurrencyError) {
+      return res.status(400).json({ error: providerCurrencyError });
+    }
 
     const paymentIntent = await prisma.paymentIntent.create({
       data: {
@@ -355,10 +360,6 @@ boostsRouter.post(
       }
 
       if (data.provider === "expresspay") {
-        if (paymentIntent.currency !== "GHS") {
-          return res.status(400).json({ error: "ExpressPay supports GHS only." });
-        }
-
         const redirectUrl = `${appUrl}/payment/verify?provider=expresspay&purpose=boost`;
         const postUrl = `${appUrl}/api/webhooks/expresspay`;
         const customer = buildExpresspayCustomer(req.user!);
@@ -399,10 +400,6 @@ boostsRouter.post(
       }
 
       if (data.provider === "hubtel") {
-        if (paymentIntent.currency !== "GHS") {
-          return res.status(400).json({ error: "Hubtel supports GHS only." });
-        }
-
         const callbackUrl = `${appUrl}/api/webhooks/hubtel`;
         const returnUrl = `${appUrl}/payment/verify?provider=hubtel&purpose=boost&reference=${paymentIntent.id}`;
         const cancellationUrl = `${appUrl}/dashboard/boosts?payment=cancelled`;
@@ -573,11 +570,11 @@ boostsRouter.post(
     const price = new Prisma.Decimal(option.price);
 
     if (wallet.currency !== option.currency) {
-      return res.status(400).json({ error: "Boost currency does not match wallet currency." });
+      return res.status(400).json({ error: "Boost currency does not match earnings currency." });
     }
 
     if (wallet.availableBalance.lt(price)) {
-      return res.status(400).json({ error: "Insufficient available balance." });
+      return res.status(400).json({ error: "Insufficient payable amount." });
     }
 
     const endsAt = new Date(now.getTime() + option.durationHours * 60 * 60 * 1000);
@@ -600,7 +597,7 @@ boostsRouter.post(
           currency: updatedWallet.currency,
           metadata: {
             category: service.category,
-            source: "wallet",
+            source: "earnings",
           },
         },
         include: {

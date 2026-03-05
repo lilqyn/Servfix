@@ -15,7 +15,7 @@ import {
   fetchSupportTickets,
   type SupportTicketStatus,
 } from "@/lib/api";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth } from "@/contexts/useAuth";
 
 const STATUS_LABELS: Record<SupportTicketStatus, string> = {
   open: "Open",

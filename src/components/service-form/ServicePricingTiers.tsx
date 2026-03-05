@@ -1,3 +1,4 @@
+import { useEffect, useMemo } from "react";
 import { UseFormReturn, useFieldArray } from "react-hook-form";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
@@ -13,7 +14,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Plus, X, Star } from "lucide-react";
+import { CURRENCY_OPTIONS } from "@/lib/currency";
 import type { ServiceFormData } from "@/pages/ServiceForm";
+import { usePublicSettings } from "@/hooks/usePublicSettings";
 
 interface ServicePricingTiersProps {
   form: UseFormReturn<ServiceFormData>;
@@ -24,6 +27,30 @@ const ServicePricingTiers = ({ form }: ServicePricingTiersProps) => {
     control: form.control,
     name: "pricingTiers",
   });
+  const { data: publicSettings } = usePublicSettings();
+  const enabledCurrencies = publicSettings?.localization?.enabledCurrencies;
+  const defaultCurrency = publicSettings?.localization?.currency;
+  const availableCurrencyOptions = useMemo(() => {
+    const enabledSet = new Set(enabledCurrencies ?? CURRENCY_OPTIONS.map((option) => option.value));
+    const filtered = CURRENCY_OPTIONS.filter((option) => enabledSet.has(option.value));
+    return filtered.length > 0 ? filtered : CURRENCY_OPTIONS;
+  }, [enabledCurrencies]);
+  const selectedCurrency = form.watch("currency");
+
+  useEffect(() => {
+    const selectedExists = availableCurrencyOptions.some(
+      (option) => option.value === selectedCurrency,
+    );
+    if (selectedExists) {
+      return;
+    }
+
+    const fallbackCurrency =
+      availableCurrencyOptions.find((option) => option.value === defaultCurrency)?.value ??
+      availableCurrencyOptions[0]?.value ??
+      "GHS";
+    form.setValue("currency", fallbackCurrency);
+  }, [availableCurrencyOptions, defaultCurrency, form, selectedCurrency]);
 
   const handleAddFeature = (tierIndex: number) => {
     const currentFeatures = form.getValues(`pricingTiers.${tierIndex}.features`) || [];
@@ -54,6 +81,38 @@ const ServicePricingTiers = ({ form }: ServicePricingTiersProps) => {
           Create up to 3 pricing packages for different customer needs
         </p>
       </div>
+
+      <Card className="border-border/50">
+        <CardContent className="pt-6">
+          <FormField
+            control={form.control}
+            name="currency"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Service Currency</FormLabel>
+                <FormControl>
+                  <Select
+                    value={field.value ?? "GHS"}
+                    onValueChange={field.onChange}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select currency" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableCurrencyOptions.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        </CardContent>
+      </Card>
 
       <div className="grid gap-6 lg:grid-cols-3">
         {fields.map((field, tierIndex) => {
@@ -140,12 +199,14 @@ const ServicePricingTiers = ({ form }: ServicePricingTiersProps) => {
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>
-                        {pricingModel === "fixed" ? "Price (GH₵)" : "Min Price (GH₵)"}
+                        {pricingModel === "fixed"
+                          ? `Price (${selectedCurrency})`
+                          : `Min Price (${selectedCurrency})`}
                       </FormLabel>
                       <FormControl>
                         <div className="relative">
                           <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">
-                            GH₵
+                            {selectedCurrency}
                           </span>
                           <Input
                             type="number"
@@ -167,11 +228,11 @@ const ServicePricingTiers = ({ form }: ServicePricingTiersProps) => {
                     name={`pricingTiers.${tierIndex}.priceMax`}
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Max Price (GH₵)</FormLabel>
+                        <FormLabel>{`Max Price (${selectedCurrency})`}</FormLabel>
                         <FormControl>
                           <div className="relative">
                             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">
-                              GH₵
+                              {selectedCurrency}
                             </span>
                             <Input
                               type="number"

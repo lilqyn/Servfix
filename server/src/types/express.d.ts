@@ -10,6 +10,7 @@ declare global {
         phone?: string | null;
         username?: string | null;
       };
+      requestId?: string;
       rawBody?: Buffer;
     }
   }

@@ -28,7 +28,7 @@ const createQuoteSchema = z.object({
     .number()
     .int()
     .refine((value) => [50, 70, 100].includes(value), {
-      message: "Deposit percent must be 50, 70, or 100.",
+      message: "Initial payment percent must be 50, 70, or 100.",
     })
     .optional(),
   message: z.string().trim().max(2000).optional(),
@@ -114,7 +114,7 @@ quotesRouter.post(
       return res.status(404).json({ error: "Service not found." });
     }
 
-    let tierId: string | null = data.tierId ?? null;
+    const tierId: string | null = data.tierId ?? null;
     let currency = data.currency ?? "GHS";
     let pricingType: "flat" | "per_unit" = "flat";
     if (tierId) {
@@ -175,7 +175,7 @@ quotesRouter.post(
       data: {
         threadId: thread.id,
         senderId: userId,
-        body: `Quote sent: ${currency} ${amount.toFixed(2)} (${depositPercent}% deposit)`,
+        body: `Quote sent: ${currency} ${amount.toFixed(2)} (${depositPercent}% initial payment)`,
       },
     });
 
@@ -292,7 +292,7 @@ quotesRouter.post(
       actorId: userId,
       type: "order_status",
       title: "Quote accepted",
-      body: "Your quote was accepted. The buyer can now pay the deposit.",
+      body: "Your quote was accepted. The buyer can now pay the initial amount.",
       data: { orderId: result.order.id, quoteId: quote.id },
     });
 
@@ -301,7 +301,7 @@ quotesRouter.post(
       actorId: quote.providerId,
       type: "order_status",
       title: "Quote accepted",
-      body: "Please complete the deposit payment to start the order.",
+      body: "Please complete the initial payment to start the order.",
       data: { orderId: result.order.id, quoteId: quote.id },
     });
 

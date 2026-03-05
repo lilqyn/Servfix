@@ -1,23 +1,19 @@
 import type { NextFunction, Request, Response } from "express";
 import { prisma } from "../db.js";
 import { verifyToken } from "../auth/jwt.js";
+import { getAccessTokenFromRequest } from "../auth/session.js";
 import { UserRole } from "@prisma/client";
 import { ADMIN_ROLES } from "../utils/permissions.js";
 import { getPlatformSettings } from "../utils/platform-settings.js";
 
 export async function authRequired(req: Request, res: Response, next: NextFunction) {
-  const header = req.headers.authorization;
-  if (!header || !header.startsWith("Bearer ")) {
-    return res.status(401).json({ error: "Authorization required" });
-  }
-
-  const token = header.slice("Bearer ".length).trim();
+  const token = getAccessTokenFromRequest(req);
   if (!token) {
     return res.status(401).json({ error: "Authorization required" });
   }
 
   try {
-    const payload = verifyToken(token) as { sub: string; role: UserRole; iat?: number };
+    const payload = verifyToken(token) as { sub: string; role: UserRole; iat?: number; mfa?: boolean };
     const user = await prisma.user.findUnique({
       where: { id: payload.sub },
       select: { id: true, role: true, status: true, email: true, phone: true, username: true },
@@ -30,6 +26,11 @@ export async function authRequired(req: Request, res: Response, next: NextFuncti
     if (ADMIN_ROLES.includes(user.role)) {
       const { settings } = await getPlatformSettings();
       const allowlist = settings.securityControls.adminIpAllowlist;
+      const requireMfa = settings.securityControls.requireMfaForAdmins;
+
+      if (requireMfa && payload.mfa !== true) {
+        return res.status(401).json({ error: "Admin MFA verification required." });
+      }
 
       if (allowlist.length > 0) {
         const forwarded = req.headers["x-forwarded-for"];
@@ -83,12 +84,7 @@ export function requireRole(...roles: UserRole[]) {
 }
 
 export async function optionalAuth(req: Request, _res: Response, next: NextFunction) {
-  const header = req.headers.authorization;
-  if (!header || !header.startsWith("Bearer ")) {
-    return next();
-  }
-
-  const token = header.slice("Bearer ".length).trim();
+  const token = getAccessTokenFromRequest(req);
   if (!token) {
     return next();
   }
@@ -101,6 +97,14 @@ export async function optionalAuth(req: Request, _res: Response, next: NextFunct
     });
 
     if (user && user.status === "active") {
+      if (ADMIN_ROLES.includes(user.role)) {
+        const { settings } = await getPlatformSettings();
+        const requireMfa = settings.securityControls.requireMfaForAdmins;
+        if (requireMfa && payload.mfa !== true) {
+          return next();
+        }
+      }
+
       req.user = {
         id: user.id,
         role: user.role,

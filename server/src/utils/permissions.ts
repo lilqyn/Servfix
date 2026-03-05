@@ -26,7 +26,8 @@ export type Permission =
   | "payouts.update"
   | "analytics.read"
   | "settings.read"
-  | "settings.update";
+  | "settings.config.update"
+  | "settings.content.update";
 
 export const ADMIN_ROLES: UserRole[] = [
   "super_admin",
@@ -70,12 +71,14 @@ const rolePermissions: Record<UserRole, Permission[]> = {
     "payouts.update",
     "analytics.read",
     "settings.read",
-    "settings.update",
+    "settings.config.update",
+    "settings.content.update",
   ],
   admin: [
     "admin.access",
     "users.read",
     "users.write",
+    "users.role",
     "providers.read",
     "providers.verify",
     "providers.update",
@@ -97,7 +100,8 @@ const rolePermissions: Record<UserRole, Permission[]> = {
     "payouts.update",
     "analytics.read",
     "settings.read",
-    "settings.update",
+    "settings.config.update",
+    "settings.content.update",
   ],
   moderator: [
     "admin.access",
@@ -113,7 +117,6 @@ const rolePermissions: Record<UserRole, Permission[]> = {
   support_agent: [
     "admin.access",
     "users.read",
-    "users.write",
     "orders.read",
     "orders.update",
     "reports.read",
@@ -159,13 +162,12 @@ const rolePermissions: Record<UserRole, Permission[]> = {
     "reports.read",
     "analytics.read",
     "support.read",
-    "support.update",
   ],
-  data_analyst: ["admin.access", "analytics.read", "support.read", "support.update"],
+  data_analyst: ["admin.access", "analytics.read", "support.read"],
   technical_admin: [
     "admin.access",
     "settings.read",
-    "settings.update",
+    "settings.config.update",
     "users.read",
     "services.read",
     "orders.read",
@@ -183,3 +185,33 @@ export const hasPermission = (role: UserRole, permission: Permission) => {
 export const listPermissions = (role: UserRole) => {
   return rolePermissions[role] ?? [];
 };
+
+const roleAuthorityRank: Record<UserRole, number> = {
+  buyer: 0,
+  provider: 0,
+  data_analyst: 10,
+  marketing_manager: 20,
+  support_agent: 30,
+  moderator: 30,
+  dispute_manager: 40,
+  operations_manager: 50,
+  finance_manager: 50,
+  technical_admin: 60,
+  admin: 70,
+  super_admin: 80,
+};
+
+export const canManageRole = (actorRole: UserRole, targetRole: UserRole) => {
+  if (targetRole === "super_admin") {
+    return actorRole === "super_admin";
+  }
+  return roleAuthorityRank[actorRole] > roleAuthorityRank[targetRole];
+};
+
+export const canAssignRole = (actorRole: UserRole, targetRole: UserRole) => {
+  if (targetRole === "super_admin") {
+    return actorRole === "super_admin";
+  }
+  return canManageRole(actorRole, targetRole);
+};
+

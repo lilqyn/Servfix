@@ -125,7 +125,7 @@ const convertToWebp = async (buffer: Buffer) => {
 };
 
 const createUploadHandler =
-  (prefix: "services" | "community" | "avatars" | "banners" | "pages") =>
+  (prefix: "services" | "community" | "avatars" | "banners" | "pages" | "disputes") =>
   asyncHandler(async (req, res) => {
     if (!isS3Configured()) {
       return res.status(500).json({
@@ -213,6 +213,14 @@ uploadsRouter.post(
 );
 
 uploadsRouter.post(
+  "/dispute-image",
+  authRequired,
+  requireRole("buyer", "admin"),
+  handleUpload,
+  createUploadHandler("disputes"),
+);
+
+uploadsRouter.post(
   "/community-video",
   authRequired,
   handleVideoUpload,
@@ -236,7 +244,7 @@ uploadsRouter.post(
 uploadsRouter.post(
   "/page-image",
   authRequired,
-  requirePermission("settings.update"),
+  requirePermission("settings.content.update"),
   handleUpload,
   createUploadHandler("pages"),
 );

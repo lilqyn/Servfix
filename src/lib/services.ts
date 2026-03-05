@@ -1,4 +1,5 @@
 import type { ApiService, BoostType } from "./api";
+import { formatCurrencyAmount, type CurrencyCode } from "./currency";
 
 export type ServiceSummary = {
   id: string;
@@ -25,6 +26,7 @@ export type ServiceDetailPackage = {
   id: string;
   name: string;
   price: number;
+  currency: CurrencyCode;
   priceMax?: number | null;
   description: string;
   features: string[];
@@ -89,7 +91,7 @@ function toNumber(value: unknown): number {
 
 function formatPrice(
   amount: number,
-  currency: "GHS" | "USD" | "EUR",
+  currency: CurrencyCode,
   pricingType?: "flat" | "per_unit",
   unitLabel?: string | null,
   pricingModel?: "fixed" | "negotiable" | "market",
@@ -99,12 +101,10 @@ function formatPrice(
     return "Contact for pricing";
   }
 
-  const formatted = new Intl.NumberFormat("en-GH", {
-    style: "currency",
-    currency,
+  const formatted = formatCurrencyAmount(amount, currency, {
     currencyDisplay: "code",
     maximumFractionDigits: 0,
-  }).format(amount);
+  });
 
   if (pricingModel && pricingModel !== "fixed") {
     const maxValue =
@@ -112,12 +112,10 @@ function formatPrice(
         ? priceMax
         : null;
     const formattedMax = maxValue
-      ? new Intl.NumberFormat("en-GH", {
-          style: "currency",
-          currency,
+      ? formatCurrencyAmount(maxValue, currency, {
           currencyDisplay: "code",
           maximumFractionDigits: 0,
-        }).format(maxValue)
+        })
       : null;
     const rangeLabel = formattedMax ? `${formatted} - ${formattedMax}` : formatted;
     const modelLabel = pricingModel === "market" ? "Market range" : "Negotiable range";
@@ -277,6 +275,7 @@ export function mapServiceToDetail(service: ApiService): ServiceDetailData {
             id: tier.id,
             name: tierName,
             price: toNumber(tier.price),
+            currency: tier.currency,
             priceMax: toNumber(tier.priceMax ?? tier.price),
             description: `${tierName} package`,
             features: [`Delivery in ${deliveryTime}`, revisionsLabel],
@@ -293,6 +292,7 @@ export function mapServiceToDetail(service: ApiService): ServiceDetailData {
             id: "basic",
             name: "Basic",
             price: 0,
+            currency: "GHS",
             description: "Custom quote required",
             features: ["Flexible delivery", "Custom scope"],
             deliveryTime: "Flexible",

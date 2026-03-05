@@ -20,6 +20,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Calendar, MapPin, MessageSquare, CheckCircle, Clock, AlertCircle } from "lucide-react";
 import { useOrders } from "@/hooks/useOrders";
 import { requestOrderRelease, updateOrderStatus } from "@/lib/api";
+import { formatCurrencyAmount, type CurrencyCode } from "@/lib/currency";
 import type { ApiOrderStatus, ApiOrderUser } from "@/lib/api";
 import { useMessages } from "@/contexts/MessagesContext";
 import { toast } from "sonner";
@@ -64,13 +65,11 @@ const toNumber = (value: unknown) => {
   return 0;
 };
 
-const formatCurrency = (amount: number, currency: "GHS" | "USD" | "EUR") =>
-  new Intl.NumberFormat("en-GH", {
-    style: "currency",
-    currency,
+const formatCurrency = (amount: number, currency: CurrencyCode) =>
+  formatCurrencyAmount(amount, currency, {
     currencyDisplay: "code",
     maximumFractionDigits: 0,
-  }).format(amount);
+  });
 
 const mapStatus = (status: ApiOrderStatus): OrderStatus => {
   switch (status) {
@@ -80,10 +79,14 @@ const mapStatus = (status: ApiOrderStatus): OrderStatus => {
     case "accepted":
       return "confirmed";
     case "in_progress":
-      return "in_progress";
+    case "delivery_submitted":
     case "delivered":
+    case "dispute_open":
+      return "in_progress";
+    case "release_approved":
     case "approved":
     case "released":
+    case "disbursed":
       return "completed";
     default:
       return "cancelled";
@@ -91,10 +94,14 @@ const mapStatus = (status: ApiOrderStatus): OrderStatus => {
 };
 
 const mapEscrowStatus = (status: ApiOrderStatus): Order["escrowStatus"] => {
-  if (status === "released") {
+  if (["release_approved", "released", "disbursed"].includes(status)) {
     return "released";
   }
-  if (["paid_to_escrow", "accepted", "in_progress", "delivered", "approved"].includes(status)) {
+  if (
+    ["paid_to_escrow", "accepted", "in_progress", "delivery_submitted", "delivered", "dispute_open", "approved"].includes(
+      status,
+    )
+  ) {
     return "held";
   }
   return "pending";
@@ -138,7 +145,7 @@ const OrdersList = () => {
         clientName: getDisplayName(client),
         clientAvatar: "",
         service: order.service?.title ?? "Service",
-        date: order.createdAt ? format(new Date(order.createdAt), "MMM d, yyyy") : "—",
+        date: order.createdAt ? format(new Date(order.createdAt), "MMM d, yyyy") : "-",
         location: formatLocation(order.service?.locationCity ?? null),
         amount: formatCurrency(gross, order.currency),
         gross,
@@ -244,7 +251,7 @@ const OrdersList = () => {
           ? "Order accepted."
           : status === "cancelled"
             ? "Order declined."
-            : "Order marked complete.";
+            : "Order marked complete and sent for buyer review.";
       toast.success(message);
       await queryClient.invalidateQueries({ queryKey: ["orders"] });
     } catch (err) {
@@ -281,7 +288,7 @@ const OrdersList = () => {
     setReleaseError(null);
     try {
       await requestOrderRelease(releaseOrder.id, { percent, note: releaseReason.trim() });
-      toast.success("Payment request sent to admin.");
+      toast.success("Earnings release request sent to admin.");
       setReleaseDialogOpen(false);
       setReleaseOrder(null);
       await queryClient.invalidateQueries({ queryKey: ["orders"] });
@@ -301,7 +308,7 @@ const OrdersList = () => {
       order.gross > 0 ? Math.round((order.fee / order.gross) * 1000) / 10 : null;
     const canRequestRelease =
       order.amountPaidNet > order.amountReleasedNet &&
-      ["paid_to_escrow", "accepted", "in_progress", "delivered"].includes(order.rawStatus);
+      ["paid_to_escrow", "accepted", "in_progress", "delivery_submitted", "delivered"].includes(order.rawStatus);
 
     return (
     <div className="flex items-start gap-4 p-4 border border-border/50 rounded-lg hover:bg-muted/50 transition-colors">
@@ -362,7 +369,7 @@ const OrdersList = () => {
                 size="sm"
                 onClick={() => handleReleaseRequest(order)}
               >
-                Request Payment
+                Request Earnings Release
               </Button>
             )}
             {(canAccept || canDecline) && (
@@ -389,7 +396,7 @@ const OrdersList = () => {
                 )}
               </>
             )}
-            {order.status === "in_progress" && (
+            {order.rawStatus === "in_progress" && (
               <Button
                 variant="green"
                 size="sm"
@@ -451,7 +458,7 @@ const OrdersList = () => {
         >
           <DialogContent className="sm:max-w-md">
             <DialogHeaderUi>
-              <DialogTitle>Request Payment</DialogTitle>
+              <DialogTitle>Request earnings release</DialogTitle>
               <DialogDescription>
                 Request up to 20% total of the escrow for this order. Admin will review the request.
               </DialogDescription>
@@ -534,3 +541,4 @@ const OrdersList = () => {
 };
 
 export default OrdersList;
+

@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { fetchAdminAnalytics } from "@/lib/api";
+import { formatCurrencyAmount, type CurrencyCode } from "@/lib/currency";
 import {
   AreaChart,
   Area,
@@ -66,12 +67,11 @@ const AdminAnalytics = () => {
 
   const formatCurrency = (value: number) => {
     try {
-      return new Intl.NumberFormat(locale, {
-        style: "currency",
-        currency,
+      return formatCurrencyAmount(value, currency as CurrencyCode, {
+        locale,
         currencyDisplay: "code",
         maximumFractionDigits: 0,
-      }).format(value);
+      });
     } catch {
       return `${currency} ${Number(value).toLocaleString()}`;
     }
