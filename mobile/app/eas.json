@@ -1,0 +1,47 @@
+{
+  "cli": {
+    "version": ">= 10.0.0",
+    "appVersionSource": "remote"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal"
+    },
+    "internal": {
+      "distribution": "internal",
+      "channel": "internal",
+      "autoIncrement": true,
+      "android": {
+        "buildType": "app-bundle"
+      },
+      "env": {
+        "EXPO_PUBLIC_SERVFIX_API_URL": "https://www.servfixgh.com"
+      }
+    },
+    "production": {
+      "channel": "production",
+      "autoIncrement": true,
+      "android": {
+        "buildType": "app-bundle"
+      },
+      "env": {
+        "EXPO_PUBLIC_SERVFIX_API_URL": "https://www.servfixgh.com"
+      }
+    }
+  },
+  "submit": {
+    "internal": {
+      "android": {
+        "serviceAccountKeyPath": "./keys/play-service-account.json",
+        "track": "internal"
+      }
+    },
+    "production": {
+      "android": {
+        "serviceAccountKeyPath": "./keys/play-service-account.json",
+        "track": "production"
+      }
+    }
+  }
+}

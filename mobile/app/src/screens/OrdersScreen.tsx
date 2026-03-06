@@ -2,16 +2,23 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useIsFocused } from "@react-navigation/native";
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   Linking,
   Pressable,
   RefreshControl,
+  ScrollView,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from "react-native";
 import {
   createOrderPaymentCheckout,
+  updateOrderStatus,
+  approveOrderCompletion,
+  openOrderDispute,
+  requestOrderRelease,
   fetchOrderPayments,
   fetchOrders,
   fetchPublicSettings,
@@ -30,10 +37,13 @@ import type {
 type Props = {
   onOpenSignIn: () => void;
   onOpenPaymentStatus: (params: PaymentReturnParams) => void;
+  onOpenOrder: (order: Order) => void;
   refreshToken?: string;
 };
 
 type OrderBucket = "all" | "active" | "completed" | "cancelled";
+
+type OrderAction = "accept" | "deliver" | "approve" | "dispute" | "request_release";
 
 type FilterChip = {
   key: OrderBucket;
@@ -232,15 +242,24 @@ const getStatusTone = (status: OrderStatus) => {
   };
 };
 
-export function OrdersScreen({ onOpenSignIn, onOpenPaymentStatus, refreshToken }: Props) {
+export function OrdersScreen({
+  onOpenSignIn,
+  onOpenPaymentStatus,
+  onOpenOrder,
+  refreshToken,
+}: Props) {
   const { user } = useAuth();
+  const { width } = useWindowDimensions();
+  const isCompact = width < 380;
   const isFocused = useIsFocused();
   const [orders, setOrders] = useState<Order[]>([]);
   const [selectedFilter, setSelectedFilter] = useState<OrderBucket>("all");
   const [isLoading, setIsLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [paymentError, setPaymentError] = useState<string | null>(null);
+  const [activeOrderAction, setActiveOrderAction] = useState<string | null>(null);
   const [pendingPaymentsByOrderId, setPendingPaymentsByOrderId] = useState<
     Record<string, OrderPayment | null>
   >({});
@@ -363,6 +382,84 @@ export function OrdersScreen({ onOpenSignIn, onOpenPaymentStatus, refreshToken }
     [defaultProvider, enabledProviders],
   );
 
+  const runOrderAction = useCallback(
+    async (action: OrderAction, orderId: string, execute: () => Promise<unknown>) => {
+      const actionKey = `${orderId}:${action}`;
+      setActiveOrderAction(actionKey);
+      setActionError(null);
+
+      try {
+        await execute();
+        void loadOrders("refresh");
+      } catch (nextError) {
+        setActionError(nextError instanceof Error ? nextError.message : "Could not complete the order action.");
+      } finally {
+        setActiveOrderAction(null);
+      }
+    },
+    [loadOrders],
+  );
+
+  const acceptOrder = useCallback(
+    (orderId: string) =>
+      void runOrderAction("accept", orderId, () =>
+        updateOrderStatus({ orderId, status: "accepted" }),
+      ),
+    [runOrderAction],
+  );
+
+  const markDelivered = useCallback(
+    (orderId: string) =>
+      void runOrderAction("deliver", orderId, () =>
+        updateOrderStatus({ orderId, status: "delivered" }),
+      ),
+    [runOrderAction],
+  );
+
+  const approveCompletion = useCallback(
+    (orderId: string) =>
+      void runOrderAction("approve", orderId, () => approveOrderCompletion(orderId)),
+    [runOrderAction],
+  );
+
+  const requestPayout = useCallback(
+    (orderId: string) =>
+      void runOrderAction("request_release", orderId, () =>
+        requestOrderRelease({
+          orderId,
+          percent: 20,
+          note: "Requesting milestone payout from completed work.",
+        }),
+      ),
+    [runOrderAction],
+  );
+
+  const openDispute = useCallback(
+    (orderId: string) => {
+      Alert.alert(
+        "Open dispute",
+        "Do you want to open a dispute for this order? An admin will review the case.",
+        [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "Open dispute",
+            style: "destructive",
+            onPress: () =>
+              void runOrderAction("dispute", orderId, () =>
+                openOrderDispute({
+                  orderId,
+                  reason: "Order outcome is unsatisfactory.",
+                  details:
+                    "Please review this order. The buyer is raising a dispute during the review period.",
+                }),
+              ),
+          },
+        ],
+      );
+    },
+    [runOrderAction],
+  );
+
   useEffect(() => {
     if (!user) {
       return;
@@ -374,6 +471,7 @@ export function OrdersScreen({ onOpenSignIn, onOpenPaymentStatus, refreshToken }
     if (!user) {
       setOrders([]);
       setError(null);
+      setActionError(null);
       setPaymentError(null);
       setPendingPaymentsByOrderId({});
       setIsLoading(false);
@@ -450,14 +548,18 @@ export function OrdersScreen({ onOpenSignIn, onOpenPaymentStatus, refreshToken }
 
   return (
     <View style={styles.page}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Orders</Text>
+      <View style={[styles.header, isCompact && styles.headerCompact]}>
+        <Text style={[styles.title, isCompact && styles.titleCompact]}>Orders</Text>
         <Text style={styles.supportingText}>
           Your buyer/provider orders now load from the existing `/api/orders` endpoint.
         </Text>
       </View>
 
-      <View style={styles.filterRow}>
+      <ScrollView
+        contentContainerStyle={[styles.filterRow, isCompact && styles.filterRowCompact]}
+        horizontal
+        showsHorizontalScrollIndicator={false}
+      >
         {FILTERS.map((filter) => {
           const isActive = filter.key === selectedFilter;
           return (
@@ -472,7 +574,7 @@ export function OrdersScreen({ onOpenSignIn, onOpenPaymentStatus, refreshToken }
             </Pressable>
           );
         })}
-      </View>
+      </ScrollView>
 
       {error ? (
         <View style={styles.errorCard}>
@@ -480,6 +582,15 @@ export function OrdersScreen({ onOpenSignIn, onOpenPaymentStatus, refreshToken }
           <Text style={styles.errorBody}>{error}</Text>
           <Pressable onPress={() => void loadOrders()} style={styles.retryButton}>
             <Text style={styles.retryButtonText}>Retry</Text>
+          </Pressable>
+        </View>
+      ) : null}
+      {actionError ? (
+        <View style={styles.errorCard}>
+          <Text style={styles.errorTitle}>Could not update order</Text>
+          <Text style={styles.errorBody}>{actionError}</Text>
+          <Pressable onPress={() => setActionError(null)} style={styles.retryButton}>
+            <Text style={styles.retryButtonText}>Dismiss</Text>
           </Pressable>
         </View>
       ) : null}
@@ -494,7 +605,7 @@ export function OrdersScreen({ onOpenSignIn, onOpenPaymentStatus, refreshToken }
       ) : null}
 
       <FlatList
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={[styles.listContent, isCompact && styles.listContentCompact]}
         data={visibleOrders}
         keyExtractor={(item) => item.id}
         refreshControl={
@@ -523,6 +634,16 @@ export function OrdersScreen({ onOpenSignIn, onOpenPaymentStatus, refreshToken }
               ? "Pay initial amount"
               : "Payable amount"
             : "Pay now";
+          const isProvider = user.role === "provider";
+          const canProviderAccept = isProvider && item.status === "paid_to_escrow";
+          const canProviderDeliver = isProvider && item.status === "in_progress";
+          const canProviderRequestPayout = isProvider && item.status === "delivery_submitted";
+          const canBuyerApprove =
+            user.role === "buyer" && ["delivery_submitted", "delivered"].includes(item.status);
+          const canBuyerDispute =
+            user.role === "buyer" && ["delivery_submitted", "delivered"].includes(item.status);
+          const isActioningThisOrder = (action: OrderAction) =>
+            activeOrderAction === `${item.id}:${action}`;
 
           return (
             <View style={styles.orderCard}>
@@ -543,19 +664,19 @@ export function OrdersScreen({ onOpenSignIn, onOpenPaymentStatus, refreshToken }
               </View>
 
               <View style={styles.metaGrid}>
-                <View style={styles.metaBlock}>
+                <View style={[styles.metaBlock, isCompact && styles.metaBlockCompact]}>
                   <Text style={styles.metaLabel}>Amount</Text>
                   <Text style={styles.metaValue}>{formatCurrency(item.amountGross, item.currency)}</Text>
                 </View>
-                <View style={styles.metaBlock}>
+                <View style={[styles.metaBlock, isCompact && styles.metaBlockCompact]}>
                   <Text style={styles.metaLabel}>Tier</Text>
                   <Text style={styles.metaValue}>{tierName}</Text>
                 </View>
-                <View style={styles.metaBlock}>
+                <View style={[styles.metaBlock, isCompact && styles.metaBlockCompact]}>
                   <Text style={styles.metaLabel}>Created</Text>
                   <Text style={styles.metaValue}>{formatDate(item.createdAt)}</Text>
                 </View>
-                <View style={styles.metaBlock}>
+                <View style={[styles.metaBlock, isCompact && styles.metaBlockCompact]}>
                   <Text style={styles.metaLabel}>Location</Text>
                   <Text numberOfLines={1} style={styles.metaValue}>
                     {item.service.locationCity || "Remote / flexible"}
@@ -563,7 +684,7 @@ export function OrdersScreen({ onOpenSignIn, onOpenPaymentStatus, refreshToken }
                 </View>
               </View>
 
-              <View style={styles.footerRow}>
+              <View style={[styles.footerRow, isCompact && styles.footerRowCompact]}>
                 <Text style={styles.footerText}>
                   Net provider: {formatCurrency(item.amountNetProvider, item.currency)}
                 </Text>
@@ -572,10 +693,111 @@ export function OrdersScreen({ onOpenSignIn, onOpenPaymentStatus, refreshToken }
                 ) : null}
               </View>
 
+              <Pressable onPress={() => onOpenOrder(item)} style={styles.viewDetailButton}>
+                <Text style={styles.viewDetailButtonText}>View full details</Text>
+              </Pressable>
+
+              <View style={[styles.actionRow, isCompact && styles.actionRowCompact]}>
+                {canProviderAccept ? (
+                  <Pressable
+                    onPress={() => acceptOrder(item.id)}
+                    disabled={isActioningThisOrder("accept")}
+                    style={[
+                      styles.actionButton,
+                      styles.actionButtonPrimary,
+                      isCompact && styles.actionButtonCompact,
+                      isActioningThisOrder("accept") && styles.buttonDisabled,
+                    ]}
+                  >
+                    {isActioningThisOrder("accept") ? (
+                      <ActivityIndicator color="#ffffff" size="small" />
+                    ) : (
+                      <Text style={styles.actionButtonText}>Accept order</Text>
+                    )}
+                  </Pressable>
+                ) : null}
+
+                {canProviderDeliver ? (
+                  <Pressable
+                    onPress={() => markDelivered(item.id)}
+                    disabled={isActioningThisOrder("deliver")}
+                    style={[
+                      styles.actionButton,
+                      styles.actionButtonPrimary,
+                      isCompact && styles.actionButtonCompact,
+                      isActioningThisOrder("deliver") && styles.buttonDisabled,
+                    ]}
+                  >
+                    {isActioningThisOrder("deliver") ? (
+                      <ActivityIndicator color="#ffffff" size="small" />
+                    ) : (
+                      <Text style={styles.actionButtonText}>Mark delivered</Text>
+                    )}
+                  </Pressable>
+                ) : null}
+
+                {canProviderRequestPayout ? (
+                  <Pressable
+                    onPress={() => requestPayout(item.id)}
+                    disabled={isActioningThisOrder("request_release")}
+                    style={[
+                      styles.actionButton,
+                      styles.actionButtonSecondary,
+                      isCompact && styles.actionButtonCompact,
+                      isActioningThisOrder("request_release") && styles.buttonDisabled,
+                    ]}
+                  >
+                    {isActioningThisOrder("request_release") ? (
+                      <ActivityIndicator color={palette.ink} size="small" />
+                    ) : (
+                      <Text style={styles.actionButtonTextSecondary}>Request payout</Text>
+                    )}
+                  </Pressable>
+                ) : null}
+
+                {canBuyerApprove ? (
+                  <Pressable
+                    onPress={() => approveCompletion(item.id)}
+                    disabled={isActioningThisOrder("approve")}
+                    style={[
+                      styles.actionButton,
+                      styles.actionButtonPrimary,
+                      isCompact && styles.actionButtonCompact,
+                      isActioningThisOrder("approve") && styles.buttonDisabled,
+                    ]}
+                  >
+                    {isActioningThisOrder("approve") ? (
+                      <ActivityIndicator color="#ffffff" size="small" />
+                    ) : (
+                      <Text style={styles.actionButtonText}>Approve & release</Text>
+                    )}
+                  </Pressable>
+                ) : null}
+
+                {canBuyerDispute ? (
+                  <Pressable
+                    onPress={() => openDispute(item.id)}
+                    disabled={isActioningThisOrder("dispute")}
+                    style={[
+                      styles.actionButton,
+                      styles.actionButtonDanger,
+                      isCompact && styles.actionButtonCompact,
+                      isActioningThisOrder("dispute") && styles.buttonDisabled,
+                    ]}
+                  >
+                    {isActioningThisOrder("dispute") ? (
+                      <ActivityIndicator color="#ffffff" size="small" />
+                    ) : (
+                      <Text style={styles.actionButtonText}>Open dispute</Text>
+                    )}
+                  </Pressable>
+                ) : null}
+              </View>
+
               {canRetryPayment && paymentReturnParams ? (
                 <Pressable
                   onPress={() => onOpenPaymentStatus(paymentReturnParams)}
-                  style={styles.paymentRetryButton}
+                  style={[styles.paymentRetryButton, isCompact && styles.paymentRetryButtonCompact]}
                 >
                   <Text style={styles.paymentRetryButtonText}>Check payment</Text>
                 </Pressable>
@@ -584,7 +806,11 @@ export function OrdersScreen({ onOpenSignIn, onOpenPaymentStatus, refreshToken }
                 <Pressable
                   disabled={isPayingOrder}
                   onPress={() => void startOrderPayment(item.id, pendingOrderPayment)}
-                  style={[styles.paymentRetryButton, isPayingOrder && styles.buttonDisabled]}
+                  style={[
+                    styles.paymentRetryButton,
+                    isCompact && styles.paymentRetryButtonCompact,
+                    isPayingOrder && styles.buttonDisabled,
+                  ]}
                 >
                   {isPayingOrder ? (
                     <ActivityIndicator color="#ffffff" size="small" />
@@ -626,10 +852,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 18,
   },
+  headerCompact: {
+    paddingHorizontal: 16,
+    paddingTop: 16,
+  },
   title: {
-    color: palette.ink,
+    color: palette.accentDeep,
     fontSize: 24,
     fontWeight: "800",
+    letterSpacing: 0.2,
+  },
+  titleCompact: {
+    fontSize: 22,
   },
   supportingText: {
     color: palette.slate,
@@ -663,10 +897,14 @@ const styles = StyleSheet.create({
   },
   filterRow: {
     flexDirection: "row",
-    flexWrap: "wrap",
     gap: 8,
     paddingHorizontal: 20,
+    paddingBottom: 2,
     paddingTop: 14,
+  },
+  filterRowCompact: {
+    paddingHorizontal: 16,
+    paddingTop: 12,
   },
   filterChip: {
     backgroundColor: "#ffffff",
@@ -677,8 +915,8 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   filterChipActive: {
-    backgroundColor: palette.ink,
-    borderColor: palette.ink,
+    backgroundColor: palette.accentDeep,
+    borderColor: palette.accentDeep,
   },
   filterChipText: {
     color: palette.slate,
@@ -725,6 +963,10 @@ const styles = StyleSheet.create({
     padding: 20,
     paddingBottom: 140,
   },
+  listContentCompact: {
+    padding: 16,
+    paddingBottom: 132,
+  },
   orderCard: {
     backgroundColor: palette.card,
     borderColor: palette.line,
@@ -770,6 +1012,9 @@ const styles = StyleSheet.create({
   metaBlock: {
     minWidth: "47%",
   },
+  metaBlockCompact: {
+    minWidth: "100%",
+  },
   metaLabel: {
     color: palette.slate,
     fontSize: 11,
@@ -790,20 +1035,83 @@ const styles = StyleSheet.create({
     gap: 12,
     justifyContent: "space-between",
   },
+  footerRowCompact: {
+    alignItems: "flex-start",
+    justifyContent: "flex-start",
+  },
   footerText: {
     color: palette.slate,
     fontSize: 12,
     fontWeight: "600",
   },
+  actionRow: {
+    alignItems: "flex-start",
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+  },
+  actionRowCompact: {
+    gap: 8,
+  },
+  viewDetailButton: {
+    alignSelf: "flex-start",
+    backgroundColor: "#f8fafc",
+    borderColor: "#cbd5e1",
+    borderRadius: 10,
+    borderWidth: 1,
+    marginBottom: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  viewDetailButtonText: {
+    color: palette.ink,
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  actionButton: {
+    alignItems: "center",
+    borderRadius: 12,
+    justifyContent: "center",
+    minHeight: 36,
+    minWidth: 130,
+    paddingHorizontal: 12,
+  },
+  actionButtonCompact: {
+    minWidth: "100%",
+  },
+  actionButtonPrimary: {
+    backgroundColor: palette.accentDeep,
+  },
+  actionButtonSecondary: {
+    backgroundColor: "#e2e8f0",
+    borderColor: "#cbd5e1",
+    borderWidth: 1,
+  },
+  actionButtonDanger: {
+    backgroundColor: palette.danger,
+  },
+  actionButtonText: {
+    color: "#ffffff",
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  actionButtonTextSecondary: {
+    color: palette.ink,
+    fontSize: 12,
+    fontWeight: "700",
+  },
   paymentRetryButton: {
     alignItems: "center",
     alignSelf: "flex-start",
-    backgroundColor: palette.ink,
+    backgroundColor: palette.accentDeep,
     borderRadius: 12,
     justifyContent: "center",
     minHeight: 38,
     minWidth: 130,
     paddingHorizontal: 12,
+  },
+  paymentRetryButtonCompact: {
+    alignSelf: "stretch",
   },
   buttonDisabled: {
     opacity: 0.65,

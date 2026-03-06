@@ -4,8 +4,12 @@ import type {
   CheckoutMethod,
   CheckoutProvider,
   CheckoutReturnTo,
+  Conversation,
+  ConversationMessage,
+  AppNotification,
   Order,
   OrderPayment,
+  OrderProgressReport,
   PaymentCheckoutResponse,
   PaymentVerifyResponse,
   PublicSettings,
@@ -182,6 +186,114 @@ export async function fetchOrderPayments(orderId: string): Promise<OrderPayment[
   return response.payments;
 }
 
+export async function fetchOrderProgressReports(
+  orderId: string,
+): Promise<OrderProgressReport[]> {
+  const response = await apiFetch<{ reports: OrderProgressReport[] }>(
+    `/api/orders/${orderId}/progress-reports`,
+  );
+  return response.reports;
+}
+
+export async function createOrderProgressReport(
+  orderId: string,
+  payload: { title: string; body?: string; percentComplete?: number },
+): Promise<{ report: OrderProgressReport; balancePayment?: OrderPayment | null }> {
+  return apiFetch<{ report: OrderProgressReport; balancePayment?: OrderPayment | null }>(
+    `/api/orders/${orderId}/progress-reports`,
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    },
+  );
+}
+
+export async function createOrderConversation(orderId: string): Promise<Conversation> {
+  const response = await apiFetch<{ conversation: Conversation }>(
+    "/api/messages/threads/from-order",
+    {
+      method: "POST",
+      body: JSON.stringify({ orderId }),
+    },
+  );
+  return response.conversation;
+}
+
+export async function fetchConversationMessages(threadId: string): Promise<ConversationMessage[]> {
+  const response = await apiFetch<{ messages: ConversationMessage[] }>(
+    `/api/messages/threads/${threadId}/messages`,
+  );
+  return response.messages;
+}
+
+export async function sendConversationMessage(
+  threadId: string,
+  content: string,
+): Promise<ConversationMessage> {
+  const response = await apiFetch<{ message: ConversationMessage }>(
+    `/api/messages/threads/${threadId}/messages`,
+    {
+      method: "POST",
+      body: JSON.stringify({ content }),
+    },
+  );
+  return response.message;
+}
+
+export async function markConversationRead(threadId: string): Promise<void> {
+  await apiFetch(`/api/messages/threads/${threadId}/read`, {
+    method: "POST",
+  });
+}
+
+export async function fetchNotifications(params: {
+  cursor?: string;
+  limit?: number;
+} = {}): Promise<{
+  notifications: AppNotification[];
+  nextCursor: string | null;
+  unreadCount: number;
+}> {
+  const query = new URLSearchParams();
+  query.set("limit", String(Math.max(1, Math.min(params.limit ?? 20, 50))));
+  if (params.cursor) {
+    query.set("cursor", params.cursor);
+  }
+  return apiFetch(`/api/notifications?${query.toString()}`);
+}
+
+export async function markNotificationsRead(input: {
+  ids?: string[];
+  all?: boolean;
+}): Promise<{ unreadCount: number }> {
+  return apiFetch("/api/notifications/mark-read", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export async function registerPushToken(input: {
+  token: string;
+  platform?: string;
+  projectId?: string | null;
+}): Promise<void> {
+  await apiFetch("/api/notifications/push-tokens", {
+    method: "POST",
+    body: JSON.stringify({
+      token: input.token,
+      platform: input.platform ?? "unknown",
+      projectId: input.projectId ?? undefined,
+    }),
+  });
+}
+
+export async function unregisterPushToken(input: { token: string }): Promise<void> {
+  await apiFetch("/api/notifications/push-tokens", {
+    method: "DELETE",
+    body: JSON.stringify({ token: input.token }),
+  });
+}
+
 export async function fetchPublicSettings(): Promise<PublicSettings> {
   const response = await apiFetch<Partial<PublicSettings>>("/api/settings");
   const configuredProviders = response.payments?.enabledProviders ?? [];
@@ -214,6 +326,60 @@ export async function createOrder(input: {
     body: JSON.stringify(input),
   });
   return response.order;
+}
+
+export async function updateOrderStatus(input: {
+  orderId: string;
+  status: "accepted" | "cancelled" | "delivered";
+}): Promise<Order> {
+  const response = await apiFetch<{ order: Order }>(`/api/orders/${input.orderId}/status`, {
+    method: "PATCH",
+    body: JSON.stringify({ status: input.status }),
+  });
+  return response.order;
+}
+
+export async function approveOrderCompletion(orderId: string): Promise<Order> {
+  const response = await apiFetch<{ order: Order }>(`/api/orders/${orderId}/approve-completion`, {
+    method: "POST",
+  });
+  return response.order;
+}
+
+export async function openOrderDispute(input: {
+  orderId: string;
+  reason: string;
+  details?: string;
+}): Promise<{ status: string; dispute?: unknown }> {
+  const response = await apiFetch<{ status: string; dispute?: unknown }>(
+    `/api/orders/${input.orderId}/disputes`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        reason: input.reason.trim(),
+        details: input.details?.trim(),
+      }),
+    },
+  );
+  return response;
+}
+
+export async function requestOrderRelease(input: {
+  orderId: string;
+  percent: number;
+  note: string;
+}): Promise<{ request: unknown; status?: string }> {
+  const response = await apiFetch<{ request: unknown; status?: string }>(
+    `/api/orders/${input.orderId}/release-requests`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        percent: input.percent,
+        note: input.note.trim(),
+      }),
+    },
+  );
+  return response;
 }
 
 export async function createPaymentCheckout(input: {

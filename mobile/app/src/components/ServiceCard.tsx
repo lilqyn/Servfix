@@ -18,7 +18,7 @@ export function ServiceCard({ service, onPress }: Props) {
         <View style={styles.badge}>
           <Text style={styles.badgeText}>{service.category}</Text>
         </View>
-        <Text style={styles.locationText}>
+        <Text numberOfLines={1} style={styles.locationText}>
           {service.isRemote ? "Remote" : service.locationCity || "On-site"}
         </Text>
       </View>
@@ -29,7 +29,9 @@ export function ServiceCard({ service, onPress }: Props) {
       </Text>
 
       <View style={styles.metaRow}>
-        <Text style={styles.provider}>{providerName}</Text>
+        <Text numberOfLines={1} style={styles.provider}>
+          {providerName}
+        </Text>
         <Text style={styles.price}>
           {tier ? `${tier.currency} ${tier.price}` : "Quote based"}
         </Text>
@@ -42,37 +44,40 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: palette.card,
     borderColor: palette.line,
-    borderRadius: 20,
+    borderRadius: 18,
     borderWidth: 1,
     gap: 12,
     padding: 16,
   },
   headerRow: {
-    alignItems: "center",
+    alignItems: "flex-start",
     flexDirection: "row",
+    gap: 8,
     justifyContent: "space-between",
   },
   badge: {
     backgroundColor: palette.accentSoft,
     borderRadius: 999,
-    paddingHorizontal: 10,
+    paddingHorizontal: 11,
     paddingVertical: 6,
   },
   badgeText: {
-    color: palette.accent,
+    color: palette.accentDeep,
     fontSize: 12,
-    fontWeight: "700",
+    fontWeight: "800",
     textTransform: "uppercase",
   },
   locationText: {
     color: palette.slate,
+    flex: 1,
     fontSize: 12,
     fontWeight: "600",
+    textAlign: "right",
   },
   title: {
     color: palette.ink,
     fontSize: 17,
-    fontWeight: "700",
+    fontWeight: "800",
   },
   description: {
     color: palette.slate,
@@ -86,8 +91,10 @@ const styles = StyleSheet.create({
   },
   provider: {
     color: palette.ink,
+    flex: 1,
     fontSize: 13,
     fontWeight: "600",
+    marginRight: 10,
   },
   price: {
     color: palette.gold,

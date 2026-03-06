@@ -1,0 +1,6 @@
+﻿<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
+<map>
+    <boolean name='remote_js_debug' value='false' />
+    <boolean name='js_bundle_deltas' value='false' />
+    <boolean name='hot_module_replacement' value='false' />
+</map>

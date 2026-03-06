@@ -1,4 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as SecureStore from "expo-secure-store";
 import {
   createContext,
   useContext,
@@ -18,9 +19,21 @@ import {
 } from "../lib/api";
 import type { AuthUser } from "../types";
 
-const STORAGE_KEY = "servfix-mobile-auth";
+const USER_STORAGE_KEY = "servfix-mobile-user";
+const LEGACY_STORAGE_KEY = "servfix-mobile-auth";
+const ACCESS_TOKEN_STORAGE_KEY = "servfix_mobile_access_token";
+const REFRESH_TOKEN_STORAGE_KEY = "servfix_mobile_refresh_token";
 
-type StoredAuthState = {
+type StoredUserState = {
+  user: AuthUser;
+};
+
+type StoredAuthTokens = {
+  accessToken: string;
+  refreshToken: string;
+};
+
+type LegacyStoredAuthState = {
   user: AuthUser;
   accessToken: string;
   refreshToken: string;
@@ -44,28 +57,112 @@ type AuthContextValue = {
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
-async function persistState(
-  user: AuthUser | null,
-  tokens: ReturnType<typeof getSessionTokens> = getSessionTokens(),
-) {
-  if (!user) {
-    await AsyncStorage.removeItem(STORAGE_KEY);
-    return;
+const parseJson = <T,>(raw: string | null) => {
+  if (!raw) {
+    return null;
   }
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    return null;
+  }
+};
 
-  if (!tokens) {
-    await AsyncStorage.removeItem(STORAGE_KEY);
+async function persistUser(user: AuthUser | null) {
+  if (!user) {
+    await AsyncStorage.removeItem(USER_STORAGE_KEY);
     return;
   }
 
   await AsyncStorage.setItem(
-    STORAGE_KEY,
+    USER_STORAGE_KEY,
     JSON.stringify({
       user,
-      accessToken: tokens.accessToken,
-      refreshToken: tokens.refreshToken,
-    } satisfies StoredAuthState),
+    } satisfies StoredUserState),
   );
+}
+
+async function persistTokens(tokens: StoredAuthTokens | null = getSessionTokens()) {
+  if (!tokens) {
+    await Promise.all([
+      SecureStore.deleteItemAsync(ACCESS_TOKEN_STORAGE_KEY),
+      SecureStore.deleteItemAsync(REFRESH_TOKEN_STORAGE_KEY),
+    ]);
+    return;
+  }
+
+  await Promise.all([
+    SecureStore.setItemAsync(ACCESS_TOKEN_STORAGE_KEY, tokens.accessToken),
+    SecureStore.setItemAsync(REFRESH_TOKEN_STORAGE_KEY, tokens.refreshToken),
+  ]);
+}
+
+async function loadStoredAuthState(): Promise<{
+  user: AuthUser | null;
+  tokens: StoredAuthTokens | null;
+}> {
+  const [storedUserRaw, accessToken, refreshToken, legacyRaw] = await Promise.all([
+    AsyncStorage.getItem(USER_STORAGE_KEY),
+    SecureStore.getItemAsync(ACCESS_TOKEN_STORAGE_KEY),
+    SecureStore.getItemAsync(REFRESH_TOKEN_STORAGE_KEY),
+    AsyncStorage.getItem(LEGACY_STORAGE_KEY),
+  ]);
+
+  const storedUser = parseJson<StoredUserState>(storedUserRaw)?.user ?? null;
+  const tokens = accessToken && refreshToken ? { accessToken, refreshToken } : null;
+  const legacy = parseJson<LegacyStoredAuthState>(legacyRaw);
+
+  let user = storedUser;
+  let nextTokens = tokens;
+
+  if (legacy) {
+    if (!user) {
+      user = legacy.user;
+    }
+    if (!nextTokens && legacy.accessToken && legacy.refreshToken) {
+      nextTokens = {
+        accessToken: legacy.accessToken,
+        refreshToken: legacy.refreshToken,
+      };
+    }
+
+    const migrationWrites: Promise<unknown>[] = [AsyncStorage.removeItem(LEGACY_STORAGE_KEY)];
+
+    if (legacy.user) {
+      migrationWrites.push(
+        AsyncStorage.setItem(
+          USER_STORAGE_KEY,
+          JSON.stringify({
+            user: legacy.user,
+          } satisfies StoredUserState),
+        ),
+      );
+    }
+
+    if (legacy.accessToken && legacy.refreshToken) {
+      migrationWrites.push(
+        SecureStore.setItemAsync(ACCESS_TOKEN_STORAGE_KEY, legacy.accessToken),
+      );
+      migrationWrites.push(
+        SecureStore.setItemAsync(REFRESH_TOKEN_STORAGE_KEY, legacy.refreshToken),
+      );
+    }
+
+    await Promise.all(migrationWrites);
+  }
+
+  return {
+    user,
+    tokens: nextTokens,
+  };
+}
+
+async function clearStoredAuthState() {
+  await Promise.all([
+    persistUser(null),
+    persistTokens(null),
+    AsyncStorage.removeItem(LEGACY_STORAGE_KEY),
+  ]);
 }
 
 export function AuthProvider({ children }: PropsWithChildren) {
@@ -88,7 +185,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
 
   useEffect(() => {
     const unsubscribe = subscribeToSessionTokens((tokens) => {
-      void persistState(userRef.current, tokens);
+      void persistTokens(tokens);
     });
 
     return unsubscribe;
@@ -97,15 +194,13 @@ export function AuthProvider({ children }: PropsWithChildren) {
   useEffect(() => {
     const bootstrap = async () => {
       try {
-        const stored = await AsyncStorage.getItem(STORAGE_KEY);
-        if (stored && isMounted.current) {
-          const parsed = JSON.parse(stored) as StoredAuthState;
-          userRef.current = parsed.user;
-          setUser(parsed.user);
-          setSessionTokens({
-            accessToken: parsed.accessToken,
-            refreshToken: parsed.refreshToken,
-          });
+        const stored = await loadStoredAuthState();
+        if (isMounted.current && stored.user) {
+          userRef.current = stored.user;
+          setUser(stored.user);
+        }
+        if (stored.tokens) {
+          setSessionTokens(stored.tokens);
         }
 
         const remoteUser = await fetchCurrentUser();
@@ -115,7 +210,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
 
         userRef.current = remoteUser;
         setUser(remoteUser);
-        await persistState(remoteUser);
+        await persistUser(remoteUser);
       } catch {
         if (!isMounted.current) {
           return;
@@ -124,7 +219,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
         setSessionTokens(null);
         userRef.current = null;
         setUser(null);
-        await persistState(null);
+        await clearStoredAuthState();
       } finally {
         if (isMounted.current) {
           setIsBooting(false);
@@ -145,7 +240,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
 
       userRef.current = nextUser;
       setUser(nextUser);
-      await persistState(nextUser);
+      await persistUser(nextUser);
     } finally {
       if (isMounted.current) {
         setIsSigningIn(false);
@@ -181,7 +276,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
 
       userRef.current = nextUser;
       setUser(nextUser);
-      await persistState(nextUser);
+      await persistUser(nextUser);
     } finally {
       if (isMounted.current) {
         setIsSigningUp(false);
@@ -202,7 +297,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
 
     userRef.current = null;
     setUser(null);
-    await persistState(null);
+    await clearStoredAuthState();
   };
 
   return (

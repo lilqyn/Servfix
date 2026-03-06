@@ -5,6 +5,7 @@ import { prisma } from "../db.js";
 import { asyncHandler } from "../utils/async-handler.js";
 import { authRequired } from "../middleware/auth.js";
 import { signS3Key } from "../utils/s3.js";
+import { addPushToken, removePushToken } from "../utils/push-tokens.js";
 
 export const notificationsRouter = Router();
 
@@ -21,6 +22,16 @@ const markReadSchema = z
   .refine((data) => data.all || (data.ids && data.ids.length > 0), {
     message: "Provide ids or set all=true.",
   });
+
+const registerPushSchema = z.object({
+  token: z.string().min(10),
+  platform: z.string().optional(),
+  projectId: z.string().uuid().optional(),
+});
+
+const unregisterPushSchema = z.object({
+  token: z.string().min(10).optional(),
+});
 
 const resolveMediaUrl = async (key?: string | null) => {
   if (!key) {
@@ -376,5 +387,32 @@ notificationsRouter.post(
     });
 
     res.json({ unreadCount });
+  }),
+);
+
+notificationsRouter.post(
+  "/push-tokens",
+  authRequired,
+  asyncHandler(async (req, res) => {
+    const data = registerPushSchema.parse(req.body);
+    const userId = req.user!.id;
+    addPushToken(userId, {
+      token: data.token,
+      platform: data.platform ?? "unknown",
+      projectId: data.projectId,
+    });
+
+    res.json({ status: "ok" });
+  }),
+);
+
+notificationsRouter.delete(
+  "/push-tokens",
+  authRequired,
+  asyncHandler(async (req, res) => {
+    const data = unregisterPushSchema.parse(req.body ?? {});
+    const userId = req.user!.id;
+    removePushToken(userId, data.token);
+    res.json({ status: "ok" });
   }),
 );

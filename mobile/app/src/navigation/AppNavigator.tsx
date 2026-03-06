@@ -1,4 +1,8 @@
-import { NavigationContainer, type LinkingOptions } from "@react-navigation/native";
+import {
+  NavigationContainer,
+  createNavigationContainerRef,
+  type LinkingOptions,
+} from "@react-navigation/native";
 import {
   createNativeStackNavigator,
   type NativeStackScreenProps,
@@ -9,6 +13,7 @@ import {
   Pressable,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -17,27 +22,31 @@ import { BrowseScreen } from "../screens/BrowseScreen";
 import { HomeScreen } from "../screens/HomeScreen";
 import { OrdersScreen } from "../screens/OrdersScreen";
 import { PaymentReturnScreen } from "../screens/PaymentReturnScreen";
+import { NotificationsScreen } from "../screens/NotificationsScreen";
 import { ProfileScreen } from "../screens/ProfileScreen";
 import { ServiceDetailScreen } from "../screens/ServiceDetailScreen";
 import { SignInScreen } from "../screens/SignInScreen";
 import { SignUpScreen } from "../screens/SignUpScreen";
+import { OrderDetailScreen } from "../screens/OrderDetailScreen";
 import { palette } from "../theme";
-import type { PaymentReturnParams } from "../types";
+import type { Order, PaymentReturnParams } from "../types";
 
 type RootStackParamList = {
   Shell: { tab?: AppTab; refreshOrdersToken?: string } | undefined;
   SignIn: undefined;
   SignUp: undefined;
   ServiceDetail: { serviceId: string };
+  OrderDetail: { orderId: string; seedOrder?: Order; threadId?: string };
   PaymentReturn: PaymentReturnParams | undefined;
 };
 
-type AppTab = "home" | "browse" | "orders" | "account";
+type AppTab = "home" | "browse" | "notifications" | "orders" | "account";
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
+export const navRef = createNavigationContainerRef<RootStackParamList>();
 
 const linking: LinkingOptions<RootStackParamList> = {
-  prefixes: ["servfix://", "https://servfix.app", "https://www.servfix.app"],
+  prefixes: ["servfix://", "https://servfixgh.com", "https://www.servfixgh.com"],
   config: {
     screens: {
       Shell: "",
@@ -54,6 +63,8 @@ function ShellScreen({
   route,
 }: NativeStackScreenProps<RootStackParamList, "Shell">) {
   const { user } = useAuth();
+  const { width } = useWindowDimensions();
+  const isCompact = width < 380;
   const [tab, setTab] = useState<AppTab>(route.params?.tab ?? "home");
   const [ordersRefreshToken, setOrdersRefreshToken] = useState<string | undefined>(
     route.params?.refreshOrdersToken,
@@ -61,6 +72,11 @@ function ShellScreen({
 
   const openSignIn = () => navigation.navigate("SignIn");
   const openService = (serviceId: string) => navigation.navigate("ServiceDetail", { serviceId });
+  const openOrder = (order: Order) =>
+    navigation.navigate("OrderDetail", { orderId: order.id, seedOrder: order });
+  const openOrderById = (orderId: string, threadId?: string) =>
+    navigation.navigate("OrderDetail", { orderId, threadId });
+  const openNotifications = () => setTab("notifications");
 
   useEffect(() => {
     if (route.params?.tab) {
@@ -79,43 +95,173 @@ function ShellScreen({
     content = <BrowseScreen onOpenService={openService} />;
   }
 
+  if (tab === "notifications") {
+    content = <NotificationsScreen onOpenOrder={openOrderById} onOpenSignIn={openSignIn} />;
+  }
+
   if (tab === "orders") {
     content = (
       <OrdersScreen
         onOpenPaymentStatus={(params) => navigation.navigate("PaymentReturn", params)}
         onOpenSignIn={openSignIn}
+        onOpenOrder={openOrder}
         refreshToken={ordersRefreshToken}
       />
     );
   }
 
   if (tab === "account") {
-    content = <ProfileScreen onOpenSignIn={openSignIn} />;
+    content = (
+      <ProfileScreen onOpenSignIn={openSignIn} onOpenNotifications={openNotifications} />
+    );
   }
+
+  const leftTabs: Array<{
+    key: Exclude<AppTab, "home">;
+    label: string;
+    helper: string;
+    tone: string;
+    activeBg: string;
+    glyph: string;
+  }> = [
+    { key: "browse", label: "Browse", helper: "Discover", tone: "#15803d", activeBg: "#ecfdf3", glyph: "B" },
+    {
+      key: "notifications",
+      label: "Alerts",
+      helper: "Updates",
+      tone: "#0369a1",
+      activeBg: "#e0f2fe",
+      glyph: "N",
+    },
+    { key: "orders", label: "Orders", helper: "Track", tone: "#ea580c", activeBg: "#fff7ed", glyph: "O" },
+  ];
+  const rightTabs: Array<{
+    key: Exclude<AppTab, "home">;
+    label: string;
+    helper: string;
+    tone: string;
+    activeBg: string;
+    glyph: string;
+  }> = [
+    {
+      key: "account",
+      label: "Account",
+      helper: user ? "Profile" : "Sign in",
+      tone: "#111111",
+      activeBg: "#f3f4f6",
+      glyph: "A",
+    },
+  ];
 
   return (
     <SafeAreaView edges={["top", "bottom"]} style={styles.shell}>
       <View style={styles.content}>{content}</View>
-      <View style={styles.tabBar}>
-        {[
-          { key: "home", label: "Home", helper: "Start" },
-          { key: "browse", label: "Browse", helper: "Discover" },
-          { key: "orders", label: "Orders", helper: "Track" },
-          { key: "account", label: "Account", helper: user ? "Profile" : "Sign in" },
-        ].map((item) => {
-          const isActive = tab === item.key;
-          return (
-            <Pressable
-              key={item.key}
-              onPress={() => setTab(item.key as AppTab)}
-              style={[styles.tabButton, isActive && styles.tabButtonActive]}
-            >
-              <View style={[styles.tabDot, isActive && styles.tabDotActive]} />
-              <Text style={[styles.tabLabel, isActive && styles.tabLabelActive]}>{item.label}</Text>
-              <Text style={[styles.tabHelper, isActive && styles.tabHelperActive]}>{item.helper}</Text>
-            </Pressable>
-          );
-        })}
+      <View style={styles.tabWrap}>
+        <View style={[styles.tabBar, isCompact && styles.tabBarCompact]}>
+          <View style={styles.tabClusterLeft}>
+            {leftTabs.map((item) => {
+              const isActive = tab === item.key;
+              return (
+                <Pressable
+                  key={item.key}
+                  onPress={() => setTab(item.key)}
+                  style={[
+                    styles.tabButton,
+                    isCompact && styles.tabButtonCompact,
+                    isActive && { backgroundColor: item.activeBg },
+                  ]}
+                >
+                  <View
+                    style={[
+                      styles.tabGlyph,
+                      { borderColor: item.tone },
+                      isActive && { backgroundColor: item.tone },
+                    ]}
+                  >
+                    <Text style={[styles.tabGlyphText, isActive && styles.tabGlyphTextActive]}>
+                      {item.glyph}
+                    </Text>
+                  </View>
+                  <Text
+                    style={[
+                      styles.tabLabel,
+                      isCompact && styles.tabLabelCompact,
+                      isActive && { color: item.tone },
+                    ]}
+                  >
+                    {item.label}
+                  </Text>
+                  {!isCompact ? (
+                    <Text style={[styles.tabHelper, isActive && { color: item.tone }]}>
+                      {item.helper}
+                    </Text>
+                  ) : null}
+                </Pressable>
+              );
+            })}
+          </View>
+
+          <View style={[styles.homeSpacer, isCompact && styles.homeSpacerCompact]} />
+
+          <View style={styles.tabClusterRight}>
+            {rightTabs.map((item) => {
+              const isActive = tab === item.key;
+              return (
+                <Pressable
+                  key={item.key}
+                  onPress={() => setTab(item.key)}
+                  style={[
+                    styles.tabButton,
+                    styles.tabButtonSingle,
+                    isCompact && styles.tabButtonCompact,
+                    isActive && { backgroundColor: item.activeBg },
+                  ]}
+                >
+                  <View
+                    style={[
+                      styles.tabGlyph,
+                      { borderColor: item.tone },
+                      isActive && { backgroundColor: item.tone },
+                    ]}
+                  >
+                    <Text style={[styles.tabGlyphText, isActive && styles.tabGlyphTextActive]}>
+                      {item.glyph}
+                    </Text>
+                  </View>
+                  <Text
+                    style={[
+                      styles.tabLabel,
+                      isCompact && styles.tabLabelCompact,
+                      isActive && { color: item.tone },
+                    ]}
+                  >
+                    {item.label}
+                  </Text>
+                  {!isCompact ? (
+                    <Text style={[styles.tabHelper, isActive && { color: item.tone }]}>
+                      {item.helper}
+                    </Text>
+                  ) : null}
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+
+        <Pressable
+          onPress={() => setTab("home")}
+          style={styles.homeFab}
+        >
+          <View style={[styles.homeOrb, tab === "home" && styles.homeOrbActive]}>
+            <Text style={styles.homeOrbText}>H</Text>
+          </View>
+          <Text style={[styles.homeLabel, isCompact && styles.homeLabelCompact, tab === "home" && styles.homeLabelActive]}>
+            Home
+          </Text>
+          {!isCompact ? (
+            <Text style={[styles.homeHint, tab === "home" && styles.homeHintActive]}>Start</Text>
+          ) : null}
+        </Pressable>
       </View>
     </SafeAreaView>
   );
@@ -134,7 +280,7 @@ export function AppNavigator() {
   }
 
   return (
-    <NavigationContainer linking={linking}>
+    <NavigationContainer linking={linking} ref={navRef}>
       <Stack.Navigator
         screenOptions={{
           contentStyle: { backgroundColor: palette.canvas },
@@ -194,6 +340,18 @@ export function AppNavigator() {
             />
           )}
         </Stack.Screen>
+        <Stack.Screen name="OrderDetail" options={{ title: "Order detail" }}>
+          {({ navigation, route }) => (
+            <OrderDetailScreen
+              orderId={route.params.orderId}
+              seedOrder={route.params.seedOrder}
+              threadId={route.params.threadId}
+              onBack={() => navigation.goBack()}
+              onOpenPaymentStatus={(params) => navigation.navigate("PaymentReturn", params)}
+              onOpenSignIn={() => navigation.navigate("SignIn")}
+            />
+          )}
+        </Stack.Screen>
       </Stack.Navigator>
     </NavigationContainer>
   );
@@ -207,60 +365,156 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
   },
+  tabWrap: {
+    marginHorizontal: 14,
+    marginTop: 8,
+    paddingBottom: 6,
+    position: "relative",
+  },
   tabBar: {
     backgroundColor: "#ffffff",
     borderColor: palette.line,
-    borderRadius: 22,
+    borderRadius: 24,
     borderWidth: 1,
-    bottom: 0,
-    elevation: 4,
-    borderTopColor: palette.line,
+    elevation: 0,
+    flexDirection: "row",
+    minHeight: 80,
+    paddingHorizontal: 14,
+    paddingTop: 14,
+    shadowColor: "#111111",
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0,
+    shadowRadius: 0,
+  },
+  tabBarCompact: {
+    minHeight: 74,
+    paddingHorizontal: 10,
+    paddingTop: 12,
+  },
+  tabClusterLeft: {
+    flex: 1,
     flexDirection: "row",
     gap: 8,
-    marginHorizontal: 14,
-    marginTop: 8,
-    paddingBottom: 12,
-    paddingHorizontal: 10,
-    paddingTop: 8,
-    shadowColor: "#0f172a",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
+  },
+  tabClusterRight: {
+    flex: 1,
+    flexDirection: "row",
+    justifyContent: "flex-end",
+  },
+  homeSpacer: {
+    width: 86,
+  },
+  homeSpacerCompact: {
+    width: 74,
   },
   tabButton: {
     alignItems: "center",
     borderRadius: 14,
     flex: 1,
-    gap: 2,
+    gap: 3,
     justifyContent: "center",
-    minHeight: 52,
+    minHeight: 50,
+    minWidth: 0,
+    paddingHorizontal: 8,
   },
-  tabButtonActive: {
-    backgroundColor: "#ecfeff",
+  tabButtonCompact: {
+    minHeight: 46,
+    paddingHorizontal: 4,
   },
-  tabDot: {
-    backgroundColor: "#cbd5e1",
-    borderRadius: 3,
-    height: 6,
-    width: 6,
+  tabButtonSingle: {
+    alignSelf: "center",
+    maxWidth: 92,
+    minWidth: 72,
   },
-  tabDotActive: {
-    backgroundColor: palette.accent,
+  tabGlyph: {
+    alignItems: "center",
+    backgroundColor: "#ffffff",
+    borderRadius: 8,
+    borderWidth: 1,
+    height: 18,
+    justifyContent: "center",
+    width: 18,
+  },
+  tabGlyphText: {
+    color: "#6b7280",
+    fontSize: 10,
+    fontWeight: "900",
+    lineHeight: 12,
+  },
+  tabGlyphTextActive: {
+    color: "#ffffff",
   },
   tabLabel: {
-    color: palette.slate,
-    fontSize: 12,
-    fontWeight: "700",
+    color: "#4b5563",
+    fontSize: 11,
+    fontWeight: "800",
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
   },
-  tabLabelActive: {
-    color: palette.ink,
+  tabLabelCompact: {
+    fontSize: 10,
+    letterSpacing: 0.4,
   },
   tabHelper: {
-    color: "#94a3b8",
-    fontSize: 10,
-    fontWeight: "600",
+    color: "#6b7280",
+    fontSize: 9,
+    fontWeight: "700",
+    letterSpacing: 0.4,
   },
-  tabHelperActive: {
+  homeFab: {
+    alignItems: "center",
+    alignSelf: "center",
+    position: "absolute",
+    top: -18,
+  },
+  homeOrb: {
+    alignItems: "center",
+    backgroundColor: palette.accentDeep,
+    borderColor: "#ffffff",
+    borderRadius: 31,
+    borderWidth: 3,
+    elevation: 0,
+    height: 62,
+    justifyContent: "center",
+    shadowColor: palette.accentDeep,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    width: 62,
+  },
+  homeOrbActive: {
+    backgroundColor: palette.accent,
+    shadowColor: palette.accentDeep,
+  },
+  homeOrbText: {
+    color: "#ffffff",
+    fontSize: 26,
+    fontWeight: "800",
+    lineHeight: 28,
+  },
+  homeLabel: {
+    color: "#374151",
+    fontSize: 11,
+    fontWeight: "800",
+    letterSpacing: 0.6,
+    marginTop: 5,
+    textTransform: "uppercase",
+  },
+  homeLabelCompact: {
+    fontSize: 10,
+    marginTop: 4,
+  },
+  homeLabelActive: {
+    color: palette.accentDeep,
+  },
+  homeHint: {
+    color: "#6b7280",
+    fontSize: 9,
+    fontWeight: "700",
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
+  },
+  homeHintActive: {
     color: palette.accent,
   },
   loadingWrap: {

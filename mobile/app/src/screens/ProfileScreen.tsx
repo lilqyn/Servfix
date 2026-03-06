@@ -4,9 +4,10 @@ import { palette } from "../theme";
 
 type Props = {
   onOpenSignIn: () => void;
+  onOpenNotifications: () => void;
 };
 
-export function ProfileScreen({ onOpenSignIn }: Props) {
+export function ProfileScreen({ onOpenNotifications, onOpenSignIn }: Props) {
   const { user, signOut } = useAuth();
 
   if (!user) {
@@ -38,14 +39,21 @@ export function ProfileScreen({ onOpenSignIn }: Props) {
           {"\n"}
           {user.email || user.phone || "No primary contact available"}
         </Text>
+        <View style={styles.rolePill}>
+          <Text style={styles.rolePillText}>{user.role.toUpperCase()}</Text>
+        </View>
       </View>
 
       <View style={styles.card}>
-        <Text style={styles.inkTitle}>Next mobile upgrades</Text>
+        <Text style={styles.inkTitle}>Notifications</Text>
         <Text style={styles.inkBody}>
-          Profile editing, push alerts, and in-app messages can slot into this area.
+          In-app notifications are now available from the Alerts tab and list your recent updates.
         </Text>
       </View>
+
+      <Pressable onPress={onOpenNotifications} style={styles.secondaryButton}>
+        <Text style={styles.secondaryButtonText}>Open notifications</Text>
+      </Pressable>
 
       <Pressable onPress={() => void signOut()} style={styles.secondaryButton}>
         <Text style={styles.secondaryButtonText}>Sign out</Text>
@@ -61,8 +69,10 @@ const styles = StyleSheet.create({
     paddingBottom: 140,
   },
   headerCard: {
-    backgroundColor: palette.accent,
+    backgroundColor: "#111111",
+    borderColor: palette.accent,
     borderRadius: 24,
+    borderWidth: 1,
     gap: 8,
     padding: 20,
   },
@@ -75,10 +85,10 @@ const styles = StyleSheet.create({
     padding: 18,
   },
   eyebrow: {
-    color: "#99f6e4",
+    color: palette.accentSoft,
     fontSize: 12,
-    fontWeight: "700",
-    letterSpacing: 1,
+    fontWeight: "800",
+    letterSpacing: 1.2,
   },
   lightTitle: {
     color: "#ffffff",
@@ -86,9 +96,22 @@ const styles = StyleSheet.create({
     fontWeight: "800",
   },
   lightBody: {
-    color: "#d1fae5",
+    color: "#d1d5db",
     fontSize: 14,
     lineHeight: 21,
+  },
+  rolePill: {
+    alignSelf: "flex-start",
+    backgroundColor: palette.goldSoft,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  rolePillText: {
+    color: palette.gold,
+    fontSize: 11,
+    fontWeight: "800",
+    letterSpacing: 0.5,
   },
   inkTitle: {
     color: palette.ink,
@@ -115,15 +138,15 @@ const styles = StyleSheet.create({
   secondaryButton: {
     alignItems: "center",
     backgroundColor: "#ffffff",
-    borderColor: palette.line,
+    borderColor: palette.accentSoft,
     borderRadius: 14,
     borderWidth: 1,
     justifyContent: "center",
     minHeight: 48,
   },
   secondaryButtonText: {
-    color: palette.ink,
+    color: palette.accentDeep,
     fontSize: 14,
-    fontWeight: "700",
+    fontWeight: "800",
   },
 });

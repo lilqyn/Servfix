@@ -9,11 +9,49 @@
     "assetBundlePatterns": [
       "**/*"
     ],
+    "plugins": [
+      "expo-notifications"
+    ],
     "android": {
       "package": "com.servfix.app",
+      "versionCode": 1,
       "adaptiveIcon": {
         "backgroundColor": "#0f172a"
+      },
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ],
+          "data": [
+            {
+              "scheme": "https",
+              "host": "servfixgh.com",
+              "pathPrefix": "/payment/verify"
+            },
+            {
+              "scheme": "https",
+              "host": "www.servfixgh.com",
+              "pathPrefix": "/payment/verify"
+            }
+          ]
+        }
+      ]
+    },
+    "extra": {
+      "eas": {
+        "projectId": "2be594f8-79a6-4b62-8356-72a916895885"
       }
-    }
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/2be594f8-79a6-4b62-8356-72a916895885"
+    },
+    "ios": {}
   }
 }

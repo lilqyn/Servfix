@@ -7,6 +7,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from "react-native";
 import { ServiceCard } from "../components/ServiceCard";
@@ -19,6 +20,8 @@ type Props = {
 };
 
 export function BrowseScreen({ onOpenService }: Props) {
+  const { width } = useWindowDimensions();
+  const isCompact = width < 380;
   const [services, setServices] = useState<Service[]>([]);
   const [query, setQuery] = useState("");
   const [isLoading, setIsLoading] = useState(true);
@@ -78,8 +81,8 @@ export function BrowseScreen({ onOpenService }: Props) {
 
   return (
     <View style={styles.container}>
-      <View style={styles.searchWrap}>
-        <Text style={styles.heading}>Browse services</Text>
+      <View style={[styles.searchWrap, isCompact && styles.searchWrapCompact]}>
+        <Text style={[styles.heading, isCompact && styles.headingCompact]}>Browse services</Text>
         <TextInput
           onChangeText={setQuery}
           placeholder="Search by skill, title, or provider"
@@ -100,7 +103,7 @@ export function BrowseScreen({ onOpenService }: Props) {
       ) : null}
 
       <FlatList
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={[styles.listContent, isCompact && styles.listContentCompact]}
         data={filteredServices}
         keyExtractor={(item) => item.id}
         refreshControl={
@@ -131,15 +134,22 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 18,
   },
+  searchWrapCompact: {
+    paddingHorizontal: 16,
+    paddingTop: 16,
+  },
   heading: {
     color: palette.ink,
     fontSize: 24,
     fontWeight: "800",
   },
+  headingCompact: {
+    fontSize: 22,
+  },
   searchInput: {
-    backgroundColor: palette.card,
-    borderColor: palette.line,
-    borderRadius: 16,
+    backgroundColor: "#ffffff",
+    borderColor: "#d7e7d8",
+    borderRadius: 14,
     borderWidth: 1,
     color: palette.ink,
     fontSize: 15,
@@ -149,7 +159,11 @@ const styles = StyleSheet.create({
   listContent: {
     gap: 12,
     padding: 20,
-    paddingBottom: 140,
+    paddingBottom: 158,
+  },
+  listContentCompact: {
+    padding: 16,
+    paddingBottom: 144,
   },
   stateWrap: {
     alignItems: "center",

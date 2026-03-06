@@ -3,6 +3,7 @@ import { signS3Key } from "./s3.js";
 import { pushToUser } from "../websocket.js";
 import { getPlatformSettings } from "./platform-settings.js";
 import { sendEmail } from "./email.js";
+import { listPushTokens } from "./push-tokens.js";
 import type { NotificationType, Prisma } from "@prisma/client";
 
 type ActorSummary = {
@@ -152,6 +153,47 @@ export const createNotification = async (params: {
 
   const formatted = await formatNotification(notification);
   pushToUser(params.userId, { type: "notification", notification: formatted });
+
+  try {
+    const tokens = listPushTokens(params.userId);
+    if (tokens.length > 0) {
+      const payload = {
+        to: tokens.map((token) => token.token),
+        sound: "default",
+        title,
+        body: body ?? undefined,
+        data: {
+          orderId:
+            typeof notification.data === "object" &&
+            notification.data !== null &&
+            !Array.isArray(notification.data) &&
+            typeof (notification.data as Record<string, unknown>).orderId === "string"
+              ? (notification.data as Record<string, unknown>).orderId
+              : undefined,
+          threadId:
+            typeof notification.data === "object" &&
+            notification.data !== null &&
+            !Array.isArray(notification.data) &&
+            typeof (notification.data as Record<string, unknown>).threadId === "string"
+              ? (notification.data as Record<string, unknown>).threadId
+              : undefined,
+          notificationId: notification.id,
+          type: notification.type,
+        },
+      };
+
+      await fetch("https://exp.host/--/api/v2/push/send", {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+    }
+  } catch (error) {
+    console.warn("Failed to send Expo push", error);
+  }
 
   if (EMAIL_NOTIFICATION_TYPES.has(params.type)) {
     const recipientEmail = notification.user?.email ?? null;

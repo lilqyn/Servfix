@@ -134,6 +134,60 @@ export type OrderPayment = {
   updatedAt: string;
 };
 
+export type OrderProgressReport = {
+  id: string;
+  orderId: string;
+  providerId: string;
+  title: string;
+  body?: string | null;
+  percentComplete: number;
+  createdAt: string;
+};
+
+export type ConversationMessage = {
+  id: string;
+  conversationId: string;
+  senderId: string;
+  content: string;
+  timestamp: string;
+  read: boolean;
+};
+
+export type Conversation = {
+  id: string;
+  orderId?: string | null;
+  participants?: {
+    id: string;
+    name: string;
+    avatar: string;
+    isProvider: boolean;
+  }[];
+};
+
+export type NotificationActor = {
+  id: string;
+  name: string;
+  username?: string | null;
+  avatarUrl?: string | null;
+};
+
+export type AppNotificationData = {
+  orderId?: string;
+  threadId?: string;
+  [key: string]: unknown;
+};
+
+export type AppNotification = {
+  id: string;
+  type: string;
+  title: string;
+  body: string | null;
+  data: AppNotificationData | null;
+  isRead: boolean;
+  createdAt: string;
+  actor: NotificationActor | null;
+};
+
 export type Order = {
   id: string;
   status: OrderStatus;

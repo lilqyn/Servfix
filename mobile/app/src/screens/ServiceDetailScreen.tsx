@@ -6,6 +6,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from "react-native";
 import {
@@ -71,6 +72,8 @@ const isProviderCurrencySupported = (
 
 export function ServiceDetailScreen({ serviceId, onOpenSignIn, onOpenOrders }: Props) {
   const { user } = useAuth();
+  const { width } = useWindowDimensions();
+  const isCompact = width < 380;
   const [service, setService] = useState<Service | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -311,23 +314,23 @@ export function ServiceDetailScreen({ serviceId, onOpenSignIn, onOpenOrders }: P
     (Boolean(user) && (isQuoteOnly || availableProviderOptions.length === 0));
 
   return (
-    <ScrollView contentContainerStyle={styles.content}>
-      <View style={styles.hero}>
+    <ScrollView contentContainerStyle={[styles.content, isCompact && styles.contentCompact]}>
+      <View style={[styles.hero, isCompact && styles.heroCompact]}>
         <View style={styles.categoryPill}>
           <Text style={styles.categoryPillText}>{service.category}</Text>
         </View>
-        <Text style={styles.title}>{service.title}</Text>
+        <Text style={[styles.title, isCompact && styles.titleCompact]}>{service.title}</Text>
         <Text style={styles.subtitle}>
           {service.isRemote ? "Remote" : service.locationCity || "On-site"} by {providerName}
         </Text>
       </View>
 
-      <View style={styles.section}>
+      <View style={[styles.section, isCompact && styles.sectionCompact]}>
         <Text style={styles.sectionTitle}>About this service</Text>
         <Text style={styles.sectionBody}>{service.description}</Text>
       </View>
 
-      <View style={styles.section}>
+      <View style={[styles.section, isCompact && styles.sectionCompact]}>
         <Text style={styles.sectionTitle}>Packages</Text>
         {service.tiers.map((tier) => (
           <Pressable
@@ -341,7 +344,9 @@ export function ServiceDetailScreen({ serviceId, onOpenSignIn, onOpenOrders }: P
             style={[styles.tierCard, selectedTier?.id === tier.id && styles.tierCardSelected]}
           >
             <View style={styles.tierHeader}>
-              <Text style={styles.tierName}>{tier.name}</Text>
+              <Text numberOfLines={2} style={styles.tierName}>
+                {tier.name}
+              </Text>
               <Text style={styles.tierPrice}>{formatCurrency(tier.price, tier.currency)}</Text>
             </View>
             <Text style={styles.tierMeta}>
@@ -355,7 +360,7 @@ export function ServiceDetailScreen({ serviceId, onOpenSignIn, onOpenOrders }: P
         ))}
       </View>
 
-      <View style={styles.section}>
+      <View style={[styles.section, isCompact && styles.sectionCompact]}>
         <Text style={styles.sectionTitle}>Order request</Text>
         {selectedTier ? (
           <>
@@ -364,8 +369,10 @@ export function ServiceDetailScreen({ serviceId, onOpenSignIn, onOpenOrders }: P
             </Text>
 
             {isPerUnit ? (
-              <View style={styles.quantityRow}>
-                <Text style={styles.metaLabel}>Quantity ({unitLabel})</Text>
+              <View style={[styles.quantityRow, isCompact && styles.quantityRowCompact]}>
+                <Text style={[styles.metaLabel, isCompact && styles.metaLabelCompact]}>
+                  Quantity ({unitLabel})
+                </Text>
                 <View style={styles.stepper}>
                   <Pressable
                     disabled={isCreatingOrder || quantity <= 1}
@@ -386,8 +393,8 @@ export function ServiceDetailScreen({ serviceId, onOpenSignIn, onOpenOrders }: P
               </View>
             ) : null}
 
-            <View style={styles.totalRow}>
-              <Text style={styles.metaLabel}>Estimated total</Text>
+            <View style={[styles.totalRow, isCompact && styles.totalRowCompact]}>
+              <Text style={[styles.metaLabel, isCompact && styles.metaLabelCompact]}>Estimated total</Text>
               <Text style={styles.totalValue}>{formatCurrency(estimatedTotal, selectedTier.currency)}</Text>
             </View>
 
@@ -441,7 +448,11 @@ export function ServiceDetailScreen({ serviceId, onOpenSignIn, onOpenOrders }: P
                     <Pressable
                       key={option.key}
                       onPress={() => setPaymentProvider(option.key)}
-                      style={[styles.providerChip, isActive && styles.providerChipActive]}
+                      style={[
+                        styles.providerChip,
+                        isCompact && styles.providerChipCompact,
+                        isActive && styles.providerChipActive,
+                      ]}
                     >
                       <Text style={[styles.providerChipTitle, isActive && styles.providerChipTitleActive]}>
                         {option.label}
@@ -456,11 +467,12 @@ export function ServiceDetailScreen({ serviceId, onOpenSignIn, onOpenOrders }: P
             )}
 
             {showMethodSelector ? (
-              <View style={styles.methodRow}>
+              <View style={[styles.methodRow, isCompact && styles.methodRowCompact]}>
                 <Pressable
                   onPress={() => setPaymentMethod("mobile_money")}
                   style={[
                     styles.methodChip,
+                    isCompact && styles.methodChipCompact,
                     paymentMethod === "mobile_money" && styles.methodChipActive,
                   ]}
                 >
@@ -475,7 +487,11 @@ export function ServiceDetailScreen({ serviceId, onOpenSignIn, onOpenOrders }: P
                 </Pressable>
                 <Pressable
                   onPress={() => setPaymentMethod("card")}
-                  style={[styles.methodChip, paymentMethod === "card" && styles.methodChipActive]}
+                  style={[
+                    styles.methodChip,
+                    isCompact && styles.methodChipCompact,
+                    paymentMethod === "card" && styles.methodChipActive,
+                  ]}
                 >
                   <Text
                     style={[
@@ -532,7 +548,7 @@ export function ServiceDetailScreen({ serviceId, onOpenSignIn, onOpenOrders }: P
       </View>
 
       {service.tags.length > 0 ? (
-        <View style={styles.section}>
+        <View style={[styles.section, isCompact && styles.sectionCompact]}>
           <Text style={styles.sectionTitle}>Tags</Text>
           <View style={styles.tagWrap}>
             {service.tags.map((tag) => (
@@ -560,6 +576,11 @@ const styles = StyleSheet.create({
     gap: 14,
     padding: 20,
     paddingBottom: 80,
+  },
+  contentCompact: {
+    gap: 12,
+    padding: 16,
+    paddingBottom: 72,
   },
   stateWrap: {
     alignItems: "center",
@@ -595,6 +616,10 @@ const styles = StyleSheet.create({
     gap: 10,
     padding: 22,
   },
+  heroCompact: {
+    borderRadius: 22,
+    padding: 18,
+  },
   categoryPill: {
     alignSelf: "flex-start",
     backgroundColor: "rgba(255,255,255,0.12)",
@@ -614,6 +639,10 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     lineHeight: 32,
   },
+  titleCompact: {
+    fontSize: 23,
+    lineHeight: 29,
+  },
   subtitle: {
     color: "#cbd5e1",
     fontSize: 14,
@@ -626,6 +655,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     gap: 12,
     padding: 18,
+  },
+  sectionCompact: {
+    borderRadius: 18,
+    gap: 10,
+    padding: 14,
   },
   sectionTitle: {
     color: palette.ink,
@@ -657,10 +691,12 @@ const styles = StyleSheet.create({
   tierHeader: {
     alignItems: "center",
     flexDirection: "row",
+    gap: 8,
     justifyContent: "space-between",
   },
   tierName: {
     color: palette.ink,
+    flex: 1,
     fontSize: 14,
     fontWeight: "700",
     textTransform: "capitalize",
@@ -679,12 +715,20 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
   },
+  quantityRowCompact: {
+    alignItems: "flex-start",
+    flexWrap: "wrap",
+    gap: 10,
+  },
   metaLabel: {
     color: palette.slate,
     fontSize: 12,
     fontWeight: "700",
     letterSpacing: 0.2,
     textTransform: "uppercase",
+  },
+  metaLabelCompact: {
+    fontSize: 11,
   },
   stepper: {
     alignItems: "center",
@@ -716,6 +760,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     flexDirection: "row",
     justifyContent: "space-between",
+  },
+  totalRowCompact: {
+    alignItems: "flex-start",
+    flexDirection: "column",
+    gap: 6,
   },
   totalValue: {
     color: palette.accent,
@@ -768,6 +817,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 10,
   },
+  providerChipCompact: {
+    minWidth: "100%",
+  },
   providerChipActive: {
     backgroundColor: "#ecfeff",
     borderColor: palette.accent,
@@ -791,6 +843,9 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 8,
   },
+  methodRowCompact: {
+    flexWrap: "wrap",
+  },
   methodChip: {
     backgroundColor: "#ffffff",
     borderColor: palette.line,
@@ -798,6 +853,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     paddingHorizontal: 12,
     paddingVertical: 10,
+  },
+  methodChipCompact: {
+    flexGrow: 1,
+    minWidth: "47%",
   },
   methodChipActive: {
     backgroundColor: palette.ink,

@@ -12,7 +12,7 @@ You can use your preferred IDE, GitHub’s web editor, or Codespaces.
 
 ## Local development
 
-Requirements: Node.js 18+ and npm.
+Requirements: Node.js 20 LTS and npm.
 
 1. Clone the repository.
 2. Install dependencies: `npm i`
