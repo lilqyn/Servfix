@@ -1,0 +1,1 @@
+import{u as e}from"./vendor-query-CMS6vlrY.js";import{bf as t}from"./provider-dashboard-B4VlSWeL.js";import{d as o}from"./admin-pages-DSu6gRTi.js";function u(){return e({queryKey:["home-content"],queryFn:t,initialData:o,staleTime:3e5})}export{u};

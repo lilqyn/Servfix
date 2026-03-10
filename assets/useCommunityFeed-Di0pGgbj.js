@@ -1,0 +1,1 @@
+import{c as o}from"./vendor-query-CMS6vlrY.js";import{bQ as u}from"./provider-dashboard-B4VlSWeL.js";function a(r=10,t="all",i=!0){return o({queryKey:["community-feed",r,t],queryFn:({pageParam:e})=>u({cursor:typeof e=="string"?e:void 0,limit:r,scope:t}),initialPageParam:void 0,getNextPageParam:e=>e.nextCursor??void 0,staleTime:15e3,enabled:i})}export{a as u};

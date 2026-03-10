@@ -1,0 +1,1 @@
+import{u as r}from"./vendor-query-CMS6vlrY.js";import{ak as u}from"./provider-dashboard-B4VlSWeL.js";function s(e){return r({queryKey:["service",e],queryFn:async()=>{if(!e)throw new Error("Service ID is required");return u(e)},enabled:!!e,staleTime:3e4})}export{s as u};
