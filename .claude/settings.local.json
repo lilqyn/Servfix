@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(taskkill /PID 8828 /F)",
+      "Bash(npx tsc --noEmit --pretty)"
+    ]
+  }
+}

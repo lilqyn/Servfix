@@ -70,7 +70,7 @@ const Academy = () => {
 
         <section className="space-y-4">
           {activePost ? (
-            <div className="grid gap-4 lg:grid-cols-[4fr_1.5fr]">
+            <div className="grid gap-4 lg:grid-cols-[4fr_1.5fr] items-start">
               <Card className="border-border/60 shadow-sm">
                 <div className="aspect-[21/9] w-full overflow-hidden rounded-t-lg bg-muted">
                   {activePost.imageSignedUrl || activePost.imageUrl ? (

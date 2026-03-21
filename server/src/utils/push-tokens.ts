@@ -1,40 +1,39 @@
+import { prisma } from "../db.js";
+
 type Platform = "ios" | "android" | "web" | "unknown" | string;
 
-type PushTokenRecord = {
+export type PushTokenRecord = {
   token: string;
   platform: Platform;
   projectId?: string | null;
 };
 
-const pushTokens = new Map<string, Set<PushTokenRecord>>();
-
-export const addPushToken = (userId: string, record: PushTokenRecord) => {
-  const existing = pushTokens.get(userId) ?? new Set<PushTokenRecord>();
-  existing.add(record);
-  pushTokens.set(userId, existing);
+export const addPushToken = async (userId: string, record: PushTokenRecord) => {
+  await prisma.pushToken.upsert({
+    where: { userId_token: { userId, token: record.token } },
+    update: { platform: record.platform, projectId: record.projectId ?? null },
+    create: {
+      userId,
+      token: record.token,
+      platform: record.platform,
+      projectId: record.projectId ?? null,
+    },
+  });
 };
 
-export const removePushToken = (userId: string, token?: string | null) => {
+export const removePushToken = async (userId: string, token?: string | null) => {
   if (!token) {
-    pushTokens.delete(userId);
+    await prisma.pushToken.deleteMany({ where: { userId } });
     return;
   }
-  const existing = pushTokens.get(userId);
-  if (!existing) {
-    return;
-  }
-  for (const entry of Array.from(existing)) {
-    if (entry.token === token) {
-      existing.delete(entry);
-    }
-  }
-  if (existing.size === 0) {
-    pushTokens.delete(userId);
-  } else {
-    pushTokens.set(userId, existing);
-  }
+  await prisma.pushToken.deleteMany({ where: { userId, token } });
 };
 
-export const listPushTokens = (userId: string): PushTokenRecord[] => {
-  return Array.from(pushTokens.get(userId) ?? []);
+export const listPushTokens = async (userId: string): Promise<PushTokenRecord[]> => {
+  const records = await prisma.pushToken.findMany({ where: { userId } });
+  return records.map((r) => ({
+    token: r.token,
+    platform: r.platform,
+    projectId: r.projectId,
+  }));
 };

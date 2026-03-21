@@ -6,20 +6,21 @@ import {
   Platform,
   Pressable,
   ScrollView,
-  StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
 import { useAuth } from "../providers/AuthProvider";
-import { palette } from "../theme";
+import { createThemedStyles } from "../theme";
 
 type Props = {
   onSuccess: () => void;
   onOpenSignUp: () => void;
+  onOpenForgotPassword?: () => void;
 };
 
-export function SignInScreen({ onSuccess, onOpenSignUp }: Props) {
+export function SignInScreen({ onSuccess, onOpenSignUp, onOpenForgotPassword }: Props) {
+  const styles = useStyles();
   const { isSigningIn, signIn } = useAuth();
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
@@ -119,18 +120,19 @@ export function SignInScreen({ onSuccess, onOpenSignUp }: Props) {
               <Text style={styles.footerLink}>Create one</Text>
             </Pressable>
           </View>
+          {onOpenForgotPassword ? (
+            <Pressable onPress={onOpenForgotPassword} style={styles.forgotRow}>
+              <Text style={styles.forgotLink}>Forgot password?</Text>
+            </Pressable>
+          ) : null}
 
-          <Text style={styles.note}>
-            This app uses dedicated mobile token endpoints. Admin accounts should continue using
-            the web app.
-          </Text>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((palette) => ({
   page: {
     backgroundColor: palette.canvas,
     flex: 1,
@@ -147,7 +149,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     gap: 13,
     padding: 22,
-    shadowColor: "#0f172a",
+    shadowColor: palette.shadow,
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.06,
     shadowRadius: 16,
@@ -201,14 +203,9 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
   buttonText: {
-    color: "#ffffff",
+    color: palette.canvas,
     fontSize: 14,
     fontWeight: "700",
-  },
-  note: {
-    color: palette.slate,
-    fontSize: 12,
-    lineHeight: 18,
   },
   footerRow: {
     alignItems: "center",
@@ -224,4 +221,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "700",
   },
-});
+  forgotRow: { alignItems: "center" },
+  forgotLink: { color: palette.slate, fontSize: 13 },
+}));

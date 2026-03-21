@@ -7,6 +7,7 @@ import path from "path";
 import { getAccessTokenFromRequest, getCookieValue } from "./auth/session.js";
 import { verifyTokenIgnoringExpiration } from "./auth/jwt.js";
 import { env } from "./config.js";
+import { auditAdmin } from "./middleware/audit.js";
 import { healthRouter } from "./routes/health.js";
 import { authRouter } from "./routes/auth.js";
 import { servicesRouter } from "./routes/services.js";
@@ -29,6 +30,7 @@ import { supportRouter } from "./routes/support.js";
 import { pagesRouter } from "./routes/pages.js";
 import { businessRouter } from "./routes/business.js";
 import { quotesRouter } from "./routes/quotes.js";
+import { callsRouter } from "./routes/calls.js";
 import { requestContext, requestLogger } from "./middleware/request-context.js";
 import { CSRF_COOKIE_NAME, csrfProtection, ensureCsrfCookie } from "./middleware/csrf.js";
 import { errorHandler } from "./middleware/error.js";
@@ -173,6 +175,14 @@ const paymentsRateLimit = rateLimit({
   message: { error: "Too many payment requests. Please try again later." },
 });
 
+const adminRateLimit = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: isProduction ? 200 : 2000,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: getRateLimitKey,
+});
+
 const supportRateLimit = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: isProduction ? 150 : 1200,
@@ -243,6 +253,8 @@ app.use(csrfProtection);
 app.use("/api/auth", authRateLimit);
 app.use("/api/payments", paymentsRateLimit);
 app.use("/api/support", supportRateLimit);
+app.use("/api/admin", adminRateLimit);
+app.use("/api/admin", auditAdmin);
 app.use("/api", apiRateLimit);
 
 app.use("/api/health", healthRouter);
@@ -267,6 +279,7 @@ app.use("/api/webhooks", webhooksRouter);
 app.use("/api/support", supportRouter);
 app.use("/api/business", businessRouter);
 app.use("/api", quotesRouter);
+app.use("/api/calls", callsRouter);
 
 app.use("/api", (_req, res) => {
   res.status(404).json({ error: "Not found" });

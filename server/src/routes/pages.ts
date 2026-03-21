@@ -8,6 +8,7 @@ import {
   PAGE_KEYS,
   type StaticPageContent,
   type StaticPageKey,
+  type StaticPageSection,
   type BlogPost,
   type StaffProfile,
   type AboutPageConfig,
@@ -58,7 +59,7 @@ pagesRouter.get(
             };
           })
         : [];
-    const posts = Array.isArray(content.posts)
+    const posts = (Array.isArray(content.posts) && content.posts.length > 0)
       ? content.posts
       : legacyPosts.length > 0
         ? legacyPosts
@@ -109,11 +110,18 @@ pagesRouter.get(
         }
       : undefined;
 
+    const intro = typeof content.intro === "string" ? content.intro : fallback.intro ?? null;
+    const sections: StaticPageSection[] = Array.isArray(content.sections)
+      ? (content.sections as StaticPageSection[])
+      : fallback.sections ?? [];
+
     if (!page) {
       return res.json({
         slug,
         title: fallback.title,
         body: fallback.body,
+        intro: fallback.intro ?? null,
+        sections: fallback.sections ?? [],
         posts: await resolvePosts(fallback.posts ?? []),
         staff: await resolveStaff(fallback.staff ?? []),
         aboutConfig,
@@ -126,6 +134,8 @@ pagesRouter.get(
       slug,
       title: page.title,
       body: page.body,
+      intro,
+      sections,
       posts: await resolvePosts(posts),
       staff: await resolveStaff(staff),
       aboutConfig,

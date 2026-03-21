@@ -16,7 +16,7 @@ export const defaultHomeContent: HomeContentPayload = {
     },
     secondaryCta: {
       label: "Watch How It Works",
-      href: "#how-it-works",
+      href: "/academy",
     },
     trustIndicators: [
       {

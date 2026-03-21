@@ -4127,7 +4127,10 @@ adminRouter.put(
       resourcesConfig: normalizeProviderResourcesContent(payload.providerResources.resourcesConfig),
     };
 
-    const resolvePageContent = (slug: StaticPageKey) => {
+    const ADMIN_PAGE_KEYS = ["about", "blog", "academy", "providerResources"] as const;
+    type AdminPageKey = (typeof ADMIN_PAGE_KEYS)[number];
+
+    const resolvePageContent = (slug: AdminPageKey) => {
       if (slug === "about") {
         return aboutContent;
       }
@@ -4141,7 +4144,7 @@ adminRouter.put(
     };
 
     await prisma.$transaction(
-      PAGE_KEYS.map((slug) =>
+      ADMIN_PAGE_KEYS.map((slug) =>
         prisma.staticPage.upsert({
           where: { slug },
           update: {

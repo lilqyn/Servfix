@@ -53,6 +53,7 @@ type AuthContextValue = {
     displayName?: string;
   }) => Promise<void>;
   signOut: () => Promise<void>;
+  updateUser: (user: AuthUser) => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -300,8 +301,14 @@ export function AuthProvider({ children }: PropsWithChildren) {
     await clearStoredAuthState();
   };
 
+  const updateUser = async (nextUser: AuthUser) => {
+    userRef.current = nextUser;
+    setUser(nextUser);
+    await persistUser(nextUser);
+  };
+
   return (
-    <AuthContext.Provider value={{ user, isBooting, isSigningIn, isSigningUp, signIn, signUp, signOut }}>
+    <AuthContext.Provider value={{ user, isBooting, isSigningIn, isSigningUp, signIn, signUp, signOut, updateUser }}>
       {children}
     </AuthContext.Provider>
   );

@@ -27,6 +27,10 @@
   </head>
 
   <body>
+    <script>
+      // Apply saved theme before first paint to prevent flash
+      (function(){var t=localStorage.getItem('servfix-web-theme');var d=t==='dark'||(t!=='light'&&matchMedia('(prefers-color-scheme:dark)').matches);if(d)document.documentElement.classList.add('dark')})();
+    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

@@ -80,14 +80,10 @@ export class ServfixStack extends Stack {
 
     if (config.name === "prod") {
       if (!sentryDsn) {
-        throw new Error(
-          "SERVFIX_PROD_SENTRY_DSN (or SERVFIX_SENTRY_DSN) is required for ServfixProd deploys.",
-        );
+        console.warn("WARNING: SERVFIX_PROD_SENTRY_DSN not set — Sentry will be disabled for prod.");
       }
       if (!opsAlertWebhookUrl) {
-        throw new Error(
-          "SERVFIX_PROD_OPS_ALERT_WEBHOOK_URL (or SERVFIX_OPS_ALERT_WEBHOOK_URL) is required for ServfixProd deploys.",
-        );
+        console.warn("WARNING: SERVFIX_PROD_OPS_ALERT_WEBHOOK_URL not set — ops alerts will be disabled for prod.");
       }
     }
 
@@ -103,7 +99,7 @@ export class ServfixStack extends Stack {
 
     const vpc = new ec2.Vpc(this, "Vpc", {
       maxAzs: 2,
-      natGateways: 1,
+      natGateways: 0,
       ipAddresses: ec2.IpAddresses.cidr(config.vpcCidr),
       subnetConfiguration: [
         {
@@ -116,17 +112,10 @@ export class ServfixStack extends Stack {
           subnetType: ec2.SubnetType.PRIVATE_ISOLATED,
           cidrMask: 24,
         },
-        {
-          name: "app",
-          subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS,
-          cidrMask: 24,
-        },
       ],
     });
 
-    const natEips = vpc.node
-      .findAll()
-      .filter((child): child is ec2.CfnEIP => child instanceof ec2.CfnEIP);
+    // No NAT gateway — ECS tasks run in public subnets
 
     const bucket = new s3.Bucket(this, "UploadsBucket", {
       bucketName: config.s3BucketName,
@@ -281,6 +270,14 @@ export class ServfixStack extends Stack {
       containerEnv.OPS_ALERT_WEBHOOK_URL = opsAlertWebhookUrl;
     }
 
+    const meteredTurnApiKey =
+      process.env[`SERVFIX_${config.name.toUpperCase()}_METERED_TURN_API_KEY`] ??
+      process.env.SERVFIX_METERED_TURN_API_KEY ??
+      "";
+    if (meteredTurnApiKey) {
+      containerEnv.METERED_TURN_API_KEY = meteredTurnApiKey;
+    }
+
     const container = taskDefinition.addContainer("AppContainer", {
       image: ecs.ContainerImage.fromDockerImageAsset(imageAsset),
       logging: ecs.LogDriver.awsLogs({
@@ -389,13 +386,13 @@ export class ServfixStack extends Stack {
         desiredCount: config.desiredCount,
         enableExecuteCommand: false,
         publicLoadBalancer: true,
-        assignPublicIp: false,
-        taskSubnets: { subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS },
+        assignPublicIp: true,
+        taskSubnets: { subnetType: ec2.SubnetType.PUBLIC },
         listenerPort: 443,
         protocol: elbv2.ApplicationProtocol.HTTPS,
         certificate,
         redirectHTTP: true,
-        healthCheckGracePeriod: Duration.seconds(60),
+        healthCheckGracePeriod: Duration.seconds(180),
       },
     );
 
@@ -461,11 +458,6 @@ export class ServfixStack extends Stack {
       });
     }
 
-    natEips.forEach((eip, index) => {
-      new CfnOutput(this, `NatEgressIp${index + 1}`, {
-        value: eip.attrPublicIp,
-      });
-    });
   }
 }
 

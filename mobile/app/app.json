@@ -6,17 +6,26 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
+    "icon": "./assets/icon.png",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
     "assetBundlePatterns": [
       "**/*"
     ],
     "plugins": [
-      "expo-notifications"
+      "expo-notifications",
+      "expo-font",
+      "@react-native-community/datetimepicker"
     ],
     "android": {
       "package": "com.servfix.app",
       "versionCode": 1,
       "adaptiveIcon": {
-        "backgroundColor": "#0f172a"
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
       },
       "intentFilters": [
         {
@@ -52,6 +61,8 @@
     "updates": {
       "url": "https://u.expo.dev/2be594f8-79a6-4b62-8356-72a916895885"
     },
-    "ios": {}
+    "ios": {
+      "icon": "./assets/icon.png"
+    }
   }
 }

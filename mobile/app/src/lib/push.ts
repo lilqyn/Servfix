@@ -7,6 +7,8 @@ const notificationHandlerSet = (() => {
   Notifications.setNotificationHandler({
     handleNotification: async () => ({
       shouldShowAlert: true,
+      shouldShowBanner: true,
+      shouldShowList: true,
       shouldPlaySound: false,
       shouldSetBadge: false,
     }),
@@ -18,17 +20,24 @@ const ensureAndroidChannel = async () => {
   if (Platform.OS !== "android") {
     return;
   }
-  await Notifications.setNotificationChannelAsync("default", {
-    name: "General",
-    importance: Notifications.AndroidImportance.MAX,
-  });
+  try {
+    await Notifications.setNotificationChannelAsync("default", {
+      name: "General",
+      importance: Notifications.AndroidImportance.MAX,
+    });
+  } catch {
+    // Notification channels are not supported in Expo Go
+  }
 };
 
 const getProjectId = () => {
+  const easProjectId =
+    (Constants as typeof Constants & { easConfig?: { projectId?: string | null } }).easConfig
+      ?.projectId ?? null;
+
   return (
     Constants?.expoConfig?.extra?.eas?.projectId ??
-    // @ts-expect-error easConfig is available at runtime
-    Constants?.easConfig?.projectId ??
+    easProjectId ??
     null
   );
 };
@@ -40,6 +49,13 @@ export async function registerForPushNotifications(): Promise<{
 }> {
   void notificationHandlerSet;
   await ensureAndroidChannel();
+
+  // Remote push notifications are not supported in Expo Go since SDK 53.
+  const executionEnv = (Constants as typeof Constants & { executionEnvironment?: string }).executionEnvironment;
+  const appOwnership = (Constants as typeof Constants & { appOwnership?: string }).appOwnership;
+  if (executionEnv === "storeClient" || appOwnership === "expo") {
+    return { granted: false };
+  }
 
   if (!Device.isDevice) {
     return { granted: false };

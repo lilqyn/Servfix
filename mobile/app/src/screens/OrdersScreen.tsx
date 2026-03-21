@@ -8,7 +8,6 @@ import {
   Pressable,
   RefreshControl,
   ScrollView,
-  StyleSheet,
   Text,
   useWindowDimensions,
   View,
@@ -24,7 +23,9 @@ import {
   fetchPublicSettings,
 } from "../lib/api";
 import { useAuth } from "../providers/AuthProvider";
-import { palette } from "../theme";
+import { formatCurrency, toNumber } from "../lib/format";
+import { createThemedStyles } from "../theme";
+import { useTheme } from "../providers/ThemeProvider";
 import type {
   CheckoutMethod,
   CheckoutProvider,
@@ -53,7 +54,7 @@ type FilterChip = {
 const FILTERS: FilterChip[] = [
   { key: "all", label: "All" },
   { key: "active", label: "Active" },
-  { key: "completed", label: "Completed" },
+  { key: "completed", label: "Done" },
   { key: "cancelled", label: "Cancelled" },
 ];
 
@@ -107,26 +108,6 @@ const getCheckoutMethod = (provider: CheckoutProvider): CheckoutMethod | undefin
   return "mobile_money";
 };
 
-const toNumber = (value: string | number | null | undefined) => {
-  if (typeof value === "number" && Number.isFinite(value)) {
-    return value;
-  }
-  if (typeof value === "string") {
-    const parsed = Number(value);
-    return Number.isFinite(parsed) ? parsed : 0;
-  }
-  return 0;
-};
-
-const formatCurrency = (amount: string | number, currency: Order["currency"]) => {
-  const numeric = toNumber(amount);
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency,
-    currencyDisplay: "code",
-    maximumFractionDigits: 0,
-  }).format(numeric);
-};
 
 const formatDate = (value: string) => {
   const date = new Date(value);
@@ -222,23 +203,23 @@ const buildPaymentReturnParams = (order: Order): PaymentReturnParams | null => {
   };
 };
 
-const getStatusTone = (status: OrderStatus) => {
+const getStatusTone = (status: OrderStatus, pal: { accentSoft: string; accent: string; danger: string; dangerSoft: string; goldSoft: string; gold: string }) => {
   const bucket = getBucket(status);
   if (bucket === "completed") {
     return {
-      backgroundColor: palette.accentSoft,
-      color: palette.accent,
+      backgroundColor: pal.accentSoft,
+      color: pal.accent,
     };
   }
   if (bucket === "cancelled") {
     return {
-      backgroundColor: "#fee2e2",
-      color: palette.danger,
+      backgroundColor: pal.dangerSoft,
+      color: pal.danger,
     };
   }
   return {
-    backgroundColor: palette.goldSoft,
-    color: palette.gold,
+    backgroundColor: pal.goldSoft,
+    color: pal.gold,
   };
 };
 
@@ -248,6 +229,8 @@ export function OrdersScreen({
   onOpenOrder,
   refreshToken,
 }: Props) {
+  const styles = useStyles();
+  const { palette } = useTheme();
   const { user } = useAuth();
   const { width } = useWindowDimensions();
   const isCompact = width < 380;
@@ -550,16 +533,9 @@ export function OrdersScreen({
     <View style={styles.page}>
       <View style={[styles.header, isCompact && styles.headerCompact]}>
         <Text style={[styles.title, isCompact && styles.titleCompact]}>Orders</Text>
-        <Text style={styles.supportingText}>
-          Your buyer/provider orders now load from the existing `/api/orders` endpoint.
-        </Text>
       </View>
 
-      <ScrollView
-        contentContainerStyle={[styles.filterRow, isCompact && styles.filterRowCompact]}
-        horizontal
-        showsHorizontalScrollIndicator={false}
-      >
+      <View style={[styles.filterBar, isCompact && styles.filterBarCompact]}>
         {FILTERS.map((filter) => {
           const isActive = filter.key === selectedFilter;
           return (
@@ -568,13 +544,20 @@ export function OrdersScreen({
               onPress={() => setSelectedFilter(filter.key)}
               style={[styles.filterChip, isActive && styles.filterChipActive]}
             >
-              <Text style={[styles.filterChipText, isActive && styles.filterChipTextActive]}>
-                {filter.label} ({counts[filter.key]})
+              <Text numberOfLines={1} style={[styles.filterChipText, isActive && styles.filterChipTextActive]}>
+                {filter.label}
               </Text>
+              {counts[filter.key] > 0 ? (
+                <View style={[styles.filterBadge, isActive && styles.filterBadgeActive]}>
+                  <Text style={[styles.filterBadgeText, isActive && styles.filterBadgeTextActive]}>
+                    {counts[filter.key]}
+                  </Text>
+                </View>
+              ) : null}
             </Pressable>
           );
         })}
-      </ScrollView>
+      </View>
 
       {error ? (
         <View style={styles.errorCard}>
@@ -616,7 +599,7 @@ export function OrdersScreen({
           />
         }
         renderItem={({ item }) => {
-          const statusTone = getStatusTone(item.status);
+          const statusTone = getStatusTone(item.status, palette);
           const counterparty = formatCounterparty(item, user.id);
           const tierName = item.tier?.name
             ? item.tier.name.charAt(0).toUpperCase() + item.tier.name.slice(1)
@@ -685,9 +668,11 @@ export function OrdersScreen({
               </View>
 
               <View style={[styles.footerRow, isCompact && styles.footerRowCompact]}>
-                <Text style={styles.footerText}>
-                  Net provider: {formatCurrency(item.amountNetProvider, item.currency)}
-                </Text>
+                {isProvider ? (
+                  <Text style={styles.footerText}>
+                    Net provider: {formatCurrency(item.amountNetProvider, item.currency)}
+                  </Text>
+                ) : null}
                 {typeof item.depositPercent === "number" ? (
                   <Text style={styles.footerText}>Deposit: {item.depositPercent}%</Text>
                 ) : null}
@@ -750,7 +735,7 @@ export function OrdersScreen({
                     {isActioningThisOrder("request_release") ? (
                       <ActivityIndicator color={palette.ink} size="small" />
                     ) : (
-                      <Text style={styles.actionButtonTextSecondary}>Request payout</Text>
+                      <Text style={styles.actionButtonTextSecondary}>Request disbursement</Text>
                     )}
                   </Pressable>
                 ) : null}
@@ -824,9 +809,10 @@ export function OrdersScreen({
         }}
         ListEmptyComponent={
           <View style={styles.emptyCard}>
-            <Text style={styles.emptyTitle}>No orders here yet</Text>
+            <Text style={styles.emptyIcon}>📋</Text>
+            <Text style={styles.emptyTitle}>No orders yet</Text>
             <Text style={styles.emptyBody}>
-              When orders are created on the web or mobile flow, they will appear here.
+              Orders you place or receive will show up here.
             </Text>
           </View>
         }
@@ -835,7 +821,7 @@ export function OrdersScreen({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((palette) => ({
   page: {
     flex: 1,
   },
@@ -848,7 +834,6 @@ const styles = StyleSheet.create({
     padding: 20,
   },
   header: {
-    gap: 6,
     paddingHorizontal: 20,
     paddingTop: 18,
   },
@@ -885,50 +870,78 @@ const styles = StyleSheet.create({
   },
   primaryButton: {
     alignSelf: "flex-start",
-    backgroundColor: palette.ink,
+    backgroundColor: palette.accentDeep,
     borderRadius: 12,
     paddingHorizontal: 14,
     paddingVertical: 10,
   },
   primaryButtonText: {
-    color: "#ffffff",
+    color: palette.canvas,
     fontSize: 13,
     fontWeight: "700",
   },
-  filterRow: {
+  filterBar: {
+    backgroundColor: palette.mist,
+    borderRadius: 14,
     flexDirection: "row",
-    gap: 8,
-    paddingHorizontal: 20,
-    paddingBottom: 2,
-    paddingTop: 14,
+    marginHorizontal: 20,
+    marginTop: 14,
+    marginBottom: 4,
+    padding: 4,
   },
-  filterRowCompact: {
-    paddingHorizontal: 16,
-    paddingTop: 12,
+  filterBarCompact: {
+    marginHorizontal: 16,
+    marginTop: 12,
   },
   filterChip: {
-    backgroundColor: "#ffffff",
-    borderColor: palette.line,
-    borderRadius: 999,
-    borderWidth: 1,
-    paddingHorizontal: 12,
+    alignItems: "center",
+    borderRadius: 10,
+    flex: 1,
+    flexDirection: "row",
+    gap: 5,
+    justifyContent: "center",
+    paddingHorizontal: 8,
     paddingVertical: 8,
   },
   filterChipActive: {
-    backgroundColor: palette.accentDeep,
-    borderColor: palette.accentDeep,
+    backgroundColor: palette.card,
+    shadowColor: palette.shadow,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 2,
+    elevation: 2,
   },
   filterChipText: {
     color: palette.slate,
-    fontSize: 12,
-    fontWeight: "700",
+    fontSize: 11,
+    fontWeight: "600",
   },
   filterChipTextActive: {
-    color: "#ffffff",
+    color: palette.accentDeep,
+    fontWeight: "700",
+  },
+  filterBadge: {
+    backgroundColor: palette.line,
+    borderRadius: 999,
+    minWidth: 18,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    alignItems: "center",
+  },
+  filterBadgeActive: {
+    backgroundColor: palette.accentSoft,
+  },
+  filterBadgeText: {
+    color: palette.slate,
+    fontSize: 10,
+    fontWeight: "700",
+  },
+  filterBadgeTextActive: {
+    color: palette.accent,
   },
   errorCard: {
-    backgroundColor: "#fff1f2",
-    borderColor: "#fecdd3",
+    backgroundColor: palette.dangerSoft,
+    borderColor: palette.dangerLine,
     borderRadius: 18,
     borderWidth: 1,
     gap: 8,
@@ -942,13 +955,13 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   errorBody: {
-    color: "#7f1d1d",
+    color: palette.dangerInk,
     fontSize: 14,
     lineHeight: 20,
   },
   retryButton: {
     alignSelf: "flex-start",
-    backgroundColor: "#ffffff",
+    backgroundColor: palette.card,
     borderRadius: 12,
     paddingHorizontal: 12,
     paddingVertical: 10,
@@ -1055,8 +1068,8 @@ const styles = StyleSheet.create({
   },
   viewDetailButton: {
     alignSelf: "flex-start",
-    backgroundColor: "#f8fafc",
-    borderColor: "#cbd5e1",
+    backgroundColor: palette.inputBg,
+    borderColor: palette.line,
     borderRadius: 10,
     borderWidth: 1,
     marginBottom: 6,
@@ -1083,15 +1096,15 @@ const styles = StyleSheet.create({
     backgroundColor: palette.accentDeep,
   },
   actionButtonSecondary: {
-    backgroundColor: "#e2e8f0",
-    borderColor: "#cbd5e1",
+    backgroundColor: palette.mist,
+    borderColor: palette.line,
     borderWidth: 1,
   },
   actionButtonDanger: {
     backgroundColor: palette.danger,
   },
   actionButtonText: {
-    color: "#ffffff",
+    color: palette.canvas,
     fontSize: 12,
     fontWeight: "700",
   },
@@ -1117,7 +1130,7 @@ const styles = StyleSheet.create({
     opacity: 0.65,
   },
   paymentRetryButtonText: {
-    color: "#ffffff",
+    color: palette.canvas,
     fontSize: 12,
     fontWeight: "700",
   },
@@ -1127,17 +1140,24 @@ const styles = StyleSheet.create({
     borderColor: palette.line,
     borderRadius: 20,
     borderWidth: 1,
-    gap: 6,
-    padding: 24,
+    gap: 8,
+    marginTop: 40,
+    paddingHorizontal: 24,
+    paddingVertical: 40,
+  },
+  emptyIcon: {
+    fontSize: 40,
+    marginBottom: 4,
   },
   emptyTitle: {
     color: palette.ink,
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: "700",
   },
   emptyBody: {
     color: palette.slate,
     fontSize: 14,
+    lineHeight: 20,
     textAlign: "center",
   },
-});
+}));

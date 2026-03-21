@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, Text, View } from "react-native";
 import { verifyPayment } from "../lib/api";
 import { useAuth } from "../providers/AuthProvider";
-import { palette } from "../theme";
+import { useTheme } from "../providers/ThemeProvider";
+import { createThemedStyles } from "../theme";
 import type { CheckoutProvider, PaymentReturnParams, PaymentVerifyResponse } from "../types";
 
 type Props = {
@@ -124,6 +125,8 @@ function describeSuccess(result: PaymentVerifyResponse, purpose: PaymentPurpose)
 }
 
 export function PaymentReturnScreen({ params, onOpenHome, onOpenOrders, onOpenSignIn }: Props) {
+  const styles = useStyles();
+  const { palette } = useTheme();
   const { user } = useAuth();
   const [status, setStatus] = useState<ScreenStatus>("loading");
   const [message, setMessage] = useState("Verifying your payment...");
@@ -277,7 +280,7 @@ export function PaymentReturnScreen({ params, onOpenHome, onOpenOrders, onOpenSi
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((palette) => ({
   page: {
     alignItems: "center",
     backgroundColor: palette.canvas,
@@ -355,4 +358,4 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     textTransform: "capitalize",
   },
-});
+}));

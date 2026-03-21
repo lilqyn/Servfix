@@ -6,13 +6,12 @@ import {
   Platform,
   Pressable,
   ScrollView,
-  StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
 import { useAuth } from "../providers/AuthProvider";
-import { palette } from "../theme";
+import { createThemedStyles } from "../theme";
 
 type Props = {
   onSuccess: () => void;
@@ -20,6 +19,7 @@ type Props = {
 };
 
 export function SignUpScreen({ onSuccess, onOpenSignIn }: Props) {
+  const styles = useStyles();
   const { isSigningUp, signUp } = useAuth();
   const [identifier, setIdentifier] = useState("");
   const [username, setUsername] = useState("");
@@ -260,7 +260,7 @@ export function SignUpScreen({ onSuccess, onOpenSignIn }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((palette) => ({
   page: {
     backgroundColor: palette.canvas,
     flex: 1,
@@ -329,8 +329,8 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   roleButtonActive: {
-    backgroundColor: palette.ink,
-    borderColor: palette.ink,
+    backgroundColor: palette.accentDeep,
+    borderColor: palette.accentDeep,
   },
   roleLabel: {
     color: palette.slate,
@@ -374,4 +374,4 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "700",
   },
-});
+}));

@@ -440,9 +440,29 @@ model User {
   staffInvitationsAccepted   StaffInvitation[] @relation("StaffInvitationsAccepted")
   accountDeletionRequests    AccountDeletionRequest[] @relation("AccountDeletionRequestUser")
   accountDeletionReviews     AccountDeletionRequest[] @relation("AccountDeletionRequestReviewer")
+  callerCalls                Call[] @relation("CallerCalls")
+  calleeCalls                Call[] @relation("CalleeCalls")
+  pushTokens                 PushToken[]
+  blocksInitiated            UserBlock[] @relation("BlockerBlocks")
+  blocksReceived             UserBlock[] @relation("BlockedBlocks")
 
   @@index([role])
   @@index([status])
+}
+
+model PushToken {
+  id        String   @id @default(uuid())
+  userId    String
+  token     String
+  platform  String   @default("unknown")
+  projectId String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, token])
+  @@index([userId])
 }
 
 model Notification {
@@ -464,6 +484,8 @@ model Notification {
   @@index([actorId])
   @@index([createdAt])
   @@index([isRead])
+  @@index([userId, isRead])
+  @@index([userId, type])
 }
 
 model PasswordResetToken {
@@ -652,6 +674,7 @@ enum NotificationType {
   community_post_commented
   community_new_post
   payout_update
+  call_incoming
 }
 
 enum MomoNetwork {
@@ -880,6 +903,8 @@ model Order {
   @@index([providerId])
   @@index([serviceId])
   @@index([status])
+  @@index([buyerId, status, createdAt])
+  @@index([providerId, status, createdAt])
   @@index([refundReference])
   @@index([pspPaymentRef])
   @@index([pspPayoutRef])
@@ -990,8 +1015,9 @@ model PaymentIntent {
   amount   Decimal      @db.Decimal(12, 2)
   currency CurrencyCode @default(GHS)
 
-  providerRef String? @unique
-  metadata    Json?
+  providerRef    String? @unique
+  idempotencyKey String? @unique
+  metadata       Json?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1356,6 +1382,8 @@ model Thread {
   @@index([providerId])
   @@index([orderId])
   @@index([serviceId])
+  @@index([buyerId, createdAt])
+  @@index([providerId, createdAt])
 }
 
 model Message {
@@ -1366,13 +1394,18 @@ model Message {
   senderId String
   sender   User   @relation(fields: [senderId], references: [id], onDelete: Cascade)
 
-  body      String
-  createdAt DateTime  @default(now())
-  readAt    DateTime?
+  body           String
+  attachmentKey  String?
+  attachmentType String?
+  attachmentName String?
+  createdAt      DateTime  @default(now())
+  readAt         DateTime?
 
   @@index([threadId])
   @@index([senderId])
   @@index([createdAt])
+  @@index([threadId, createdAt])
+  @@index([threadId, senderId, readAt])
 }
 
 model Review {
@@ -1490,6 +1523,7 @@ model CommunityPost {
 
   @@index([authorId])
   @@index([createdAt])
+  @@index([authorId, createdAt])
 }
 
 model CommunityPostMedia {
@@ -1620,4 +1654,39 @@ model PlatformSettings {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model Call {
+  id        String    @id @default(uuid())
+  callerId  String
+  calleeId  String
+  threadId  String?
+  callType  String    @default("audio") // "audio" | "video"
+  status    String    @default("ringing") // ringing, answered, ended, missed, rejected
+  startedAt DateTime?
+  endedAt   DateTime?
+  duration  Int? // seconds
+  createdAt DateTime  @default(now())
+
+  caller User @relation("CallerCalls", fields: [callerId], references: [id], onDelete: Cascade)
+  callee User @relation("CalleeCalls", fields: [calleeId], references: [id], onDelete: Cascade)
+
+  @@index([callerId])
+  @@index([calleeId])
+  @@index([threadId])
+}
+
+model UserBlock {
+  id        String   @id @default(uuid())
+  blockerId String
+  blockedId String
+  reason    String?
+  createdAt DateTime @default(now())
+
+  blocker User @relation("BlockerBlocks", fields: [blockerId], references: [id], onDelete: Cascade)
+  blocked User @relation("BlockedBlocks", fields: [blockedId], references: [id], onDelete: Cascade)
+
+  @@unique([blockerId, blockedId])
+  @@index([blockerId])
+  @@index([blockedId])
 }

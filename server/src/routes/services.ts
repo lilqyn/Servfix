@@ -11,18 +11,14 @@ import { getProviderPlanMap } from "../utils/subscriptions.js";
 
 export const servicesRouter = Router();
 
-const DEFAULT_AVATAR =
-  "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=100&h=100&fit=crop";
-
 const resolveMediaUrl = async (key?: string | null) => {
   if (!key) {
-    return DEFAULT_AVATAR;
+    return null;
   }
   if (key.startsWith("http")) {
     return key;
   }
-  const signed = await signS3Key(key);
-  return signed ?? DEFAULT_AVATAR;
+  return await signS3Key(key);
 };
 
 const querySchema = z.object({

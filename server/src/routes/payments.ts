@@ -256,6 +256,23 @@ paymentsRouter.post(
   asyncHandler(async (req, res) => {
     const data = checkoutSchema.parse(req.body);
     const returnTo = data.returnTo ?? "web";
+
+    // Idempotency: if client sends the same key, return existing payment intent
+    const idempotencyKey = req.headers["idempotency-key"] as string | undefined;
+    if (idempotencyKey) {
+      const existing = await prisma.paymentIntent.findUnique({
+        where: { idempotencyKey },
+        include: { orders: { select: { id: true } } },
+      });
+      if (existing) {
+        return res.json({
+          paymentIntentId: existing.id,
+          orderIds: existing.orders.map((o) => o.id),
+          duplicate: true,
+        });
+      }
+    }
+
     const { settings } = await getPlatformSettings();
     const enabledProviders = settings.integrations.payments.enabledProviders;
 
@@ -361,6 +378,7 @@ paymentsRouter.post(
           status: "created",
           amount: total,
           currency,
+          idempotencyKey: idempotencyKey ?? null,
           metadata: {
             orderIds: orders.map((order) => order.id),
             buyerId: req.user!.id,
@@ -722,6 +740,18 @@ paymentsRouter.post(
   asyncHandler(async (req, res) => {
     const data = orderPaymentCheckoutSchema.parse(req.body);
     const returnTo = data.returnTo ?? "web";
+
+    // Idempotency check
+    const idempotencyKey = req.headers["idempotency-key"] as string | undefined;
+    if (idempotencyKey) {
+      const existing = await prisma.paymentIntent.findUnique({
+        where: { idempotencyKey },
+      });
+      if (existing) {
+        return res.json({ paymentIntentId: existing.id, duplicate: true });
+      }
+    }
+
     const { settings } = await getPlatformSettings();
     const enabledProviders = settings.integrations.payments.enabledProviders;
 
@@ -805,6 +835,7 @@ paymentsRouter.post(
         status: "created",
         amount: orderPayment.amount,
         currency: orderPayment.currency,
+        idempotencyKey: idempotencyKey ?? null,
         metadata: {
           purpose: "order_payment",
           orderPaymentId: orderPayment.id,

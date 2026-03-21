@@ -1,6 +1,8 @@
 ﻿node_modules
 dist
 dist-ssr
+server/dist
+mobile
 infra/node_modules
 infra/cdk.out
 infra/cdk.out*
@@ -10,4 +12,7 @@ cdk.out
 .vscode
 .env
 .env.example
+.claude
 *.log
+tmpclaude-*
+screen.png

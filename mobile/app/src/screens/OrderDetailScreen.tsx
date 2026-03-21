@@ -2,34 +2,42 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "../providers/AuthProvider";
 import {
   ActivityIndicator,
-  Alert,
+  Image,
   Linking,
   RefreshControl,
   Pressable,
   FlatList,
   ScrollView,
-  StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
 import {
   approveOrderCompletion,
+  approveOrderReleaseRequest,
   createOrderPaymentCheckout,
   createOrderProgressReport,
   createOrderConversation,
   fetchOrderPayments,
   fetchOrderProgressReports,
+  fetchOrderReleaseRequests,
   fetchOrders,
   fetchPublicSettings,
   fetchConversationMessages,
   openOrderDispute,
+  rejectOrderReleaseRequest,
   requestOrderRelease,
   sendConversationMessage,
   markConversationRead,
   updateOrderStatus,
+  uploadDisputeImage,
 } from "../lib/api";
-import { palette } from "../theme";
+import type { OrderReleaseRequest } from "../lib/api";
+import { createThemedStyles } from "../theme";
+import { useTheme } from "../providers/ThemeProvider";
+import { formatCurrency, toNumber } from "../lib/format";
+import { Ionicons } from "@expo/vector-icons";
+import * as ImagePicker from "expo-image-picker";
 import type {
   CheckoutMethod,
   CheckoutProvider,
@@ -53,39 +61,34 @@ type ActionKey = "accept" | "deliver" | "approve" | "dispute" | "request_release
 
 const TRUST_TIMELINE = [
   "created",
-  "payment_pending",
   "paid_to_escrow",
   "accepted",
   "in_progress",
   "delivery_submitted",
+  "delivered",
   "release_approved",
   "approved",
   "released",
   "disbursed",
-  "dispute_open",
-  "disputed",
-  "cancelled",
 ] as const;
 
-const toNumber = (value: string | number | null | undefined) => {
-  if (typeof value === "number" && Number.isFinite(value)) {
-    return value;
-  }
-  if (typeof value === "string") {
-    const parsed = Number(value);
-    return Number.isFinite(parsed) ? parsed : 0;
-  }
-  return 0;
-};
+const BUYER_TIMELINE = [
+  "created",
+  "paid_to_escrow",
+  "accepted",
+  "in_progress",
+  "delivery_submitted",
+  "delivered",
+] as const;
 
-const formatCurrency = (amount: string | number, currency: Order["currency"]) => {
-  const numeric = toNumber(amount);
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency,
-    currencyDisplay: "code",
-    maximumFractionDigits: 0,
-  }).format(numeric);
+const TERMINAL_STATUSES: Record<string, string> = {
+  cancelled: "Cancelled",
+  expired: "Expired",
+  dispute_open: "Dispute opened",
+  disputed: "Under dispute",
+  refund_pending: "Refund pending",
+  refunded: "Refunded",
+  chargeback: "Chargeback",
 };
 
 const formatDate = (value: string) => {
@@ -135,12 +138,18 @@ const mergeAndSortConversationMessages = (
   return mergeConversationMessages([...previous, ...incoming]);
 };
 
-const getTimelineEntries = (status: string) => {
-  const currentIndex = TRUST_TIMELINE.indexOf(status as (typeof TRUST_TIMELINE)[number]);
-  if (currentIndex < 0) {
-    return TRUST_TIMELINE.map((entry) => ({ key: entry, reached: false }));
+const getTimelineEntries = (status: string, role: string) => {
+  const terminalLabel = TERMINAL_STATUSES[status];
+  if (terminalLabel) {
+    return { terminal: terminalLabel, steps: [] };
   }
-  return TRUST_TIMELINE.map((entry, index) => ({ key: entry, reached: index <= currentIndex }));
+  const timeline = role === "buyer" ? BUYER_TIMELINE : TRUST_TIMELINE;
+  const currentIndex = (timeline as readonly string[]).indexOf(status);
+  const steps = timeline.map((entry, index) => ({
+    key: entry,
+    reached: currentIndex >= 0 && index <= currentIndex,
+  }));
+  return { terminal: null, steps };
 };
 
 const formatCounterparty = (order: Order, userId: string) => {
@@ -242,6 +251,8 @@ export function OrderDetailScreen({
   onOpenPaymentStatus,
   onOpenSignIn,
 }: Props) {
+  const styles = useStyles();
+  const { palette } = useTheme();
   const { user } = useAuth();
   const [order, setOrder] = useState<Order | null>(seedOrder ?? null);
   const [isLoading, setIsLoading] = useState(false);
@@ -264,10 +275,18 @@ export function OrderDetailScreen({
   const [progressBody, setProgressBody] = useState("");
   const [progressPercent, setProgressPercent] = useState("");
   const [paying, setPaying] = useState(false);
+  const [releaseRequests, setReleaseRequests] = useState<OrderReleaseRequest[]>([]);
+  const [loadingReleaseRequests, setLoadingReleaseRequests] = useState(false);
+  const [releaseRequestActionId, setReleaseRequestActionId] = useState<string | null>(null);
+  const [disputeReason, setDisputeReason] = useState("");
+  const [disputeDetails, setDisputeDetails] = useState("");
+  const [disputeImages, setDisputeImages] = useState<{ uri: string; key?: string }[]>([]);
+  const [uploadingDisputeImages, setUploadingDisputeImages] = useState(false);
+  const [showDisputeForm, setShowDisputeForm] = useState(false);
   const messageListRef = useRef<FlatList<ConversationMessage> | null>(null);
 
   const canPayOutstanding = Boolean(pendingPayment) && user?.role === "buyer";
-  const timeline = useMemo(() => (order ? getTimelineEntries(order.status) : []), [order]);
+  const timeline = useMemo(() => (order ? getTimelineEntries(order.status, user?.role ?? "") : { terminal: null, steps: [] }), [order, user?.role]);
 
   const loadPaymentSettings = useCallback(async () => {
     try {
@@ -356,6 +375,13 @@ export function OrderDetailScreen({
           setProgressReports([]);
         }
 
+        try {
+          const requests = await fetchOrderReleaseRequests(nextOrder.id);
+          setReleaseRequests(requests);
+        } catch {
+          setReleaseRequests([]);
+        }
+
         let conversationThreadId: string | null = null;
         try {
           const conversation = await createOrderConversation(nextOrder.id);
@@ -400,9 +426,10 @@ export function OrderDetailScreen({
   );
 
   useEffect(() => {
-    if (!conversationId) {
+    if (!conversationId || !user?.id) {
       return;
     }
+    const currentUserId = user.id;
 
     let isSubscribed = true;
     const pollIntervalMs = 8000;
@@ -415,7 +442,7 @@ export function OrderDetailScreen({
         }
         setMessages((previous) =>
           mergeAndSortConversationMessages(previous, nextMessages).map((message) =>
-            message.senderId !== user.id ? { ...message, read: true } : message,
+            message.senderId !== currentUserId ? { ...message, read: true } : message,
           ),
         );
         void markConversationRead(conversationId);
@@ -433,7 +460,7 @@ export function OrderDetailScreen({
       isSubscribed = false;
       clearInterval(intervalId);
     };
-  }, [conversationId]);
+  }, [conversationId, user?.id]);
 
   const runOrderAction = useCallback(
     async (action: ActionKey, execute: () => Promise<unknown>) => {
@@ -519,28 +546,114 @@ export function OrderDetailScreen({
     [orderId, runOrderAction],
   );
 
-  const openDispute = useCallback(() => {
-    Alert.alert(
-      "Open dispute",
-      "Do you want to open a dispute for this order? This pauses release until resolved.",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Open dispute",
-          style: "destructive",
-          onPress: () =>
-            void runOrderAction("dispute", () =>
-              openOrderDispute({
-                orderId,
-                reason: "Order outcome is unsatisfactory.",
-                details:
-                  "Please review this order. The buyer is raising a dispute during the review period.",
-              }),
-            ),
-        },
-      ],
-    );
-  }, [orderId, runOrderAction]);
+  const handleApproveReleaseRequest = useCallback(
+    async (requestId: string) => {
+      setReleaseRequestActionId(requestId);
+      try {
+        await approveOrderReleaseRequest(requestId);
+        if (order) {
+          try {
+            const requests = await fetchOrderReleaseRequests(order.id);
+            setReleaseRequests(requests);
+          } catch {
+            setReleaseRequests([]);
+          }
+        }
+        await refreshOrder("refresh");
+      } catch (err) {
+        setActionError(err instanceof Error ? err.message : "Could not approve release request.");
+      } finally {
+        setReleaseRequestActionId(null);
+      }
+    },
+    [order, refreshOrder],
+  );
+
+  const handleRejectReleaseRequest = useCallback(
+    async (requestId: string) => {
+      setReleaseRequestActionId(requestId);
+      try {
+        await rejectOrderReleaseRequest(requestId);
+        if (order) {
+          try {
+            const requests = await fetchOrderReleaseRequests(order.id);
+            setReleaseRequests(requests);
+          } catch {
+            setReleaseRequests([]);
+          }
+        }
+        await refreshOrder("refresh");
+      } catch (err) {
+        setActionError(err instanceof Error ? err.message : "Could not reject release request.");
+      } finally {
+        setReleaseRequestActionId(null);
+      }
+    },
+    [order, refreshOrder],
+  );
+
+  const pickDisputeImages = useCallback(async () => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsMultipleSelection: true,
+        selectionLimit: 4 - disputeImages.length,
+        quality: 0.8,
+      });
+      if (result.canceled || !result.assets?.length) return;
+      const newImages = result.assets.slice(0, 4 - disputeImages.length).map((asset) => ({
+        uri: asset.uri,
+      }));
+      setDisputeImages((prev) => [...prev, ...newImages].slice(0, 4));
+    } catch {
+      setActionError("Could not open image picker.");
+    }
+  }, [disputeImages.length]);
+
+  const removeDisputeImage = useCallback((index: number) => {
+    setDisputeImages((prev) => prev.filter((_, i) => i !== index));
+  }, []);
+
+  const submitDispute = useCallback(async () => {
+    const reason = disputeReason.trim();
+    if (reason.length < 3) {
+      setActionError("Please provide a reason for the dispute (at least 3 characters).");
+      return;
+    }
+
+    setActiveActionKey(`${orderId}:dispute`);
+    setActionError(null);
+
+    try {
+      let imageKeys: string[] = [];
+      if (disputeImages.length > 0) {
+        setUploadingDisputeImages(true);
+        const uploadResults = await Promise.all(
+          disputeImages.map((img) => uploadDisputeImage(img.uri)),
+        );
+        imageKeys = uploadResults.map((r) => r.key);
+        setUploadingDisputeImages(false);
+      }
+
+      await openOrderDispute({
+        orderId,
+        reason,
+        details: disputeDetails.trim() || undefined,
+        imageKeys: imageKeys.length > 0 ? imageKeys : undefined,
+      });
+
+      setDisputeReason("");
+      setDisputeDetails("");
+      setDisputeImages([]);
+      setShowDisputeForm(false);
+      await refreshOrder("refresh");
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Could not open dispute.");
+    } finally {
+      setActiveActionKey(null);
+      setUploadingDisputeImages(false);
+    }
+  }, [disputeDetails, disputeImages, disputeReason, orderId, refreshOrder]);
 
   const submitProgressReport = useCallback(() => {
     if (!order) {
@@ -642,7 +755,7 @@ export function OrderDetailScreen({
         <View style={styles.card}>
           <Text style={styles.title}>Order details</Text>
           <Text style={styles.supportingText}>
-            Sign in to view and manage your order details, approvals, disputes, and payouts.
+            Sign in to view and manage your order details, approvals, disputes, and disbursements.
           </Text>
           <Pressable onPress={onOpenSignIn} style={styles.primaryButton}>
             <Text style={styles.primaryButtonText}>Sign in</Text>
@@ -707,23 +820,34 @@ export function OrderDetailScreen({
           <Text style={styles.statusText}>{order.status.replace(/_/g, " ")}</Text>
         </View>
         <View style={styles.timeline}>
-          {timeline.map((entry) => (
-            <View key={entry.key} style={styles.timelineItem}>
-              <View
-                style={[styles.timelineDot, entry.reached && styles.timelineDotReached]}
-              />
-              <Text style={[styles.timelineText, entry.reached && styles.timelineTextReached]}>
-                {entry.key.replace(/_/g, " ")}
+          {timeline.terminal ? (
+            <View style={styles.timelineItem}>
+              <View style={[styles.timelineDot, styles.timelineDotTerminal]} />
+              <Text style={[styles.timelineText, styles.timelineTextTerminal]}>
+                {timeline.terminal}
               </Text>
             </View>
-          ))}
+          ) : (
+            timeline.steps.map((entry) => (
+              <View key={entry.key} style={styles.timelineItem}>
+                <View
+                  style={[styles.timelineDot, entry.reached && styles.timelineDotReached]}
+                />
+                <Text style={[styles.timelineText, entry.reached && styles.timelineTextReached]}>
+                  {entry.key.replace(/_/g, " ")}
+                </Text>
+              </View>
+            ))
+          )}
         </View>
       </View>
 
       <View style={styles.card}>
         <Text style={styles.cardTitle}>Amounts</Text>
         <Text style={styles.rowText}>Gross: {formatCurrency(order.amountGross, order.currency)}</Text>
-        <Text style={styles.rowText}>Net to provider: {formatCurrency(order.amountNetProvider, order.currency)}</Text>
+        {user.role !== "buyer" && (
+          <Text style={styles.rowText}>Net to provider: {formatCurrency(order.amountNetProvider, order.currency)}</Text>
+        )}
         {typeof order.depositPercent === "number" ? (
           <Text style={styles.rowText}>Deposit: {order.depositPercent}%</Text>
         ) : null}
@@ -906,6 +1030,165 @@ export function OrderDetailScreen({
         </View>
       ) : null}
 
+      {releaseRequests.length > 0 ? (
+        <View style={styles.card}>
+          <View style={styles.headerRow}>
+            <Ionicons name="cash-outline" size={18} color={palette.accent} />
+            <Text style={[styles.cardTitle, { marginLeft: 6 }]}>Release Requests</Text>
+          </View>
+          {releaseRequests.map((req) => {
+            const isPending = req.status === "pending";
+            const canAct = isPending && user.role === "buyer" && req.requestedById !== user.id;
+            const isActing = releaseRequestActionId === req.id;
+            return (
+              <View key={req.id} style={styles.releaseRequestItem}>
+                <View style={styles.releaseRequestHeader}>
+                  <Text style={styles.releaseRequestAmount}>
+                    {formatCurrency(req.amount, req.currency as Order["currency"])}
+                  </Text>
+                  <View
+                    style={[
+                      styles.releaseStatusBadge,
+                      req.status === "approved" && styles.releaseStatusApproved,
+                      req.status === "rejected" && styles.releaseStatusRejected,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.releaseStatusText,
+                        req.status === "approved" && styles.releaseStatusTextApproved,
+                        req.status === "rejected" && styles.releaseStatusTextRejected,
+                      ]}
+                    >
+                      {req.status}
+                    </Text>
+                  </View>
+                </View>
+                {req.note ? <Text style={styles.rowText}>{req.note}</Text> : null}
+                <Text style={styles.reportDate}>{formatDate(req.createdAt)}</Text>
+                {canAct ? (
+                  <View style={styles.releaseRequestActions}>
+                    <Pressable
+                      disabled={isActing}
+                      onPress={() => void handleApproveReleaseRequest(req.id)}
+                      style={[styles.releaseApproveButton, isActing && styles.buttonDisabled]}
+                    >
+                      {isActing ? (
+                        <ActivityIndicator color="#ffffff" size="small" />
+                      ) : (
+                        <>
+                          <Ionicons name="checkmark-circle-outline" size={14} color="#ffffff" />
+                          <Text style={styles.releaseApproveText}>Approve</Text>
+                        </>
+                      )}
+                    </Pressable>
+                    <Pressable
+                      disabled={isActing}
+                      onPress={() => void handleRejectReleaseRequest(req.id)}
+                      style={[styles.releaseRejectButton, isActing && styles.buttonDisabled]}
+                    >
+                      {isActing ? (
+                        <ActivityIndicator color={palette.danger} size="small" />
+                      ) : (
+                        <>
+                          <Ionicons name="close-circle-outline" size={14} color={palette.danger} />
+                          <Text style={styles.releaseRejectText}>Reject</Text>
+                        </>
+                      )}
+                    </Pressable>
+                  </View>
+                ) : null}
+              </View>
+            );
+          })}
+        </View>
+      ) : null}
+
+      {canBuyerDispute ? (
+        <View style={styles.card}>
+          <Pressable
+            onPress={() => setShowDisputeForm((v) => !v)}
+            style={styles.disputeToggleRow}
+          >
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+              <Ionicons name="alert-circle-outline" size={18} color={palette.danger} />
+              <Text style={[styles.cardTitle, { color: palette.danger }]}>Open Dispute</Text>
+            </View>
+            <Ionicons
+              name={showDisputeForm ? "chevron-up" : "chevron-down"}
+              size={18}
+              color={palette.slate}
+            />
+          </Pressable>
+          {showDisputeForm ? (
+            <View style={styles.disputeForm}>
+              <Text style={styles.formLabel}>Reason</Text>
+              <TextInput
+                editable={!isActioning("dispute")}
+                onChangeText={setDisputeReason}
+                placeholder="Why are you opening a dispute?"
+                placeholderTextColor="#94a3b8"
+                style={styles.textInput}
+                value={disputeReason}
+              />
+              <Text style={styles.formLabel}>Details (optional)</Text>
+              <TextInput
+                editable={!isActioning("dispute")}
+                multiline
+                onChangeText={setDisputeDetails}
+                placeholder="Provide additional context"
+                placeholderTextColor="#94a3b8"
+                style={[styles.textInput, styles.textArea]}
+                value={disputeDetails}
+              />
+              <Text style={styles.formLabel}>Evidence images (optional, up to 4)</Text>
+              <View style={styles.disputeImageRow}>
+                {disputeImages.map((img, index) => (
+                  <View key={`dispute-img-${index}`} style={styles.disputeImageThumb}>
+                    <Image source={{ uri: img.uri }} style={styles.disputeImagePreview} />
+                    <Pressable
+                      onPress={() => removeDisputeImage(index)}
+                      style={styles.disputeImageRemove}
+                    >
+                      <Ionicons name="close" size={14} color="#ffffff" />
+                    </Pressable>
+                  </View>
+                ))}
+                {disputeImages.length < 4 ? (
+                  <Pressable
+                    onPress={() => void pickDisputeImages()}
+                    style={styles.disputeImageAdd}
+                  >
+                    <Ionicons name="camera-outline" size={22} color={palette.slate} />
+                    <Text style={styles.disputeImageAddText}>Add</Text>
+                  </Pressable>
+                ) : null}
+              </View>
+              <Pressable
+                disabled={isActioning("dispute")}
+                onPress={() => void submitDispute()}
+                style={[
+                  styles.actionButton,
+                  styles.actionDanger,
+                  isActioning("dispute") && styles.buttonDisabled,
+                ]}
+              >
+                {isActioning("dispute") ? (
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                    <ActivityIndicator color="#ffffff" size="small" />
+                    <Text style={styles.actionButtonText}>
+                      {uploadingDisputeImages ? "Uploading images..." : "Opening dispute..."}
+                    </Text>
+                  </View>
+                ) : (
+                  <Text style={styles.actionButtonText}>Submit dispute</Text>
+                )}
+              </Pressable>
+            </View>
+          ) : null}
+        </View>
+      ) : null}
+
       <View style={styles.actionCard}>
         {canProviderAccept ? (
           <Pressable
@@ -948,7 +1231,7 @@ export function OrderDetailScreen({
             {isActioning("request_release") ? (
               <ActivityIndicator color={palette.ink} size="small" />
             ) : (
-              <Text style={styles.actionButtonTextSecondary}>Request payout</Text>
+              <Text style={styles.actionButtonTextSecondary}>Request disbursement</Text>
             )}
           </Pressable>
         ) : null}
@@ -963,24 +1246,6 @@ export function OrderDetailScreen({
               <ActivityIndicator color="#ffffff" size="small" />
             ) : (
               <Text style={styles.actionButtonText}>Approve & release</Text>
-            )}
-          </Pressable>
-        ) : null}
-
-        {canBuyerDispute ? (
-          <Pressable
-            disabled={isActioning("dispute")}
-            onPress={openDispute}
-            style={[
-              styles.actionButton,
-              styles.actionDanger,
-              isActioning("dispute") && styles.buttonDisabled,
-            ]}
-          >
-            {isActioning("dispute") ? (
-              <ActivityIndicator color="#ffffff" size="small" />
-            ) : (
-              <Text style={styles.actionButtonText}>Open dispute</Text>
             )}
           </Pressable>
         ) : null}
@@ -1018,7 +1283,7 @@ export function OrderDetailScreen({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((palette) => ({
   content: {
     gap: 14,
     padding: 20,
@@ -1107,6 +1372,13 @@ const styles = StyleSheet.create({
   },
   timelineTextReached: {
     color: palette.accentDeep,
+    fontWeight: "700",
+  },
+  timelineDotTerminal: {
+    backgroundColor: palette.danger,
+  },
+  timelineTextTerminal: {
+    color: palette.danger,
     fontWeight: "700",
   },
   errorCard: {
@@ -1317,4 +1589,138 @@ const styles = StyleSheet.create({
     color: palette.slate,
     fontSize: 13,
   },
-});
+  releaseRequestItem: {
+    backgroundColor: "#f8fafc",
+    borderColor: "#e2e8f0",
+    borderRadius: 12,
+    borderWidth: 1,
+    gap: 6,
+    marginTop: 8,
+    padding: 12,
+  },
+  releaseRequestHeader: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+  releaseRequestAmount: {
+    color: palette.ink,
+    fontSize: 15,
+    fontWeight: "700",
+  },
+  releaseStatusBadge: {
+    backgroundColor: "#fef3c7",
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  releaseStatusApproved: {
+    backgroundColor: palette.accentSoft,
+  },
+  releaseStatusRejected: {
+    backgroundColor: "#fff1f2",
+  },
+  releaseStatusText: {
+    color: "#92400e",
+    fontSize: 11,
+    fontWeight: "700",
+    textTransform: "capitalize",
+  },
+  releaseStatusTextApproved: {
+    color: palette.accentDeep,
+  },
+  releaseStatusTextRejected: {
+    color: palette.danger,
+  },
+  releaseRequestActions: {
+    flexDirection: "row",
+    gap: 8,
+    marginTop: 6,
+  },
+  releaseApproveButton: {
+    alignItems: "center",
+    backgroundColor: palette.accentDeep,
+    borderRadius: 10,
+    flexDirection: "row",
+    gap: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  releaseApproveText: {
+    color: "#ffffff",
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  releaseRejectButton: {
+    alignItems: "center",
+    backgroundColor: "#fff1f2",
+    borderColor: "#fecdd3",
+    borderRadius: 10,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  releaseRejectText: {
+    color: palette.danger,
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  disputeToggleRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+  },
+  disputeForm: {
+    gap: 8,
+    marginTop: 10,
+  },
+  disputeImageRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginTop: 4,
+  },
+  disputeImageThumb: {
+    borderRadius: 10,
+    height: 72,
+    overflow: "hidden",
+    position: "relative",
+    width: 72,
+  },
+  disputeImagePreview: {
+    borderRadius: 10,
+    height: 72,
+    width: 72,
+  },
+  disputeImageRemove: {
+    alignItems: "center",
+    backgroundColor: "rgba(0,0,0,0.55)",
+    borderRadius: 10,
+    height: 20,
+    justifyContent: "center",
+    position: "absolute",
+    right: 3,
+    top: 3,
+    width: 20,
+  },
+  disputeImageAdd: {
+    alignItems: "center",
+    backgroundColor: "#f1f5f9",
+    borderColor: "#cbd5e1",
+    borderRadius: 10,
+    borderStyle: "dashed",
+    borderWidth: 1,
+    gap: 2,
+    height: 72,
+    justifyContent: "center",
+    width: 72,
+  },
+  disputeImageAddText: {
+    color: palette.slate,
+    fontSize: 10,
+    fontWeight: "600",
+  },
+}));

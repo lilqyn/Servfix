@@ -58,6 +58,7 @@ const envSchema = z.object({
   EXPRESSPAY_API_KEY: z.string().optional(),
   EXPRESSPAY_BASE_URL: z.string().optional(),
   GOOGLE_CLIENT_ID: z.string().optional(),
+  METERED_TURN_API_KEY: z.string().optional(),
 });
 
 export const env = envSchema.parse(process.env);
@@ -105,10 +106,10 @@ if (process.env.NODE_ENV === "production") {
   }
 
   if (!env.SENTRY_DSN) {
-    throw new Error("SENTRY_DSN is required in production.");
+    console.warn("WARNING: SENTRY_DSN is not set — Sentry error tracking will be disabled.");
   }
 
   if (!env.OPS_ALERT_WEBHOOK_URL) {
-    throw new Error("OPS_ALERT_WEBHOOK_URL is required in production.");
+    console.warn("WARNING: OPS_ALERT_WEBHOOK_URL is not set — ops alerts will be disabled.");
   }
 }

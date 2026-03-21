@@ -674,6 +674,7 @@ communityRouter.delete(
 
 communityRouter.post(
   "/posts/:id/share",
+  authRequired,
   asyncHandler(async (req, res) => {
     const params = postIdSchema.parse(req.params);
 

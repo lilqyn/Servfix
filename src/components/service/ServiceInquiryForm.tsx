@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { Calendar, Users, MapPin, MessageSquare, Send, AlertCircle, Package } from "lucide-react";
+import { Calendar, Users, MapPin, MessageSquare, Send, AlertCircle, Package, Map } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
@@ -81,6 +81,13 @@ const ServiceInquiryForm = ({
   );
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
+  const [showMap, setShowMap] = useState(false);
+  const [nominatimSuggestions, setNominatimSuggestions] = useState<Array<{ display_name: string; lat: string; lon: string }>>([]);
+  const [showNominatimDropdown, setShowNominatimDropdown] = useState(false);
+  const nominatimTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mapContainerRef = useRef<HTMLDivElement>(null);
+  const leafletMapRef = useRef<unknown>(null);
+  const leafletMarkerRef = useRef<unknown>(null);
 
   useEffect(() => {
     if (!googleMapsApiKey) {
@@ -321,7 +328,134 @@ ${formData.message}`;
     if (errors.location) {
       setErrors(prev => ({ ...prev, location: "" }));
     }
+
+    // Nominatim autocomplete fallback when no Google API key
+    if (!googleMapsApiKey) {
+      if (nominatimTimer.current) clearTimeout(nominatimTimer.current);
+      if (value.trim().length < 3) {
+        setNominatimSuggestions([]);
+        setShowNominatimDropdown(false);
+        return;
+      }
+      nominatimTimer.current = setTimeout(async () => {
+        try {
+          const res = await fetch(
+            `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(value)}&countrycodes=gh&limit=5&addressdetails=1`,
+            { headers: { "User-Agent": "ServfixWebApp/1.0" } },
+          );
+          const data = await res.json();
+          setNominatimSuggestions(data);
+          setShowNominatimDropdown(data.length > 0);
+        } catch {
+          setNominatimSuggestions([]);
+        }
+      }, 400);
+    }
   };
+
+  const selectNominatimPlace = useCallback((item: { display_name: string; lat: string; lon: string }) => {
+    const lat = parseFloat(item.lat);
+    const lng = parseFloat(item.lon);
+    setFormData(prev => ({ ...prev, location: item.display_name }));
+    setSelectedPlace({ address: item.display_name, lat, lng });
+    setNominatimSuggestions([]);
+    setShowNominatimDropdown(false);
+    setShowMap(true);
+    setErrors(prev => ({ ...prev, location: "" }));
+  }, []);
+
+  // Initialize / update Leaflet map
+  useEffect(() => {
+    if (!showMap || !mapContainerRef.current) return;
+
+    const L = (window as Window & { L?: unknown }).L as {
+      map: (el: HTMLElement) => {
+        setView: (latlng: [number, number], zoom: number) => unknown;
+        on: (event: string, handler: (e: { latlng: { lat: number; lng: number } }) => void) => void;
+        remove: () => void;
+      };
+      tileLayer: (url: string, opts: object) => { addTo: (map: unknown) => void };
+      marker: (latlng: [number, number]) => { addTo: (map: unknown) => unknown; remove: () => void };
+    } | undefined;
+
+    // Load Leaflet CSS + JS if not loaded yet
+    if (!L) {
+      if (!document.querySelector('link[href*="leaflet"]')) {
+        const link = document.createElement("link");
+        link.rel = "stylesheet";
+        link.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
+        document.head.appendChild(link);
+      }
+      if (!document.querySelector('script[src*="leaflet"]')) {
+        const script = document.createElement("script");
+        script.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
+        script.onload = () => {
+          // Re-trigger effect after Leaflet loads
+          setShowMap(false);
+          setTimeout(() => setShowMap(true), 50);
+        };
+        document.head.appendChild(script);
+      }
+      return;
+    }
+
+    // Don't re-init if map already exists
+    if (leafletMapRef.current) {
+      // Just update marker position
+      const lat = selectedPlace?.lat ?? 5.6037;
+      const lng = selectedPlace?.lng ?? -0.187;
+      if (leafletMarkerRef.current) {
+        (leafletMarkerRef.current as { remove: () => void }).remove();
+      }
+      if (selectedPlace?.lat != null) {
+        leafletMarkerRef.current = L.marker([lat, lng]).addTo(leafletMapRef.current as Parameters<ReturnType<typeof L.marker>["addTo"]>[0]);
+      }
+      (leafletMapRef.current as { setView: (latlng: [number, number], zoom: number) => void }).setView([lat, lng], 14);
+      return;
+    }
+
+    const lat = selectedPlace?.lat ?? 5.6037;
+    const lng = selectedPlace?.lng ?? -0.187;
+    const map = L.map(mapContainerRef.current).setView([lat, lng], 14);
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19,
+      attribution: "&copy; OpenStreetMap",
+    }).addTo(map as Parameters<ReturnType<typeof L.tileLayer>["addTo"]>[0]);
+
+    if (selectedPlace?.lat != null) {
+      leafletMarkerRef.current = L.marker([lat, lng]).addTo(map as Parameters<ReturnType<typeof L.marker>["addTo"]>[0]);
+    }
+
+    map.on("click", (e) => {
+      if (leafletMarkerRef.current) {
+        (leafletMarkerRef.current as { remove: () => void }).remove();
+      }
+      leafletMarkerRef.current = L.marker([e.latlng.lat, e.latlng.lng]).addTo(map as Parameters<ReturnType<typeof L.marker>["addTo"]>[0]);
+      // Reverse geocode
+      fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${e.latlng.lat}&lon=${e.latlng.lng}`)
+        .then(r => r.json())
+        .then(d => {
+          const address = d.display_name || `${e.latlng.lat.toFixed(4)}, ${e.latlng.lng.toFixed(4)}`;
+          setFormData(prev => ({ ...prev, location: address }));
+          setSelectedPlace({ address, lat: e.latlng.lat, lng: e.latlng.lng });
+          setErrors(prev => ({ ...prev, location: "" }));
+        })
+        .catch(() => {
+          const coords = `${e.latlng.lat.toFixed(4)}, ${e.latlng.lng.toFixed(4)}`;
+          setFormData(prev => ({ ...prev, location: coords }));
+          setSelectedPlace({ address: coords, lat: e.latlng.lat, lng: e.latlng.lng });
+        });
+    });
+
+    leafletMapRef.current = map;
+
+    return () => {
+      map.remove();
+      leafletMapRef.current = null;
+      leafletMarkerRef.current = null;
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showMap]);
 
   return (
     <div id="service-inquiry" className="bg-card rounded-2xl border border-border/50 p-6 shadow-sm">
@@ -416,13 +550,41 @@ ${formData.message}`;
               ref={locationInputRef}
               value={formData.location}
               onChange={(e) => handleLocationChange(e.target.value)}
-              placeholder="e.g., East Legon, Accra"
-              maxLength={100}
-              className={`w-full pl-10 pr-4 py-2.5 bg-background border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors ${
+              onFocus={() => { if (nominatimSuggestions.length > 0) setShowNominatimDropdown(true); }}
+              placeholder="Search address — e.g. Tema, Teshie, Accra"
+              maxLength={200}
+              className={`w-full pl-10 pr-10 py-2.5 bg-background border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors ${
                 errors.location ? "border-destructive" : "border-input"
               }`}
             />
+            {formData.location && (
+              <button
+                type="button"
+                onClick={() => { setFormData(prev => ({ ...prev, location: "" })); setSelectedPlace(null); setNominatimSuggestions([]); setShowNominatimDropdown(false); }}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              >
+                ×
+              </button>
+            )}
           </div>
+
+          {/* Nominatim suggestions dropdown */}
+          {showNominatimDropdown && nominatimSuggestions.length > 0 && (
+            <div className="mt-1 border border-border rounded-xl bg-card shadow-lg overflow-hidden z-20 relative">
+              {nominatimSuggestions.map((item, idx) => (
+                <button
+                  type="button"
+                  key={`${item.lat}-${item.lon}-${idx}`}
+                  onClick={() => selectNominatimPlace(item)}
+                  className="w-full flex items-start gap-2 px-3 py-2.5 text-left hover:bg-accent/50 transition-colors border-b border-border last:border-b-0"
+                >
+                  <MapPin className="w-4 h-4 text-primary mt-0.5 shrink-0" />
+                  <span className="text-sm text-foreground line-clamp-2">{item.display_name}</span>
+                </button>
+              ))}
+            </div>
+          )}
+
           {errors.location && (
             <p className="mt-1 text-xs text-destructive flex items-center gap-1">
               <AlertCircle className="w-3 h-3" />
@@ -443,6 +605,26 @@ ${formData.message}`;
             <p className="mt-1 text-xs text-muted-foreground">
               Address search is unavailable right now. Enter the full address.
             </p>
+          )}
+
+          {/* Map toggle */}
+          <button
+            type="button"
+            onClick={() => setShowMap(v => !v)}
+            className="mt-2 flex items-center gap-1.5 text-sm font-medium text-primary hover:text-primary/80 transition-colors"
+          >
+            <Map className="w-4 h-4" />
+            {showMap ? "Hide map" : "Show on map"}
+          </button>
+
+          {/* Leaflet map */}
+          {showMap && (
+            <div className="mt-2 rounded-xl border border-border overflow-hidden">
+              <div ref={mapContainerRef} className="w-full h-[220px]" />
+              <p className="text-xs text-muted-foreground text-center py-1.5 bg-muted/30">
+                Tap the map to pick a location
+              </p>
+            </div>
           )}
         </div>
 

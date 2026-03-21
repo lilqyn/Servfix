@@ -1,4 +1,7 @@
+import { Ionicons } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
+  DefaultTheme,
   NavigationContainer,
   createNavigationContainerRef,
   type LinkingOptions,
@@ -7,11 +10,10 @@ import {
   createNativeStackNavigator,
   type NativeStackScreenProps,
 } from "@react-navigation/native-stack";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
-  StyleSheet,
   Text,
   useWindowDimensions,
   View,
@@ -19,28 +21,93 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useAuth } from "../providers/AuthProvider";
 import { BrowseScreen } from "../screens/BrowseScreen";
+import { CommunityScreen } from "../screens/CommunityScreen";
+import { ChatScreen } from "../screens/ChatScreen";
+import { ForgotPasswordScreen } from "../screens/ForgotPasswordScreen";
+import { CreateEditServiceScreen } from "../screens/CreateEditServiceScreen";
 import { HomeScreen } from "../screens/HomeScreen";
+import { MessagesScreen } from "../screens/MessagesScreen";
+import { MyServicesScreen } from "../screens/MyServicesScreen";
+import { NotificationsScreen } from "../screens/NotificationsScreen";
+import { OnboardingScreen } from "../screens/OnboardingScreen";
+import { OrderDetailScreen } from "../screens/OrderDetailScreen";
 import { OrdersScreen } from "../screens/OrdersScreen";
 import { PaymentReturnScreen } from "../screens/PaymentReturnScreen";
-import { NotificationsScreen } from "../screens/NotificationsScreen";
 import { ProfileScreen } from "../screens/ProfileScreen";
+import { ProviderDashboardScreen } from "../screens/ProviderDashboardScreen";
+import { ProviderProfileScreen } from "../screens/ProviderProfileScreen";
+import { ReviewScreen } from "../screens/ReviewScreen";
 import { ServiceDetailScreen } from "../screens/ServiceDetailScreen";
+import { SettingsScreen } from "../screens/SettingsScreen";
 import { SignInScreen } from "../screens/SignInScreen";
 import { SignUpScreen } from "../screens/SignUpScreen";
-import { OrderDetailScreen } from "../screens/OrderDetailScreen";
-import { palette } from "../theme";
-import type { Order, PaymentReturnParams } from "../types";
+import { WalletScreen } from "../screens/WalletScreen";
+import { BoostsScreen } from "../screens/BoostsScreen";
+import { SubscriptionsScreen } from "../screens/SubscriptionsScreen";
+import { SupportScreen } from "../screens/SupportScreen";
+import { ReportScreen } from "../screens/ReportScreen";
+import { QuotesScreen } from "../screens/QuotesScreen";
+import { WishlistScreen } from "../screens/WishlistScreen";
+import { CartScreen } from "../screens/CartScreen";
+import BlogScreen from "../screens/BlogScreen";
+import AcademyScreen from "../screens/AcademyScreen";
+import LegalScreen from "../screens/LegalScreen";
+import ProviderResourcesScreen from "../screens/ProviderResourcesScreen";
+import { BusinessAccountsScreen } from "../screens/BusinessAccountsScreen";
+import { CallScreen } from "../screens/CallScreen";
+import ResetPasswordScreen from "../screens/ResetPasswordScreen";
+import { createCall, fetchThread, fetchThreads, fetchOrders, fetchNotifications } from "../lib/api";
+import * as websocket from "../lib/websocket";
+import { createThemedStyles } from "../theme";
+import { useTheme } from "../providers/ThemeProvider";
+import type { Order, PaymentReturnParams, ReportTargetType, Service } from "../types";
+
+const ONBOARDING_DONE_KEY = "servfix-onboarding-done";
 
 type RootStackParamList = {
+  Onboarding: undefined;
   Shell: { tab?: AppTab; refreshOrdersToken?: string } | undefined;
   SignIn: undefined;
   SignUp: undefined;
+  ForgotPassword: undefined;
   ServiceDetail: { serviceId: string };
   OrderDetail: { orderId: string; seedOrder?: Order; threadId?: string };
   PaymentReturn: PaymentReturnParams | undefined;
+  Settings: undefined;
+  Messages: undefined;
+  Chat: { threadId: string; threadTitle?: string };
+  ProviderDashboard: undefined;
+  MyServices: undefined;
+  CreateEditService: { service?: Service } | undefined;
+  Wallet: undefined;
+  Boosts: undefined;
+  Subscriptions: undefined;
+  Support: undefined;
+  Report: { targetType: ReportTargetType; targetId: string; targetLabel?: string };
+  Quotes: { threadId: string };
+  ProviderProfile: { userId: string };
+  Review: { serviceId: string; serviceTitle: string; orderId: string };
+  Wishlist: undefined;
+  Cart: undefined;
+  Blog: undefined;
+  Academy: undefined;
+  Legal: { slug: "privacy" | "terms" | "cookies" | "providerAddendum" | "about" };
+  ProviderResources: undefined;
+  ResetPassword: { token: string };
+  BusinessAccounts: undefined;
+  Call: {
+    callId: string;
+    callType: "audio" | "video";
+    isIncoming: boolean;
+    callerName: string;
+    callerAvatar?: string | null;
+    callerUserId?: string;
+    calleeUserId?: string;
+    offerSdp?: string;
+  };
 };
 
-type AppTab = "home" | "browse" | "notifications" | "orders" | "account";
+type AppTab = "home" | "browse" | "community" | "messages" | "notifications" | "orders" | "account";
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 export const navRef = createNavigationContainerRef<RootStackParamList>();
@@ -54,6 +121,7 @@ const linking: LinkingOptions<RootStackParamList> = {
       SignUp: "signup",
       ServiceDetail: "service/:serviceId",
       PaymentReturn: "payment/verify",
+      ResetPassword: "reset-password/:token",
     },
   },
 };
@@ -62,13 +130,77 @@ function ShellScreen({
   navigation,
   route,
 }: NativeStackScreenProps<RootStackParamList, "Shell">) {
+  const styles = useStyles();
+  const { palette } = useTheme();
   const { user } = useAuth();
   const { width } = useWindowDimensions();
   const isCompact = width < 380;
-  const [tab, setTab] = useState<AppTab>(route.params?.tab ?? "home");
+  const [tab, setTabRaw] = useState<AppTab>(route.params?.tab ?? "home");
+  const setTab = (t: AppTab) => {
+    if (t === "messages") setUnreadMessages(0);
+    // Don't clear notification badge on account tab — clear it when entering Notifications screen
+    if (t === "orders") {
+      setOrderBadge(0);
+      lastSeenOrdersRef.current = knownOrderSnapshotRef.current;
+    }
+    setTabRaw(t);
+  };
+  const [browseCategory, setBrowseCategory] = useState<string | undefined>(undefined);
   const [ordersRefreshToken, setOrdersRefreshToken] = useState<string | undefined>(
     route.params?.refreshOrdersToken,
   );
+  const [unreadMessages, setUnreadMessages] = useState(0);
+  const [orderBadge, setOrderBadge] = useState(0);
+  const [unreadNotifications, setUnreadNotifications] = useState(0);
+  // Track order states to detect changes
+  const lastSeenOrdersRef = useRef<string>("");
+  const knownOrderSnapshotRef = useRef<string>("");
+
+  // Poll unread messages & order changes
+  useEffect(() => {
+    if (!user) { setUnreadMessages(0); setOrderBadge(0); setUnreadNotifications(0); return; }
+    let mounted = true;
+    const poll = async () => {
+      try {
+        const [threads, orders, notifData] = await Promise.all([fetchThreads(), fetchOrders(), fetchNotifications({ limit: 1 })]);
+        if (!mounted) return;
+        setUnreadMessages(threads.reduce((sum, t) => sum + (t.unreadCount ?? 0), 0));
+        setUnreadNotifications(notifData.unreadCount);
+
+        // Build a snapshot of order ids + statuses to detect changes
+        const snapshot = orders
+          .map((o) => `${o.id}:${o.status}`)
+          .sort()
+          .join("|");
+        knownOrderSnapshotRef.current = snapshot;
+
+        // If user is currently on the orders tab, keep badge at 0 and update lastSeen
+        if (tab === "orders") {
+          lastSeenOrdersRef.current = snapshot;
+          setOrderBadge(0);
+          return;
+        }
+
+        // Count how many orders have changed since lastSeen
+        if (!lastSeenOrdersRef.current) {
+          // First load — no badge
+          lastSeenOrdersRef.current = snapshot;
+          setOrderBadge(0);
+          return;
+        }
+
+        const seenSet = new Set(lastSeenOrdersRef.current.split("|"));
+        const changedCount = orders.filter(
+          (o) => !seenSet.has(`${o.id}:${o.status}`),
+        ).length;
+        setOrderBadge(changedCount);
+      } catch {}
+    };
+    void poll();
+    const interval = setInterval(poll, 30_000);
+    return () => { mounted = false; clearInterval(interval); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, tab]);
 
   const openSignIn = () => navigation.navigate("SignIn");
   const openService = (serviceId: string) => navigation.navigate("ServiceDetail", { serviceId });
@@ -76,7 +208,7 @@ function ShellScreen({
     navigation.navigate("OrderDetail", { orderId: order.id, seedOrder: order });
   const openOrderById = (orderId: string, threadId?: string) =>
     navigation.navigate("OrderDetail", { orderId, threadId });
-  const openNotifications = () => setTab("notifications");
+  const openNotifications = () => { setUnreadNotifications(0); setTab("notifications"); };
 
   useEffect(() => {
     if (route.params?.tab) {
@@ -87,16 +219,40 @@ function ShellScreen({
     }
   }, [route.params?.refreshOrdersToken, route.params?.tab]);
 
+  const openBrowseCategory = (category: string) => {
+    setBrowseCategory(category);
+    setTab("browse");
+  };
+
   let content = (
-    <HomeScreen onBrowse={() => setTab("browse")} onOpenSignIn={openSignIn} user={user} />
+    <HomeScreen
+      onBrowse={() => setTab("browse")}
+      onBrowseCategory={openBrowseCategory}
+      onOpenService={openService}
+      onOpenSignIn={openSignIn}
+      onOpenProviderProfile={(userId) => navigation.navigate("ProviderProfile", { userId })}
+      user={user}
+    />
   );
 
   if (tab === "browse") {
-    content = <BrowseScreen onOpenService={openService} />;
+    content = (
+      <BrowseScreen
+        initialCategory={browseCategory}
+        onOpenService={openService}
+      />
+    );
   }
 
   if (tab === "notifications") {
-    content = <NotificationsScreen onOpenOrder={openOrderById} onOpenSignIn={openSignIn} />;
+    content = (
+      <NotificationsScreen
+        onOpenOrder={openOrderById}
+        onOpenService={openService}
+        onOpenChat={(threadId) => navigation.navigate("Chat", { threadId })}
+        onOpenSignIn={openSignIn}
+      />
+    );
   }
 
   if (tab === "orders") {
@@ -110,47 +266,66 @@ function ShellScreen({
     );
   }
 
-  if (tab === "account") {
+  const isProvider = user?.role === "provider" || user?.role === "admin" || user?.role === "super_admin";
+
+  if (tab === "community") {
     content = (
-      <ProfileScreen onOpenSignIn={openSignIn} onOpenNotifications={openNotifications} />
+      <CommunityScreen
+        onOpenSignIn={openSignIn}
+        onOpenProfile={(userId) => navigation.navigate("ProviderProfile", { userId })}
+      />
     );
   }
 
-  const leftTabs: Array<{
+  if (tab === "messages") {
+    content = (
+      <MessagesScreen
+        onOpenThread={(threadId, threadTitle) => navigation.navigate("Chat", { threadId, threadTitle })}
+        onOpenSignIn={openSignIn}
+      />
+    );
+  }
+
+  if (tab === "account") {
+    content = (
+      <ProfileScreen
+        onOpenSignIn={openSignIn}
+        onOpenNotifications={openNotifications}
+        unreadNotifications={unreadNotifications}
+        onOpenSettings={() => navigation.navigate("Settings")}
+        onOpenMessages={() => setTab("messages")}
+        onOpenProviderDashboard={isProvider ? () => navigation.navigate("ProviderDashboard") : undefined}
+        onOpenWallet={isProvider ? () => navigation.navigate("Wallet") : undefined}
+        onOpenBoosts={isProvider ? () => navigation.navigate("Boosts") : undefined}
+        onOpenSubscriptions={isProvider ? () => navigation.navigate("Subscriptions") : undefined}
+        onOpenSupport={() => navigation.navigate("Support")}
+        onOpenWishlist={() => navigation.navigate("Wishlist")}
+        onOpenCart={() => navigation.navigate("Cart")}
+        onOpenBlog={() => navigation.navigate("Blog")}
+        onOpenAcademy={() => navigation.navigate("Academy")}
+        onOpenLegal={(slug) => navigation.navigate("Legal", { slug })}
+        onOpenProviderResources={isProvider ? () => navigation.navigate("ProviderResources") : undefined}
+        onOpenBusiness={() => navigation.navigate("BusinessAccounts")}
+      />
+    );
+  }
+
+  type TabDef = {
     key: Exclude<AppTab, "home">;
     label: string;
-    helper: string;
     tone: string;
     activeBg: string;
-    glyph: string;
-  }> = [
-    { key: "browse", label: "Browse", helper: "Discover", tone: "#15803d", activeBg: "#ecfdf3", glyph: "B" },
-    {
-      key: "notifications",
-      label: "Alerts",
-      helper: "Updates",
-      tone: "#0369a1",
-      activeBg: "#e0f2fe",
-      glyph: "N",
-    },
-    { key: "orders", label: "Orders", helper: "Track", tone: "#ea580c", activeBg: "#fff7ed", glyph: "O" },
+    icon: React.ComponentProps<typeof Ionicons>["name"];
+    iconActive: React.ComponentProps<typeof Ionicons>["name"];
+    badge?: number;
+  };
+  const leftTabs: TabDef[] = [
+    { key: "community", label: "Community", tone: "#0369a1", activeBg: "#e0f2fe", icon: "people-outline", iconActive: "people" },
+    { key: "orders", label: "Orders", tone: "#ea580c", activeBg: "#fff7ed", icon: "receipt-outline", iconActive: "receipt", badge: orderBadge },
   ];
-  const rightTabs: Array<{
-    key: Exclude<AppTab, "home">;
-    label: string;
-    helper: string;
-    tone: string;
-    activeBg: string;
-    glyph: string;
-  }> = [
-    {
-      key: "account",
-      label: "Account",
-      helper: user ? "Profile" : "Sign in",
-      tone: "#111111",
-      activeBg: "#f3f4f6",
-      glyph: "A",
-    },
+  const rightTabs: TabDef[] = [
+    { key: "messages", label: "Messages", tone: "#7c3aed", activeBg: "#f5f3ff", icon: "chatbubble-outline", iconActive: "chatbubble", badge: unreadMessages },
+    { key: "account", label: "Account", tone: palette.ink, activeBg: palette.mist, icon: "person-outline", iconActive: "person", badge: unreadNotifications },
   ];
 
   return (
@@ -171,18 +346,22 @@ function ShellScreen({
                     isActive && { backgroundColor: item.activeBg },
                   ]}
                 >
-                  <View
-                    style={[
-                      styles.tabGlyph,
-                      { borderColor: item.tone },
-                      isActive && { backgroundColor: item.tone },
-                    ]}
-                  >
-                    <Text style={[styles.tabGlyphText, isActive && styles.tabGlyphTextActive]}>
-                      {item.glyph}
-                    </Text>
+                  <View>
+                    <Ionicons
+                      color={isActive ? item.tone : palette.slate}
+                      name={isActive ? item.iconActive : item.icon}
+                      size={22}
+                    />
+                    {(item.badge ?? 0) > 0 && (
+                      <View style={styles.tabBadge}>
+                        <Text style={styles.tabBadgeText}>
+                          {item.badge! > 99 ? "99+" : item.badge}
+                        </Text>
+                      </View>
+                    )}
                   </View>
                   <Text
+                    numberOfLines={1}
                     style={[
                       styles.tabLabel,
                       isCompact && styles.tabLabelCompact,
@@ -191,11 +370,6 @@ function ShellScreen({
                   >
                     {item.label}
                   </Text>
-                  {!isCompact ? (
-                    <Text style={[styles.tabHelper, isActive && { color: item.tone }]}>
-                      {item.helper}
-                    </Text>
-                  ) : null}
                 </Pressable>
               );
             })}
@@ -212,23 +386,26 @@ function ShellScreen({
                   onPress={() => setTab(item.key)}
                   style={[
                     styles.tabButton,
-                    styles.tabButtonSingle,
                     isCompact && styles.tabButtonCompact,
                     isActive && { backgroundColor: item.activeBg },
                   ]}
                 >
-                  <View
-                    style={[
-                      styles.tabGlyph,
-                      { borderColor: item.tone },
-                      isActive && { backgroundColor: item.tone },
-                    ]}
-                  >
-                    <Text style={[styles.tabGlyphText, isActive && styles.tabGlyphTextActive]}>
-                      {item.glyph}
-                    </Text>
+                  <View>
+                    <Ionicons
+                      color={isActive ? item.tone : palette.slate}
+                      name={isActive ? item.iconActive : item.icon}
+                      size={22}
+                    />
+                    {(item.badge ?? 0) > 0 && (
+                      <View style={styles.tabBadge}>
+                        <Text style={styles.tabBadgeText}>
+                          {item.badge! > 99 ? "99+" : item.badge}
+                        </Text>
+                      </View>
+                    )}
                   </View>
                   <Text
+                    numberOfLines={1}
                     style={[
                       styles.tabLabel,
                       isCompact && styles.tabLabelCompact,
@@ -237,11 +414,6 @@ function ShellScreen({
                   >
                     {item.label}
                   </Text>
-                  {!isCompact ? (
-                    <Text style={[styles.tabHelper, isActive && { color: item.tone }]}>
-                      {item.helper}
-                    </Text>
-                  ) : null}
                 </Pressable>
               );
             })}
@@ -253,14 +425,11 @@ function ShellScreen({
           style={styles.homeFab}
         >
           <View style={[styles.homeOrb, tab === "home" && styles.homeOrbActive]}>
-            <Text style={styles.homeOrbText}>H</Text>
+            <Ionicons color={palette.canvas} name={tab === "home" ? "home" : "home-outline"} size={26} />
           </View>
           <Text style={[styles.homeLabel, isCompact && styles.homeLabelCompact, tab === "home" && styles.homeLabelActive]}>
             Home
           </Text>
-          {!isCompact ? (
-            <Text style={[styles.homeHint, tab === "home" && styles.homeHintActive]}>Start</Text>
-          ) : null}
         </Pressable>
       </View>
     </SafeAreaView>
@@ -268,9 +437,74 @@ function ShellScreen({
 }
 
 export function AppNavigator() {
-  const { isBooting } = useAuth();
+  const styles = useStyles();
+  const { palette, isDark } = useTheme();
+  const { isBooting, user } = useAuth();
+  const [onboardingChecked, setOnboardingChecked] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const wsListenerRef = useRef<(() => void) | null>(null);
 
-  if (isBooting) {
+  useEffect(() => {
+    AsyncStorage.getItem(ONBOARDING_DONE_KEY).then((val) => {
+      setShowOnboarding(!val);
+      setOnboardingChecked(true);
+    }).catch(() => {
+      setOnboardingChecked(true);
+    });
+  }, []);
+
+  // Connect WebSocket when user is authenticated
+  useEffect(() => {
+    if (user) {
+      websocket.connect();
+    } else {
+      websocket.disconnect();
+    }
+    return () => {
+      websocket.disconnect();
+    };
+  }, [user]);
+
+  // Listen for incoming calls via WebSocket
+  useEffect(() => {
+    if (!user) return;
+
+    if (wsListenerRef.current) {
+      wsListenerRef.current();
+    }
+
+    wsListenerRef.current = websocket.subscribe((msg) => {
+      if (msg.type !== "call:offer") return;
+
+      const callId = msg.callId as string | undefined;
+      const callerUserId = msg.from as string | undefined;
+      const callType = (msg.callType as "audio" | "video") || "audio";
+      const offerSdp = msg.sdp as string | undefined;
+      const callerName = (msg.callerName as string) || "Incoming call";
+
+      if (!callId || !callerUserId || !offerSdp) return;
+
+      if (navRef.isReady()) {
+        navRef.navigate("Call", {
+          callId,
+          callType,
+          isIncoming: true,
+          callerName,
+          callerUserId,
+          offerSdp,
+        });
+      }
+    });
+
+    return () => {
+      if (wsListenerRef.current) {
+        wsListenerRef.current();
+        wsListenerRef.current = null;
+      }
+    };
+  }, [user]);
+
+  if (isBooting || !onboardingChecked) {
     return (
       <SafeAreaView edges={["top"]} style={styles.loadingWrap}>
         <ActivityIndicator color={palette.accent} size="large" />
@@ -280,8 +514,24 @@ export function AppNavigator() {
   }
 
   return (
-    <NavigationContainer linking={linking} ref={navRef}>
+    <NavigationContainer
+      linking={linking}
+      ref={navRef}
+      theme={{
+        dark: isDark,
+        fonts: DefaultTheme.fonts,
+        colors: {
+          primary: palette.accent,
+          background: palette.canvas,
+          card: palette.card,
+          text: palette.ink,
+          border: palette.line,
+          notification: palette.danger,
+        },
+      }}
+    >
       <Stack.Navigator
+        initialRouteName={showOnboarding ? "Onboarding" : "Shell"}
         screenOptions={{
           contentStyle: { backgroundColor: palette.canvas },
           headerShadowVisible: false,
@@ -289,6 +539,16 @@ export function AppNavigator() {
           headerTitleStyle: { color: palette.ink, fontWeight: "700" },
         }}
       >
+        <Stack.Screen name="Onboarding" options={{ headerShown: false }}>
+          {({ navigation }) => (
+            <OnboardingScreen
+              onDone={async () => {
+                await AsyncStorage.setItem(ONBOARDING_DONE_KEY, "1");
+                navigation.replace("Shell");
+              }}
+            />
+          )}
+        </Stack.Screen>
         <Stack.Screen
           component={ShellScreen}
           name="Shell"
@@ -298,6 +558,7 @@ export function AppNavigator() {
           {({ navigation }) => (
             <SignInScreen
               onOpenSignUp={() => navigation.navigate("SignUp")}
+              onOpenForgotPassword={() => navigation.navigate("ForgotPassword")}
               onSuccess={() => navigation.replace("Shell")}
             />
           )}
@@ -306,14 +567,16 @@ export function AppNavigator() {
           {({ navigation }) => (
             <SignUpScreen
               onOpenSignIn={() => {
-                if (navigation.canGoBack()) {
-                  navigation.goBack();
-                  return;
-                }
+                if (navigation.canGoBack()) { navigation.goBack(); return; }
                 navigation.navigate("SignIn");
               }}
               onSuccess={() => navigation.replace("Shell")}
             />
+          )}
+        </Stack.Screen>
+        <Stack.Screen name="ForgotPassword" options={{ title: "Reset password" }}>
+          {({ navigation }) => (
+            <ForgotPasswordScreen onBack={() => navigation.goBack()} />
           )}
         </Stack.Screen>
         <Stack.Screen name="ServiceDetail" options={{ title: "Service details" }}>
@@ -321,6 +584,10 @@ export function AppNavigator() {
             <ServiceDetailScreen
               onOpenOrders={() => navigation.navigate("Shell", { tab: "orders" })}
               onOpenSignIn={() => navigation.navigate("SignIn")}
+              onOpenProviderProfile={(userId) => navigation.navigate("ProviderProfile", { userId })}
+              onOpenService={(serviceId) => navigation.navigate("ServiceDetail", { serviceId })}
+              onReport={(targetType, targetId, targetLabel) => navigation.navigate("Report", { targetType, targetId, targetLabel })}
+              onOpenMessages={(threadId, threadTitle) => navigation.navigate("Chat", { threadId, threadTitle })}
               serviceId={route.params.serviceId}
             />
           )}
@@ -352,12 +619,224 @@ export function AppNavigator() {
             />
           )}
         </Stack.Screen>
+        <Stack.Screen name="Settings" options={{ title: "Settings" }}>
+          {({ navigation }) => (
+            <SettingsScreen onBack={() => navigation.goBack()} />
+          )}
+        </Stack.Screen>
+        <Stack.Screen name="Messages" options={{ title: "Messages" }}>
+          {({ navigation }) => (
+            <MessagesScreen
+              onOpenThread={(threadId, threadTitle) => navigation.navigate("Chat", { threadId, threadTitle })}
+              onOpenSignIn={() => navigation.navigate("SignIn")}
+            />
+          )}
+        </Stack.Screen>
+        <Stack.Screen name="Chat" options={{ title: "Chat" }}>
+          {({ navigation, route }) => (
+            <ChatScreen
+              threadId={route.params.threadId}
+              threadTitle={route.params.threadTitle}
+              onBack={() => navigation.goBack()}
+              onOpenQuotes={(threadId) => navigation.navigate("Quotes", { threadId })}
+              onStartCall={async (callType) => {
+                try {
+                  const thread = await fetchThread(route.params.threadId);
+                  const callee = thread.participants.find((p) => p.id !== "current-user");
+                  if (!callee) return;
+                  const call = await createCall({
+                    calleeId: callee.id,
+                    threadId: route.params.threadId,
+                    callType,
+                  });
+                  navigation.navigate("Call", {
+                    callId: call.id,
+                    callType,
+                    isIncoming: false,
+                    callerName: callee.name,
+                    callerAvatar: callee.avatar,
+                    calleeUserId: callee.id,
+                  });
+                } catch {
+                  // Silently fail — could show alert
+                }
+              }}
+            />
+          )}
+        </Stack.Screen>
+        <Stack.Screen name="ProviderDashboard" options={{ title: "Dashboard" }}>
+          {({ navigation }) => (
+            <ProviderDashboardScreen
+              onOpenOrders={() => navigation.navigate("Shell", { tab: "orders" })}
+              onOpenMyServices={() => navigation.navigate("MyServices")}
+              onOpenWallet={() => navigation.navigate("Wallet")}
+              onOpenCreateService={() => navigation.navigate("CreateEditService")}
+              onOpenBoosts={() => navigation.navigate("Boosts")}
+              onOpenSubscriptions={() => navigation.navigate("Subscriptions")}
+            />
+          )}
+        </Stack.Screen>
+        <Stack.Screen name="MyServices" options={{ title: "My services" }}>
+          {({ navigation }) => (
+            <MyServicesScreen
+              onBack={() => navigation.goBack()}
+              onOpenCreateService={() => navigation.navigate("CreateEditService")}
+              onOpenEditService={(service) => navigation.navigate("CreateEditService", { service })}
+            />
+          )}
+        </Stack.Screen>
+        <Stack.Screen name="CreateEditService" options={{ title: "Service" }}>
+          {({ navigation, route }) => (
+            <CreateEditServiceScreen
+              existingService={route.params?.service}
+              onBack={() => navigation.goBack()}
+              onDone={() => navigation.goBack()}
+            />
+          )}
+        </Stack.Screen>
+        <Stack.Screen name="Wallet" options={{ title: "Earnings" }}>
+          {({ navigation }) => (
+            <WalletScreen onBack={() => navigation.goBack()} />
+          )}
+        </Stack.Screen>
+        <Stack.Screen name="Boosts" options={{ title: "Boost Services" }}>
+          {({ navigation }) => (
+            <BoostsScreen onBack={() => navigation.goBack()} />
+          )}
+        </Stack.Screen>
+        <Stack.Screen name="Subscriptions" options={{ title: "Subscription Plans" }}>
+          {({ navigation }) => (
+            <SubscriptionsScreen onBack={() => navigation.goBack()} />
+          )}
+        </Stack.Screen>
+        <Stack.Screen name="Support" options={{ title: "Help & Support" }}>
+          {({ navigation }) => (
+            <SupportScreen onBack={() => navigation.goBack()} />
+          )}
+        </Stack.Screen>
+        <Stack.Screen name="Report" options={{ title: "Report" }}>
+          {({ navigation, route }) => (
+            <ReportScreen
+              targetType={route.params.targetType}
+              targetId={route.params.targetId}
+              targetLabel={route.params.targetLabel}
+              onBack={() => navigation.goBack()}
+              onDone={() => navigation.goBack()}
+            />
+          )}
+        </Stack.Screen>
+        <Stack.Screen name="Quotes" options={{ title: "Quotes" }}>
+          {({ navigation, route }) => (
+            <QuotesScreen
+              threadId={route.params.threadId}
+              userRole={user?.role ?? "buyer"}
+              onBack={() => navigation.goBack()}
+              onOrderCreated={(orderId) => {
+                navigation.navigate("OrderDetail", { orderId });
+              }}
+            />
+          )}
+        </Stack.Screen>
+        <Stack.Screen name="ProviderProfile" options={{ title: "Provider" }}>
+          {({ navigation, route }) => (
+            <ProviderProfileScreen
+              userId={route.params.userId}
+              onBack={() => navigation.goBack()}
+              onOpenService={(serviceId) => navigation.navigate("ServiceDetail", { serviceId })}
+              onOpenMessages={(providerId) => navigation.navigate("Chat", { threadId: providerId, threadTitle: "Message" })}
+            />
+          )}
+        </Stack.Screen>
+        <Stack.Screen name="Review" options={{ title: "Leave a review" }}>
+          {({ navigation, route }) => (
+            <ReviewScreen
+              serviceId={route.params.serviceId}
+              serviceTitle={route.params.serviceTitle}
+              orderId={route.params.orderId}
+              onBack={() => navigation.goBack()}
+              onDone={() => navigation.goBack()}
+            />
+          )}
+        </Stack.Screen>
+        <Stack.Screen name="Wishlist" options={{ title: "Wishlist" }}>
+          {({ navigation }) => (
+            <WishlistScreen
+              onBack={() => navigation.goBack()}
+              onOpenService={(serviceId) => navigation.navigate("ServiceDetail", { serviceId })}
+              onOpenBrowse={() => navigation.navigate("Shell", { tab: "browse" })}
+            />
+          )}
+        </Stack.Screen>
+        <Stack.Screen name="Cart" options={{ title: "Cart" }}>
+          {({ navigation }) => (
+            <CartScreen
+              onBack={() => navigation.goBack()}
+              onOpenBrowse={() => navigation.navigate("Shell", { tab: "browse" })}
+              onOpenSignIn={() => navigation.navigate("SignIn")}
+            />
+          )}
+        </Stack.Screen>
+        <Stack.Screen name="Blog" options={{ title: "Blog" }}>
+          {({ navigation }) => (
+            <BlogScreen onBack={() => navigation.goBack()} />
+          )}
+        </Stack.Screen>
+        <Stack.Screen name="Academy" options={{ title: "Academy" }}>
+          {({ navigation }) => (
+            <AcademyScreen onBack={() => navigation.goBack()} />
+          )}
+        </Stack.Screen>
+        <Stack.Screen name="Legal" options={{ title: "" }}>
+          {({ navigation, route }) => (
+            <LegalScreen
+              slug={route.params.slug}
+              onBack={() => navigation.goBack()}
+            />
+          )}
+        </Stack.Screen>
+        <Stack.Screen name="ProviderResources" options={{ title: "Provider Resources" }}>
+          {({ navigation }) => (
+            <ProviderResourcesScreen
+              onBack={() => navigation.goBack()}
+              onOpenDashboard={() => navigation.navigate("ProviderDashboard")}
+            />
+          )}
+        </Stack.Screen>
+        <Stack.Screen name="BusinessAccounts" options={{ title: "Business Accounts" }}>
+          {({ navigation }) => (
+            <BusinessAccountsScreen onBack={() => navigation.goBack()} />
+          )}
+        </Stack.Screen>
+        <Stack.Screen name="ResetPassword" options={{ title: "Reset Password" }}>
+          {({ navigation, route }) => (
+            <ResetPasswordScreen
+              token={route.params.token}
+              onBack={() => navigation.goBack()}
+              onSuccess={() => navigation.navigate("SignIn")}
+            />
+          )}
+        </Stack.Screen>
+        <Stack.Screen name="Call" options={{ headerShown: false, presentation: "fullScreenModal" }}>
+          {({ navigation, route }) => (
+            <CallScreen
+              callId={route.params.callId}
+              callType={route.params.callType}
+              isIncoming={route.params.isIncoming}
+              callerName={route.params.callerName}
+              callerAvatar={route.params.callerAvatar}
+              callerUserId={route.params.callerUserId}
+              calleeUserId={route.params.calleeUserId}
+              offerSdp={route.params.offerSdp}
+              onEnd={() => navigation.goBack()}
+            />
+          )}
+        </Stack.Screen>
       </Stack.Navigator>
     </NavigationContainer>
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((palette) => ({
   shell: {
     backgroundColor: palette.canvas,
     flex: 1,
@@ -372,7 +851,7 @@ const styles = StyleSheet.create({
     position: "relative",
   },
   tabBar: {
-    backgroundColor: "#ffffff",
+    backgroundColor: palette.card,
     borderColor: palette.line,
     borderRadius: 24,
     borderWidth: 1,
@@ -381,7 +860,7 @@ const styles = StyleSheet.create({
     minHeight: 80,
     paddingHorizontal: 14,
     paddingTop: 14,
-    shadowColor: "#111111",
+    shadowColor: palette.shadow,
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0,
     shadowRadius: 0,
@@ -399,7 +878,7 @@ const styles = StyleSheet.create({
   tabClusterRight: {
     flex: 1,
     flexDirection: "row",
-    justifyContent: "flex-end",
+    gap: 8,
   },
   homeSpacer: {
     width: 86,
@@ -428,7 +907,7 @@ const styles = StyleSheet.create({
   },
   tabGlyph: {
     alignItems: "center",
-    backgroundColor: "#ffffff",
+    backgroundColor: palette.card,
     borderRadius: 8,
     borderWidth: 1,
     height: 18,
@@ -436,27 +915,45 @@ const styles = StyleSheet.create({
     width: 18,
   },
   tabGlyphText: {
-    color: "#6b7280",
+    color: palette.slate,
     fontSize: 10,
     fontWeight: "900",
     lineHeight: 12,
   },
   tabGlyphTextActive: {
-    color: "#ffffff",
+    color: palette.canvas,
+  },
+  tabBadge: {
+    position: "absolute",
+    top: -4,
+    right: -10,
+    backgroundColor: palette.danger,
+    borderRadius: 9,
+    minWidth: 18,
+    height: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 4,
+  },
+  tabBadgeText: {
+    color: palette.canvas,
+    fontSize: 10,
+    fontWeight: "800",
+    lineHeight: 13,
   },
   tabLabel: {
-    color: "#4b5563",
-    fontSize: 11,
+    color: palette.slate,
+    fontSize: 10,
     fontWeight: "800",
-    letterSpacing: 0.5,
+    letterSpacing: 0,
     textTransform: "uppercase",
   },
   tabLabelCompact: {
-    fontSize: 10,
-    letterSpacing: 0.4,
+    fontSize: 9,
+    letterSpacing: 0,
   },
   tabHelper: {
-    color: "#6b7280",
+    color: palette.slate,
     fontSize: 9,
     fontWeight: "700",
     letterSpacing: 0.4,
@@ -470,7 +967,7 @@ const styles = StyleSheet.create({
   homeOrb: {
     alignItems: "center",
     backgroundColor: palette.accentDeep,
-    borderColor: "#ffffff",
+    borderColor: palette.card,
     borderRadius: 31,
     borderWidth: 3,
     elevation: 0,
@@ -487,13 +984,13 @@ const styles = StyleSheet.create({
     shadowColor: palette.accentDeep,
   },
   homeOrbText: {
-    color: "#ffffff",
+    color: palette.canvas,
     fontSize: 26,
     fontWeight: "800",
     lineHeight: 28,
   },
   homeLabel: {
-    color: "#374151",
+    color: palette.ink,
     fontSize: 11,
     fontWeight: "800",
     letterSpacing: 0.6,
@@ -508,7 +1005,7 @@ const styles = StyleSheet.create({
     color: palette.accentDeep,
   },
   homeHint: {
-    color: "#6b7280",
+    color: palette.slate,
     fontSize: 9,
     fontWeight: "700",
     letterSpacing: 0.5,
@@ -528,4 +1025,4 @@ const styles = StyleSheet.create({
     color: palette.slate,
     fontSize: 14,
   },
-});
+}));

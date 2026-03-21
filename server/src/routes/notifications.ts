@@ -396,7 +396,7 @@ notificationsRouter.post(
   asyncHandler(async (req, res) => {
     const data = registerPushSchema.parse(req.body);
     const userId = req.user!.id;
-    addPushToken(userId, {
+    await addPushToken(userId, {
       token: data.token,
       platform: data.platform ?? "unknown",
       projectId: data.projectId,
@@ -412,7 +412,7 @@ notificationsRouter.delete(
   asyncHandler(async (req, res) => {
     const data = unregisterPushSchema.parse(req.body ?? {});
     const userId = req.user!.id;
-    removePushToken(userId, data.token);
+    await removePushToken(userId, data.token);
     res.json({ status: "ok" });
   }),
 );

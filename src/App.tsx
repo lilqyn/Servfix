@@ -29,6 +29,7 @@ const Notifications = lazy(() => import("./pages/Notifications"));
 const DashboardSettings = lazy(() => import("./pages/DashboardSettings"));
 const Support = lazy(() => import("./pages/Support"));
 const Business = lazy(() => import("./pages/Business"));
+const Orders = lazy(() => import("./pages/Orders"));
 const AdminLayout = lazy(() => import("./pages/admin/AdminLayout"));
 const AdminOverview = lazy(() => import("./pages/admin/AdminOverview"));
 const AdminUsers = lazy(() => import("./pages/admin/AdminUsers"));
@@ -113,6 +114,14 @@ const App = () => (
                         element={
                           <RequireAuth roles={["buyer", "provider", ...ADMIN_ROLES]}>
                             <Support />
+                          </RequireAuth>
+                        }
+                      />
+                      <Route
+                        path="/orders"
+                        element={
+                          <RequireAuth roles={["buyer", "provider", "admin"]}>
+                            <Orders />
                           </RequireAuth>
                         }
                       />

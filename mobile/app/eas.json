@@ -8,6 +8,17 @@
       "developmentClient": true,
       "distribution": "internal"
     },
+    "staging": {
+      "distribution": "internal",
+      "channel": "staging",
+      "autoIncrement": true,
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_SERVFIX_API_URL": "https://staging.servfixgh.com"
+      }
+    },
     "internal": {
       "distribution": "internal",
       "channel": "internal",

@@ -10,7 +10,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Menu, X, ShoppingCart, Heart, Search, MessageCircle, ChevronDown } from "lucide-react";
+import { Menu, X, ShoppingCart, Heart, Search, MessageCircle, ChevronDown, Sun, Moon, Monitor } from "lucide-react";
+import { useTheme } from "@/hooks/useTheme";
 import { useWishlist } from "@/contexts/WishlistContext";
 import { useCart } from "@/contexts/CartContext";
 import { useMessages } from "@/contexts/MessagesContext";
@@ -29,6 +30,7 @@ import { usePublicSettings } from "@/hooks/usePublicSettings";
 const Header = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const { mode: themeMode, isDark, setMode: setThemeMode } = useTheme();
   const navigate = useNavigate();
   const { wishlist } = useWishlist();
   const { cart } = useCart();
@@ -212,6 +214,25 @@ const Header = () => {
 
           {/* Desktop Actions */}
           <div className="hidden md:flex items-center gap-2">
+            {/* Theme toggle */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" aria-label="Toggle theme">
+                  {isDark ? <Moon className="w-5 h-5" /> : <Sun className="w-5 h-5" />}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-36">
+                <DropdownMenuItem onClick={() => setThemeMode("light")} className={themeMode === "light" ? "bg-muted" : ""}>
+                  <Sun className="w-4 h-4 mr-2" /> Light
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setThemeMode("dark")} className={themeMode === "dark" ? "bg-muted" : ""}>
+                  <Moon className="w-4 h-4 mr-2" /> Dark
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setThemeMode("system")} className={themeMode === "system" ? "bg-muted" : ""}>
+                  <Monitor className="w-4 h-4 mr-2" /> System
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
             {/* Mobile-ish search toggle for medium screens */}
             <Button
               variant="ghost"
@@ -314,6 +335,9 @@ const Header = () => {
                       Admin panel
                     </DropdownMenuItem>
                   )}
+                  <DropdownMenuItem onClick={() => navigate("/orders")}>
+                    My orders
+                  </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => navigate("/messages")}>
                     Messages
                   </DropdownMenuItem>
@@ -349,6 +373,14 @@ const Header = () => {
 
           {/* Mobile Menu Button */}
           <div className="flex items-center gap-2 md:hidden">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setThemeMode(isDark ? "light" : "dark")}
+              aria-label="Toggle theme"
+            >
+              {isDark ? <Moon className="w-5 h-5" /> : <Sun className="w-5 h-5" />}
+            </Button>
             <Button
               variant="ghost"
               size="icon"
@@ -421,6 +453,11 @@ const Header = () => {
                       {displayUnreadNotifications}
                     </span>
                   )}
+                </Link>
+              )}
+              {isAuthenticated && (
+                <Link to="/orders" className="px-4 py-3 text-sm font-medium text-muted-foreground hover:bg-muted rounded-lg transition-colors">
+                  My Orders
                 </Link>
               )}
               <Link to="/messages" className="px-4 py-3 text-sm font-medium text-muted-foreground hover:bg-muted rounded-lg transition-colors flex items-center justify-between">

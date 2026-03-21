@@ -142,12 +142,8 @@ const withMedia = async <T extends { avatarKey?: string | null; bannerKey?: stri
   return { ...rest, avatarUrl, bannerUrl };
 };
 
-const DEFAULT_AVATAR =
-  "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=100&h=100&fit=crop";
-
 const resolveAvatarUrl = async (key?: string | null) => {
-  const signed = await resolveMediaUrl(key);
-  return signed ?? DEFAULT_AVATAR;
+  return await resolveMediaUrl(key);
 };
 
 const formatReviewDate = (date: Date) =>
@@ -970,5 +966,124 @@ usersRouter.get(
     );
 
     res.json({ media: signedMedia });
+  }),
+);
+
+// ─── User Blocking ──────────────────────────────────────────────────────────
+
+const blockUserSchema = z.object({
+  reason: z.string().trim().max(500).optional(),
+});
+
+// POST /api/users/:id/block — Block a user
+usersRouter.post(
+  "/:id/block",
+  authRequired,
+  asyncHandler(async (req, res) => {
+    const { id: blockedId } = userIdSchema.parse(req.params);
+    const blockerId = req.user!.id;
+    const { reason } = blockUserSchema.parse(req.body ?? {});
+
+    if (blockedId === blockerId) {
+      return res.status(400).json({ error: "You cannot block yourself." });
+    }
+
+    const targetUser = await prisma.user.findUnique({
+      where: { id: blockedId },
+      select: { id: true },
+    });
+
+    if (!targetUser) {
+      return res.status(404).json({ error: "User not found." });
+    }
+
+    await prisma.userBlock.upsert({
+      where: { blockerId_blockedId: { blockerId, blockedId } },
+      create: { blockerId, blockedId, reason: reason ?? null },
+      update: { reason: reason ?? null },
+    });
+
+    res.json({ blocked: true });
+  }),
+);
+
+// DELETE /api/users/:id/block — Unblock a user
+usersRouter.delete(
+  "/:id/block",
+  authRequired,
+  asyncHandler(async (req, res) => {
+    const { id: blockedId } = userIdSchema.parse(req.params);
+    const blockerId = req.user!.id;
+
+    await prisma.userBlock.deleteMany({
+      where: { blockerId, blockedId },
+    });
+
+    res.json({ blocked: false });
+  }),
+);
+
+// GET /api/users/me/blocked — List users I've blocked
+usersRouter.get(
+  "/me/blocked",
+  authRequired,
+  asyncHandler(async (req, res) => {
+    const blocks = await prisma.userBlock.findMany({
+      where: { blockerId: req.user!.id },
+      include: {
+        blocked: {
+          select: {
+            id: true,
+            username: true,
+            email: true,
+            avatarKey: true,
+            role: true,
+            providerProfile: { select: { displayName: true } },
+          },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    const list = await Promise.all(
+      blocks.map(async (b) => ({
+        id: b.blocked.id,
+        name:
+          b.blocked.providerProfile?.displayName ??
+          (b.blocked.username ? `@${b.blocked.username}` : b.blocked.email ?? "User"),
+        avatar: b.blocked.avatarKey
+          ? (await signS3Key(b.blocked.avatarKey)) ?? null
+          : null,
+        blockedAt: b.createdAt,
+        reason: b.reason,
+      })),
+    );
+
+    res.json({ blocked: list });
+  }),
+);
+
+// GET /api/users/:id/block-status — Check if a block exists between me and another user
+usersRouter.get(
+  "/:id/block-status",
+  authRequired,
+  asyncHandler(async (req, res) => {
+    const { id: otherId } = userIdSchema.parse(req.params);
+    const myId = req.user!.id;
+
+    const [iBlockedThem, theyBlockedMe] = await Promise.all([
+      prisma.userBlock.findUnique({
+        where: { blockerId_blockedId: { blockerId: myId, blockedId: otherId } },
+      }),
+      prisma.userBlock.findUnique({
+        where: { blockerId_blockedId: { blockerId: otherId, blockedId: myId } },
+      }),
+    ]);
+
+    res.json({
+      iBlockedThem: !!iBlockedThem,
+      theyBlockedMe: !!theyBlockedMe,
+      isBlocked: !!iBlockedThem || !!theyBlockedMe,
+    });
   }),
 );

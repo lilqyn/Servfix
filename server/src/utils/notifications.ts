@@ -155,7 +155,7 @@ export const createNotification = async (params: {
   pushToUser(params.userId, { type: "notification", notification: formatted });
 
   try {
-    const tokens = listPushTokens(params.userId);
+    const tokens = await listPushTokens(params.userId);
     if (tokens.length > 0) {
       const payload = {
         to: tokens.map((token) => token.token),
