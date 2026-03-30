@@ -6,6 +6,7 @@ import {
   ActivityIndicator,
   FlatList,
   Image,
+  KeyboardAvoidingView,
   Linking,
   Platform,
   Pressable,
@@ -383,6 +384,7 @@ export function ServiceDetailScreen({
   const displayedReviews = showAllReviews ? reviews : reviews.slice(0, 3);
 
   return (
+    <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1 }}>
     <ScrollView contentContainerStyle={styles.content}>
       {/* Gallery */}
       {galleryImages.length > 0 ? (
@@ -397,7 +399,7 @@ export function ServiceDetailScreen({
               />
             ) : (
               <View style={styles.imagePlaceholder}>
-                <Ionicons name="image-outline" size={48} color="#d1d5db" />
+                <Ionicons name="image-outline" size={48} color={palette.line} />
               </View>
             )}
             {/* Image counter */}
@@ -440,8 +442,8 @@ export function ServiceDetailScreen({
                       {isValidImageUrl(thumbUrl) ? (
                         <Image source={{ uri: thumbUrl! }} style={styles.thumbImage} resizeMode="cover" />
                       ) : (
-                        <View style={[styles.thumbImage, { backgroundColor: "#e5e7eb", alignItems: "center", justifyContent: "center" }]}>
-                          <Ionicons name="image-outline" size={14} color="#9ca3af" />
+                        <View style={[styles.thumbImage, { backgroundColor: palette.line, alignItems: "center", justifyContent: "center" }]}>
+                          <Ionicons name="image-outline" size={14} color={palette.slate} />
                         </View>
                       )}
                     </Pressable>
@@ -508,7 +510,7 @@ export function ServiceDetailScreen({
             <Image source={{ uri: provider.avatarUrl }} style={styles.providerAvatar} />
           ) : (
             <View style={[styles.providerAvatar, styles.providerAvatarPlaceholder]}>
-              <Ionicons name="person" size={22} color="#9ca3af" />
+              <Ionicons name="person" size={22} color={palette.slate} />
             </View>
           )}
           <View style={styles.providerInfo}>
@@ -804,7 +806,7 @@ export function ServiceDetailScreen({
           <ActivityIndicator color={palette.accent} size="small" />
         ) : reviews.length === 0 ? (
           <View style={styles.emptyReviews}>
-            <Ionicons name="chatbubbles-outline" size={36} color="#d1d5db" />
+            <Ionicons name="chatbubbles-outline" size={36} color={palette.line} />
             <Text style={styles.emptyReviewsText}>No reviews yet</Text>
             <Text style={styles.emptyReviewsSub}>Be the first to share feedback.</Text>
           </View>
@@ -853,7 +855,7 @@ export function ServiceDetailScreen({
                       <Image source={{ uri: rev.author.avatarUrl }} style={styles.reviewAvatar} />
                     ) : (
                       <View style={[styles.reviewAvatar, styles.reviewAvatarPlaceholder]}>
-                        <Ionicons name="person" size={12} color="#9ca3af" />
+                        <Ionicons name="person" size={12} color={palette.slate} />
                       </View>
                     )}
                     <Text style={styles.reviewAuthor}>{rev.author?.name ?? "Anonymous"}</Text>
@@ -936,7 +938,7 @@ export function ServiceDetailScreen({
                     />
                   ) : (
                     <View style={[styles.relatedImage, styles.relatedImagePlaceholder]}>
-                      <Ionicons name="image-outline" size={24} color="#d1d5db" />
+                      <Ionicons name="image-outline" size={24} color={palette.line} />
                     </View>
                   )}
                   <View style={styles.relatedInfo}>
@@ -977,15 +979,15 @@ export function ServiceDetailScreen({
               onPress={() => setShowDatePicker(true)}
               style={styles.inquiryDateButton}
             >
-              <Ionicons name="calendar-outline" size={18} color={inquiryDate ? palette.accentDeep : "#94a3b8"} />
-              <Text style={[styles.inquiryDateText, !inquiryDate && { color: "#94a3b8" }]}>
+              <Ionicons name="calendar-outline" size={18} color={inquiryDate ? palette.accentDeep : palette.slate} />
+              <Text style={[styles.inquiryDateText, !inquiryDate && { color: palette.slate }]}>
                 {inquiryDate
                   ? inquiryDate.toLocaleDateString("en-US", { weekday: "short", year: "numeric", month: "short", day: "numeric" })
                   : "Select a date"}
               </Text>
               {inquiryDate && (
                 <Pressable onPress={() => { setInquiryDate(null); setInquiryError(null); }} hitSlop={8}>
-                  <Ionicons name="close-circle" size={18} color="#94a3b8" />
+                  <Ionicons name="close-circle" size={18} color={palette.slate} />
                 </Pressable>
               )}
             </Pressable>
@@ -1024,7 +1026,7 @@ export function ServiceDetailScreen({
               <TextInput
                 style={[styles.inquiryInput, { flex: 1 }]}
                 placeholder="Qty"
-                placeholderTextColor="#94a3b8"
+                placeholderTextColor={palette.slate}
                 keyboardType="numeric"
                 value={inquiryQty}
                 onChangeText={(t) => { setInquiryQty(t); setInquiryError(null); }}
@@ -1033,11 +1035,11 @@ export function ServiceDetailScreen({
 
             <Text style={styles.inquiryLabel}>Event location (optional)</Text>
             <View style={styles.locationInputWrap}>
-              <Ionicons name="location-outline" size={18} color="#94a3b8" style={{ marginLeft: 12 }} />
+              <Ionicons name="location-outline" size={18} color={palette.slate} style={{ marginLeft: 12 }} />
               <TextInput
                 style={styles.locationInput}
                 placeholder="Search address — e.g. Tema, Teshie, Accra"
-                placeholderTextColor="#94a3b8"
+                placeholderTextColor={palette.slate}
                 maxLength={200}
                 value={inquiryLocation}
                 onChangeText={(text) => {
@@ -1065,7 +1067,7 @@ export function ServiceDetailScreen({
                   hitSlop={8}
                   style={{ marginRight: 10 }}
                 >
-                  <Ionicons name="close-circle" size={18} color="#94a3b8" />
+                  <Ionicons name="close-circle" size={18} color={palette.slate} />
                 </Pressable>
               )}
             </View>
@@ -1144,7 +1146,7 @@ map.on('click',function(e){
             <TextInput
               style={[styles.inquiryInput, styles.inquiryTextarea]}
               placeholder="Describe your event and requirements..."
-              placeholderTextColor="#94a3b8"
+              placeholderTextColor={palette.slate}
               multiline
               maxLength={500}
               value={inquiryMessage}
@@ -1194,6 +1196,7 @@ map.on('click',function(e){
         </Pressable>
       )}
     </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -1209,7 +1212,7 @@ const useStyles = createThemedStyles((palette) => ({
   gallerySection: { gap: 10 },
   mainImageWrap: { borderRadius: 0, overflow: "hidden", position: "relative" },
   mainImage: { width: "100%", height: "100%" },
-  imagePlaceholder: { width: "100%", height: "100%", backgroundColor: "#f3f4f6", alignItems: "center", justifyContent: "center" },
+  imagePlaceholder: { width: "100%", height: "100%", backgroundColor: palette.mist, alignItems: "center", justifyContent: "center" },
   imageCounter: {
     position: "absolute", bottom: 10, right: 10,
     backgroundColor: "rgba(0,0,0,0.55)", borderRadius: 12,
@@ -1239,7 +1242,7 @@ const useStyles = createThemedStyles((palette) => ({
   categoryPillText: { color: palette.accentDeep, fontSize: 11, fontWeight: "700", textTransform: "uppercase" },
   remoteBadge: {
     flexDirection: "row", alignItems: "center", gap: 4,
-    backgroundColor: "#ecfdf5", borderRadius: 20,
+    backgroundColor: palette.accentSoft, borderRadius: 20,
     paddingHorizontal: 10, paddingVertical: 4,
   },
   remoteBadgeText: { color: palette.accent, fontSize: 11, fontWeight: "700" },
@@ -1257,7 +1260,7 @@ const useStyles = createThemedStyles((palette) => ({
   },
   providerLeft: { flex: 1, flexDirection: "row", gap: 12, alignItems: "center" },
   providerAvatar: { width: 48, height: 48, borderRadius: 24, borderWidth: 2, borderColor: palette.accentSoft },
-  providerAvatarPlaceholder: { backgroundColor: "#f3f4f6", alignItems: "center", justifyContent: "center" },
+  providerAvatarPlaceholder: { backgroundColor: palette.mist, alignItems: "center", justifyContent: "center" },
   providerInfo: { flex: 1, gap: 3 },
   providerNameRow: { flexDirection: "row", alignItems: "center", gap: 6 },
   providerName: { color: palette.ink, fontSize: 15, fontWeight: "700" },
@@ -1285,11 +1288,11 @@ const useStyles = createThemedStyles((palette) => ({
 
   // Tier tabs
   tierTabBar: {
-    flexDirection: "row", backgroundColor: "#f1f5f9", borderRadius: 12,
+    flexDirection: "row", backgroundColor: palette.mist, borderRadius: 12,
     padding: 3, gap: 2,
   },
   tierTab: { flex: 1, alignItems: "center", borderRadius: 10, paddingVertical: 10 },
-  tierTabActive: { backgroundColor: "#ffffff", shadowColor: "#000", shadowOpacity: 0.06, shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, elevation: 2 },
+  tierTabActive: { backgroundColor: palette.card, shadowColor: palette.shadow, shadowOpacity: 0.06, shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, elevation: 2 },
   tierTabText: { color: palette.slate, fontSize: 13, fontWeight: "600", textTransform: "capitalize" },
   tierTabTextActive: { color: palette.ink, fontWeight: "700" },
   tierDetail: { gap: 8 },
@@ -1297,8 +1300,8 @@ const useStyles = createThemedStyles((palette) => ({
   tierPriceMain: { color: palette.ink, fontSize: 28, fontWeight: "900" },
   tierPriceRange: { color: palette.slate, fontSize: 18, fontWeight: "700" },
   tierUnit: { color: palette.slate, fontSize: 14 },
-  tierModelBadge: { alignSelf: "flex-start", backgroundColor: "#fef3c7", borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3 },
-  tierModelText: { color: "#b45309", fontSize: 11, fontWeight: "700" },
+  tierModelBadge: { alignSelf: "flex-start", backgroundColor: palette.warnSoft, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3 },
+  tierModelText: { color: palette.warnInk, fontSize: 11, fontWeight: "700" },
   tierNote: { color: palette.slate, fontSize: 12, fontStyle: "italic" },
   tierFeatures: { flexDirection: "row", gap: 16, marginTop: 2 },
   tierFeature: { flexDirection: "row", alignItems: "center", gap: 5 },
@@ -1332,7 +1335,7 @@ const useStyles = createThemedStyles((palette) => ({
     alignItems: "center", gap: 10, padding: 14,
   },
   successTitle: { color: palette.accent, fontSize: 14, fontWeight: "700" },
-  successBody: { color: "#115e59", fontSize: 13 },
+  successBody: { color: palette.isDark ? "#5eead4" : "#115e59", fontSize: 13 },
   viewOrdersBtn: {
     backgroundColor: palette.accentDeep, borderRadius: 10,
     paddingHorizontal: 12, paddingVertical: 7,
@@ -1346,17 +1349,17 @@ const useStyles = createThemedStyles((palette) => ({
   // Payment provider/method chips
   providerGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   providerChip: {
-    backgroundColor: "#ffffff", borderColor: palette.line, borderRadius: 12,
+    backgroundColor: palette.card, borderColor: palette.line, borderRadius: 12,
     borderWidth: 1, gap: 2, minWidth: "47%", paddingHorizontal: 10, paddingVertical: 10, flex: 1,
   },
-  providerChipActive: { backgroundColor: "#ecfeff", borderColor: palette.accent },
+  providerChipActive: { backgroundColor: palette.infoSoft, borderColor: palette.accent },
   providerChipTitle: { color: palette.ink, fontSize: 12, fontWeight: "700" },
   providerChipTitleActive: { color: palette.accent },
   providerChipHint: { color: palette.slate, fontSize: 11 },
   providerChipHintActive: { color: palette.accent },
   methodRow: { flexDirection: "row", gap: 8 },
   methodChip: {
-    backgroundColor: "#ffffff", borderColor: palette.line, borderRadius: 12,
+    backgroundColor: palette.card, borderColor: palette.line, borderRadius: 12,
     borderWidth: 1, flex: 1, alignItems: "center", paddingVertical: 10,
   },
   methodChipActive: { backgroundColor: palette.accentDeep, borderColor: palette.accentDeep },
@@ -1395,14 +1398,14 @@ const useStyles = createThemedStyles((palette) => ({
   ratingBars: { flex: 1, gap: 4 },
   ratingBarRow: { flexDirection: "row", alignItems: "center", gap: 4 },
   ratingBarLabel: { color: palette.slate, fontSize: 11, fontWeight: "700", width: 10, textAlign: "right" },
-  ratingBarTrack: { flex: 1, height: 8, backgroundColor: "#f1f5f9", borderRadius: 4, overflow: "hidden" },
+  ratingBarTrack: { flex: 1, height: 8, backgroundColor: palette.mist, borderRadius: 4, overflow: "hidden" },
   ratingBarFill: { height: "100%", backgroundColor: "#f59e0b", borderRadius: 4 },
   ratingBarCount: { color: palette.slate, fontSize: 11, fontWeight: "600", width: 20 },
   reviewCard: { backgroundColor: palette.mist, borderRadius: 14, gap: 6, padding: 12 },
   reviewHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   reviewAuthorRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   reviewAvatar: { width: 28, height: 28, borderRadius: 14 },
-  reviewAvatarPlaceholder: { backgroundColor: "#e5e7eb", alignItems: "center", justifyContent: "center" },
+  reviewAvatarPlaceholder: { backgroundColor: palette.line, alignItems: "center", justifyContent: "center" },
   reviewAuthor: { color: palette.ink, fontSize: 13, fontWeight: "700" },
   reviewStarsRow: { flexDirection: "row", gap: 1 },
   reviewBody: { color: palette.slate, fontSize: 13, lineHeight: 19 },
@@ -1432,7 +1435,7 @@ const useStyles = createThemedStyles((palette) => ({
   },
   relatedImage: { width: "100%", height: 100 },
   relatedImagePlaceholder: {
-    backgroundColor: "#f3f4f6", alignItems: "center", justifyContent: "center",
+    backgroundColor: palette.mist, alignItems: "center", justifyContent: "center",
   },
   relatedInfo: { padding: 10, gap: 4 },
   relatedItemTitle: { color: palette.ink, fontSize: 13, fontWeight: "600", lineHeight: 18 },
@@ -1452,7 +1455,7 @@ const useStyles = createThemedStyles((palette) => ({
   inquiryForm: { gap: 10 },
   inquiryLabel: { color: palette.ink, fontSize: 13, fontWeight: "700", marginTop: 2 },
   inquiryInput: {
-    backgroundColor: "#ffffff", borderColor: palette.line, borderRadius: 12,
+    backgroundColor: palette.card, borderColor: palette.line, borderRadius: 12,
     borderWidth: 1, color: palette.ink, fontSize: 14,
     paddingHorizontal: 12, paddingVertical: 10,
   },
@@ -1471,13 +1474,13 @@ const useStyles = createThemedStyles((palette) => ({
   inquirySafety: { color: palette.slate, fontSize: 11, textAlign: "center", marginTop: 4 },
   inquiryDateButton: {
     flexDirection: "row", alignItems: "center", gap: 10,
-    backgroundColor: "#ffffff", borderColor: palette.line, borderRadius: 12,
+    backgroundColor: palette.card, borderColor: palette.line, borderRadius: 12,
     borderWidth: 1, paddingHorizontal: 12, paddingVertical: 12,
   },
   inquiryDateText: { flex: 1, color: palette.ink, fontSize: 14 },
   locationInputWrap: {
     flexDirection: "row", alignItems: "center",
-    backgroundColor: "#ffffff", borderColor: palette.line, borderRadius: 12,
+    backgroundColor: palette.card, borderColor: palette.line, borderRadius: 12,
     borderWidth: 1, overflow: "hidden",
   },
   locationInput: {
@@ -1485,7 +1488,7 @@ const useStyles = createThemedStyles((palette) => ({
     paddingHorizontal: 8, paddingVertical: 10,
   },
   suggestionsContainer: {
-    backgroundColor: "#ffffff", borderColor: palette.line, borderRadius: 12,
+    backgroundColor: palette.card, borderColor: palette.line, borderRadius: 12,
     borderWidth: 1, overflow: "hidden",
   },
   suggestionRow: {
@@ -1501,5 +1504,5 @@ const useStyles = createThemedStyles((palette) => ({
   mapToggleText: { color: palette.accentDeep, fontSize: 13, fontWeight: "600" },
   mapContainer: { borderRadius: 14, overflow: "hidden", borderWidth: 1, borderColor: palette.line },
   map: { width: "100%", height: 200 },
-  mapHint: { color: palette.slate, fontSize: 11, textAlign: "center", paddingVertical: 6, backgroundColor: "#f8fafc" },
+  mapHint: { color: palette.slate, fontSize: 11, textAlign: "center", paddingVertical: 6, backgroundColor: palette.inputBg },
 }));

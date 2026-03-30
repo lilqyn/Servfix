@@ -427,6 +427,44 @@ usersRouter.patch(
   }),
 );
 
+// Username search/autocomplete for @mentions
+usersRouter.get(
+  "/search/usernames",
+  asyncHandler(async (req, res) => {
+    const q = String(req.query.q ?? "").trim().toLowerCase();
+    if (q.length < 1) return res.json({ users: [] });
+
+    const users = await prisma.user.findMany({
+      where: {
+        username: { startsWith: q, mode: "insensitive" },
+        status: "active",
+      },
+      take: 10,
+      select: {
+        id: true,
+        username: true,
+        avatarKey: true,
+        role: true,
+        providerProfile: { select: { displayName: true } },
+      },
+    });
+
+    const result = await Promise.all(
+      users.map(async (u) => ({
+        id: u.id,
+        username: u.username,
+        displayName: u.providerProfile?.displayName ?? null,
+        avatarUrl: u.avatarKey
+          ? u.avatarKey.startsWith("http") ? u.avatarKey : await signS3Key(u.avatarKey)
+          : null,
+        role: u.role,
+      })),
+    );
+
+    res.json({ users: result });
+  }),
+);
+
 usersRouter.get(
   "/me/account-deletion-request",
   authRequired,
@@ -598,6 +636,33 @@ usersRouter.get(
     );
 
     res.json({ reviews: formatted, summary, nextCursor });
+  }),
+);
+
+usersRouter.get(
+  "/me/follower-stats",
+  authRequired,
+  requireRole("provider", "admin"),
+  asyncHandler(async (req, res) => {
+    const providerId = req.user!.id;
+    const oneWeekAgo = new Date(Date.now() - 7 * 24 * 60 * 60_000);
+
+    const [totalFollowers, newFollowersThisWeek, followerConversions, totalOrders] = await Promise.all([
+      prisma.userFollow.count({ where: { followingId: providerId } }),
+      prisma.userFollow.count({ where: { followingId: providerId, createdAt: { gte: oneWeekAgo } } }),
+      prisma.orderEvent.count({ where: { type: "follower_conversion", order: { providerId } } }),
+      prisma.order.count({ where: { providerId } }),
+    ]);
+
+    const conversionRate = totalOrders > 0 ? Math.round((followerConversions / totalOrders) * 100) : 0;
+
+    res.json({
+      totalFollowers,
+      newFollowersThisWeek,
+      followerConversions,
+      totalOrders,
+      conversionRate,
+    });
   }),
 );
 

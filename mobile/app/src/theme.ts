@@ -24,6 +24,9 @@ export type Palette = {
   infoSoft: string;
   shadow: string;
   inputBg: string;
+  isDark: boolean;
+  warnSoft: string;
+  warnInk: string;
 };
 
 // ─── Light palette ───────────────────────────────────────────────────────────
@@ -48,6 +51,9 @@ export const lightPalette: Palette = {
   infoSoft: "#dbeafe",
   shadow: "#000000",
   inputBg: "#f8fafc",
+  isDark: false,
+  warnSoft: "#fef3c7",
+  warnInk: "#92400e",
 };
 
 // ─── Dark palette ────────────────────────────────────────────────────────────
@@ -72,6 +78,9 @@ export const darkPalette: Palette = {
   infoSoft: "#1e3a5f",
   shadow: "#000000",
   inputBg: "#162016",
+  isDark: true,
+  warnSoft: "#451a03",
+  warnInk: "#fbbf24",
 };
 
 // ─── Backward-compatible static export (used until files are migrated) ──────

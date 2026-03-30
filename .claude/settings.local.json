@@ -2,7 +2,9 @@
   "permissions": {
     "allow": [
       "Bash(taskkill /PID 8828 /F)",
-      "Bash(npx tsc --noEmit --pretty)"
+      "Bash(npx tsc --noEmit --pretty)",
+      "Bash(npx tsc:*)",
+      "Bash(npx -y eas-cli build --platform android --profile production --non-interactive)"
     ]
   }
 }

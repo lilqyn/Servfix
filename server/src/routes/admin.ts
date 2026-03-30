@@ -1751,6 +1751,29 @@ adminRouter.patch(
       payload: { status: data.status },
     });
 
+    // Notify followers when provider gets verified
+    if (data.status === "verified") {
+      const followers = await prisma.userFollow.findMany({
+        where: { followingId: params.id },
+        select: { followerId: true },
+      });
+      if (followers.length > 0) {
+        const providerName = updated.providerProfile?.displayName ?? "A provider you follow";
+        await Promise.all(
+          followers.map((f) =>
+            createNotification({
+              userId: f.followerId,
+              actorId: params.id,
+              type: "provider_verified",
+              title: "Provider verified",
+              body: `${providerName} is now a verified provider on SERVFIX!`,
+              data: { followerId: params.id },
+            }),
+          ),
+        );
+      }
+    }
+
     res.json({ provider: updated });
   }),
 );

@@ -299,14 +299,6 @@ export function HomeScreen({ user, onBrowse, onBrowseCategory, onOpenService, on
         </View>
       ) : null}
 
-      <View style={styles.panel}>
-        <Text style={styles.panelTitle}>{user ? `Welcome back, ${displayName}` : "Start here"}</Text>
-        <Text style={styles.panelBody}>
-          {user
-            ? "Your account is active. Jump into Browse to discover new services or check your latest orders."
-            : "Sign in to save favorites, track orders, and unlock fast checkout from your phone."}
-        </Text>
-      </View>
     </ScrollView>
   );
 }
@@ -326,8 +318,8 @@ const useStyles = createThemedStyles((palette) => ({
     borderColor: palette.line,
     borderRadius: 24,
     borderWidth: 1,
-    gap: 12,
-    padding: 22,
+    gap: 8,
+    padding: 16,
     shadowColor: palette.shadow,
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.12,
@@ -341,22 +333,22 @@ const useStyles = createThemedStyles((palette) => ({
   },
   title: {
     color: palette.canvas,
-    fontSize: 31,
+    fontSize: 22,
     fontWeight: "800",
-    lineHeight: 36,
+    lineHeight: 26,
     letterSpacing: 0.1,
   },
   titleCompact: {
-    fontSize: 28,
-    lineHeight: 33,
+    fontSize: 20,
+    lineHeight: 24,
   },
   titleAccent: {
     color: palette.gold,
   },
   subtitle: {
     color: palette.slate,
-    fontSize: 15,
-    lineHeight: 22,
+    fontSize: 13,
+    lineHeight: 15,
   },
   heroActions: {
     flexDirection: "row",
@@ -432,25 +424,6 @@ const useStyles = createThemedStyles((palette) => ({
     letterSpacing: 0.4,
     lineHeight: 16,
     textTransform: "uppercase",
-  },
-  panel: {
-    backgroundColor: palette.card,
-    borderColor: palette.line,
-    borderRadius: 20,
-    borderWidth: 1,
-    gap: 6,
-    padding: 18,
-  },
-  panelTitle: {
-    color: palette.ink,
-    fontSize: 18,
-    fontWeight: "800",
-    letterSpacing: 0.2,
-  },
-  panelBody: {
-    color: palette.slate,
-    fontSize: 14,
-    lineHeight: 20,
   },
   section: { gap: 12 },
   sectionRow: { alignItems: "center", flexDirection: "row", justifyContent: "space-between" },

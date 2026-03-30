@@ -116,6 +116,7 @@ export function ProfileScreen({
 
       {/* Profile info */}
       <View style={styles.profileInfo}>
+        <Text style={styles.welcomeText}>Welcome back</Text>
         <View style={styles.nameRow}>
           <Text style={styles.displayName}>{displayName}</Text>
           {isVerified && (
@@ -314,6 +315,7 @@ const useStyles = createThemedStyles((palette) => ({
     gap: 6,
   },
   nameRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  welcomeText: { color: palette.slate, fontSize: 14, fontWeight: "500", marginBottom: 2 },
   displayName: { color: palette.ink, fontSize: 24, fontWeight: "800" },
   verifiedBadge: {},
   roleBadge: {

@@ -288,6 +288,7 @@ export function ChatScreen({ threadId, threadTitle, onBack, onOpenQuotes, onStar
     <KeyboardAvoidingView
       behavior={Platform.OS === "ios" ? "padding" : undefined}
       style={styles.root}
+      keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
     >
       {/* Header */}
       <View style={styles.topBar}>
@@ -414,7 +415,7 @@ export function ChatScreen({ threadId, threadTitle, onBack, onOpenQuotes, onStar
               setSendError(null);
             }}
             placeholder="Type a message..."
-            placeholderTextColor="#94a3b8"
+            placeholderTextColor={palette.slate}
             style={styles.input}
             value={draft}
           />
@@ -498,7 +499,7 @@ const useStyles = createThemedStyles((palette) => ({
   bubble: { borderRadius: 16, overflow: "hidden" },
   bubbleMine: { backgroundColor: palette.accentDeep },
   bubblePeer: {
-    backgroundColor: "#ffffff",
+    backgroundColor: palette.card,
     borderColor: palette.line,
     borderWidth: 1,
   },
@@ -535,15 +536,15 @@ const useStyles = createThemedStyles((palette) => ({
     borderTopColor: palette.line,
     borderTopWidth: 1,
     gap: 6,
-    padding: 12,
-    paddingBottom: Platform.OS === "ios" ? 28 : 24,
+    padding: 10,
+    paddingBottom: Platform.OS === "ios" ? 28 : 10,
   },
   sendError: { color: palette.danger, fontSize: 12 },
   composer: { alignItems: "flex-end", flexDirection: "row", gap: 8 },
   attachButton: { justifyContent: "center", paddingBottom: 10 },
   input: {
-    backgroundColor: "#f8fafc",
-    borderColor: palette.line,
+    backgroundColor: palette.isDark ? "#1a2e1a" : palette.inputBg,
+    borderColor: palette.isDark ? "#3d5a3d" : palette.line,
     borderRadius: 14,
     borderWidth: 1,
     color: palette.ink,
@@ -566,7 +567,7 @@ const useStyles = createThemedStyles((palette) => ({
   /* Attachment preview */
   attachmentPreview: {
     alignItems: "center",
-    backgroundColor: "#f1f5f9",
+    backgroundColor: palette.inputBg,
     borderRadius: 12,
     flexDirection: "row",
     gap: 10,
@@ -623,8 +624,8 @@ const useStyles = createThemedStyles((palette) => ({
   /* Blocked banner */
   blockedBanner: {
     alignItems: "center",
-    backgroundColor: "#fff1f2",
-    borderColor: "#fecdd3",
+    backgroundColor: palette.dangerSoft,
+    borderColor: palette.dangerLine,
     borderTopWidth: 1,
     flexDirection: "row",
     gap: 8,

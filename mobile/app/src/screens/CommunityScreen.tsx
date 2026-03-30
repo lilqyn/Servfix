@@ -6,6 +6,8 @@ import {
   Alert,
   FlatList,
   Image,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -22,9 +24,13 @@ import {
   deleteCommunityPost,
   fetchCommunityComments,
   fetchCommunityFeed,
+  fetchSuggestedProviders,
   followUser,
+  updateFollowNotifications,
   likeCommunityPost,
   saveCommunityPost,
+  type FollowedService,
+  type SuggestedProvider,
   shareCommunityPost,
   unfollowUser,
   unlikeCommunityPost,
@@ -88,9 +94,10 @@ function Avatar({ url, name, size = 40 }: { url?: string | null; name: string; s
 }
 
 function MediaPlaceholder() {
+  const { palette } = useTheme();
   return (
-    <View style={{ flex: 1, backgroundColor: "#f3f4f6", alignItems: "center", justifyContent: "center" }}>
-      <Ionicons name="image-outline" size={24} color="#d1d5db" />
+    <View style={{ flex: 1, backgroundColor: palette.mist, alignItems: "center", justifyContent: "center" }}>
+      <Ionicons name="image-outline" size={24} color={palette.line} />
     </View>
   );
 }
@@ -372,27 +379,48 @@ function PostCard({
               <Text style={styles.authorName}>{authorName}</Text>
             </Pressable>
             {!isOwn && userId ? (
-              <Pressable
-                onPress={() => void handleFollow()}
-                disabled={isTogglingFollow}
-                style={[
-                  styles.followBtn,
-                  isFollowing && styles.followBtnActive,
-                ]}
-              >
-                {isTogglingFollow ? (
-                  <ActivityIndicator size={10} color={isFollowing ? "#fff" : palette.accentDeep} />
-                ) : (
-                  <Text
-                    style={[
-                      styles.followBtnText,
-                      isFollowing && styles.followBtnTextActive,
-                    ]}
+              <>
+                <Pressable
+                  onPress={() => void handleFollow()}
+                  disabled={isTogglingFollow}
+                  style={[
+                    styles.followBtn,
+                    isFollowing && styles.followBtnActive,
+                  ]}
+                >
+                  {isTogglingFollow ? (
+                    <ActivityIndicator size={10} color={isFollowing ? "#fff" : palette.accentDeep} />
+                  ) : (
+                    <Text
+                      style={[
+                        styles.followBtnText,
+                        isFollowing && styles.followBtnTextActive,
+                      ]}
+                    >
+                      {isFollowing ? "Following" : "Follow"}
+                    </Text>
+                  )}
+                </Pressable>
+                {isFollowing && (
+                  <Pressable
+                    onPress={() => {
+                      Alert.alert(
+                        "Notifications",
+                        `Manage notifications for ${authorName}`,
+                        [
+                          { text: "Turn off post alerts", onPress: () => updateFollowNotifications(post.author.id, { notifyPosts: false }).catch(() => {}) },
+                          { text: "Turn off service alerts", onPress: () => updateFollowNotifications(post.author.id, { notifyServices: false }).catch(() => {}) },
+                          { text: "Turn on all alerts", onPress: () => updateFollowNotifications(post.author.id, { notifyPosts: true, notifyServices: true }).catch(() => {}) },
+                          { text: "Cancel", style: "cancel" },
+                        ],
+                      );
+                    }}
+                    style={styles.bellBtn}
                   >
-                    {isFollowing ? "Following" : "Follow"}
-                  </Text>
+                    <Ionicons name="notifications-outline" size={14} color="#fff" />
+                  </Pressable>
                 )}
-              </Pressable>
+              </>
             ) : null}
           </View>
           <Text style={styles.authorMeta}>
@@ -661,6 +689,8 @@ export function CommunityScreen({ onOpenSignIn, onOpenProfile }: Props) {
   const { user } = useAuth();
   const isFocused = useIsFocused();
   const [posts, setPosts] = useState<CommunityPost[]>([]);
+  const [followedServices, setFollowedServices] = useState<FollowedService[]>([]);
+  const [suggestedProviders, setSuggestedProviders] = useState<SuggestedProvider[]>([]);
   const [scope, setScope] = useState<FeedScope>("all");
   const [isLoading, setIsLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -711,6 +741,7 @@ export function CommunityScreen({ onOpenSignIn, onOpenProfile }: Props) {
           setPosts((prev) => [...prev, ...result.posts]);
         } else {
           setPosts(result.posts);
+          if (result.followedServices) setFollowedServices(result.followedServices);
         }
         setCursor(result.nextCursor ?? null);
         setError(null);
@@ -730,6 +761,9 @@ export function CommunityScreen({ onOpenSignIn, onOpenProfile }: Props) {
     const mode = hasLoadedRef.current ? "refresh" : "initial";
     hasLoadedRef.current = true;
     void loadFeed(mode);
+    if (!hasLoadedRef.current || suggestedProviders.length === 0) {
+      fetchSuggestedProviders(8).then((r) => setSuggestedProviders(r.providers)).catch(() => {});
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isFocused, scope]);
 
@@ -744,6 +778,7 @@ export function CommunityScreen({ onOpenSignIn, onOpenProfile }: Props) {
   }
 
   return (
+    <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1 }}>
     <View style={styles.page}>
       <View style={styles.header}>
         <Text style={styles.title}>Community</Text>
@@ -774,7 +809,70 @@ export function CommunityScreen({ onOpenSignIn, onOpenProfile }: Props) {
           <RefreshControl onRefresh={refresh} refreshing={isRefreshing} tintColor={palette.accent} />
         }
         ListHeaderComponent={
-          <Composer userId={user?.id} onSignIn={onOpenSignIn} onPosted={refresh} />
+          <>
+            <Composer userId={user?.id} onSignIn={onOpenSignIn} onPosted={refresh} />
+            {scope === "all" && suggestedProviders.length > 0 && (
+              <View style={styles.servicesSection}>
+                <Text style={styles.servicesSectionTitle}>Suggested providers</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingHorizontal: 4 }}>
+                  {suggestedProviders.map((p) => (
+                    <Pressable key={p.id} style={styles.suggestedCard} onPress={() => onOpenProfile?.(p.id)}>
+                      {p.avatarUrl ? (
+                        <Image source={{ uri: p.avatarUrl }} style={styles.suggestedAvatar} />
+                      ) : (
+                        <View style={[styles.suggestedAvatar, { backgroundColor: palette.mist, alignItems: "center", justifyContent: "center" }]}>
+                          <Ionicons name="person" size={24} color={palette.slate} />
+                        </View>
+                      )}
+                      <Text style={styles.suggestedName} numberOfLines={1}>{p.displayName || p.username || "Provider"}</Text>
+                      {p.ratingAvg && (
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: 2 }}>
+                          <Ionicons name="star" size={10} color="#f59e0b" />
+                          <Text style={styles.suggestedRating}>{parseFloat(p.ratingAvg).toFixed(1)}</Text>
+                        </View>
+                      )}
+                      {p.verified && (
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: 2 }}>
+                          <Ionicons name="checkmark-circle" size={10} color={palette.info} />
+                          <Text style={[styles.suggestedRating, { color: palette.info }]}>Verified</Text>
+                        </View>
+                      )}
+                      {p.mutualFollowers > 0 && (
+                        <Text style={[styles.suggestedRating, { color: palette.accentDeep }]}>
+                          {p.mutualFollowers} mutual
+                        </Text>
+                      )}
+                    </Pressable>
+                  ))}
+                </ScrollView>
+              </View>
+            )}
+            {scope === "following" && followedServices.length > 0 && (
+              <View style={styles.servicesSection}>
+                <Text style={styles.servicesSectionTitle}>New from providers you follow</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingHorizontal: 4 }}>
+                  {followedServices.map((svc) => (
+                    <Pressable key={svc.id} style={styles.serviceCard} onPress={() => onOpenProfile?.(svc.provider.id)}>
+                      {svc.imageUrl ? (
+                        <Image source={{ uri: svc.imageUrl }} style={styles.serviceCardImage} />
+                      ) : (
+                        <View style={[styles.serviceCardImage, { backgroundColor: palette.mist, alignItems: "center", justifyContent: "center" }]}>
+                          <Ionicons name="briefcase-outline" size={24} color={palette.slate} />
+                        </View>
+                      )}
+                      <Text style={styles.serviceCardTitle} numberOfLines={2}>{svc.title}</Text>
+                      {svc.price && (
+                        <Text style={styles.serviceCardPrice}>{svc.currency} {svc.price}</Text>
+                      )}
+                      <Text style={styles.serviceCardProvider} numberOfLines={1}>
+                        {svc.provider.displayName || svc.provider.username || "Provider"}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </ScrollView>
+              </View>
+            )}
+          </>
         }
         ListEmptyComponent={
           error ? (
@@ -815,6 +913,7 @@ export function CommunityScreen({ onOpenSignIn, onOpenProfile }: Props) {
         }
       />
     </View>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -834,7 +933,7 @@ const useStyles = createThemedStyles((palette) => ({
     letterSpacing: 0.2,
   },
   scopeBar: {
-    backgroundColor: "#f1f5f9",
+    backgroundColor: palette.mist,
     borderRadius: 12,
     flexDirection: "row",
     padding: 3,
@@ -846,8 +945,8 @@ const useStyles = createThemedStyles((palette) => ({
     paddingVertical: 7,
   },
   scopeChipActive: {
-    backgroundColor: "#ffffff",
-    shadowColor: "#000",
+    backgroundColor: palette.card,
+    shadowColor: palette.shadow,
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.08,
     shadowRadius: 2,
@@ -856,6 +955,34 @@ const useStyles = createThemedStyles((palette) => ({
   scopeText: { color: palette.slate, fontSize: 13, fontWeight: "600" },
   scopeTextActive: { color: palette.accentDeep, fontWeight: "700" },
   listContent: { gap: 12, padding: 16, paddingBottom: 140 },
+  // Followed services carousel
+  servicesSection: { gap: 8, marginBottom: 4 },
+  servicesSectionTitle: { color: palette.ink, fontSize: 15, fontWeight: "700" },
+  serviceCard: {
+    backgroundColor: palette.card,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: palette.line,
+    width: 140,
+    overflow: "hidden",
+  },
+  serviceCardImage: { width: 140, height: 90, borderTopLeftRadius: 12, borderTopRightRadius: 12 },
+  serviceCardTitle: { color: palette.ink, fontSize: 12, fontWeight: "600", paddingHorizontal: 8, paddingTop: 6 },
+  serviceCardPrice: { color: palette.accentDeep, fontSize: 12, fontWeight: "700", paddingHorizontal: 8, marginTop: 2 },
+  serviceCardProvider: { color: palette.slate, fontSize: 11, paddingHorizontal: 8, paddingBottom: 8, marginTop: 2 },
+  suggestedCard: {
+    backgroundColor: palette.card,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: palette.line,
+    width: 100,
+    alignItems: "center",
+    padding: 10,
+    gap: 4,
+  },
+  suggestedAvatar: { width: 48, height: 48, borderRadius: 24 },
+  suggestedName: { color: palette.ink, fontSize: 11, fontWeight: "600", textAlign: "center" },
+  suggestedRating: { color: palette.slate, fontSize: 10 },
   // Composer
   composer: {
     backgroundColor: palette.card,
@@ -930,6 +1057,11 @@ const useStyles = createThemedStyles((palette) => ({
   followBtnTextActive: {
     color: "#fff",
   },
+  bellBtn: {
+    backgroundColor: palette.accentDeep,
+    borderRadius: 10,
+    padding: 4,
+  },
   authorMeta: { color: palette.slate, fontSize: 12 },
   deleteBtn: {
     paddingHorizontal: 10,
@@ -964,7 +1096,7 @@ const useStyles = createThemedStyles((palette) => ({
   commentInput: { flexDirection: "row", gap: 8, alignItems: "flex-end" },
   commentTextInput: {
     flex: 1,
-    backgroundColor: "#f8fafc",
+    backgroundColor: palette.inputBg,
     borderColor: palette.line,
     borderRadius: 10,
     borderWidth: 1,

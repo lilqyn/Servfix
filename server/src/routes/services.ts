@@ -3,7 +3,7 @@ import { BoostType, OrderStatus, Prisma } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "../db.js";
 import { asyncHandler } from "../utils/async-handler.js";
-import { authRequired, requireRole } from "../middleware/auth.js";
+import { authRequired, optionalAuth, requireRole } from "../middleware/auth.js";
 import { normalizeS3Key, signS3Key } from "../utils/s3.js";
 import { createNotification } from "../utils/notifications.js";
 import { getPlatformSettings } from "../utils/platform-settings.js";
@@ -523,6 +523,30 @@ servicesRouter.post(
       data: { serviceId: service.id, reviewId: review.id },
     });
 
+    // Notify followers when provider receives a 5-star review
+    if (data.rating === 5) {
+      const followers = await prisma.userFollow.findMany({
+        where: { followingId: service.providerId },
+        select: { followerId: true },
+      });
+      if (followers.length > 0) {
+        await Promise.all(
+          followers
+            .filter((f) => f.followerId !== userId && f.followerId !== service.providerId)
+            .map((f) =>
+              createNotification({
+                userId: f.followerId,
+                actorId: userId,
+                type: "provider_five_star_review",
+                title: "5-star review",
+                body: `A provider you follow just received a 5-star review!`,
+                data: { serviceId: service.id, followerId: service.providerId },
+              }),
+            ),
+        );
+      }
+    }
+
     res.status(201).json({
       review: {
         id: review.id,
@@ -541,6 +565,7 @@ servicesRouter.post(
 
 servicesRouter.get(
   "/:id",
+  optionalAuth,
   asyncHandler(async (req, res) => {
     const { settings } = await getPlatformSettings();
     const service = await prisma.service.findUnique({
@@ -576,11 +601,32 @@ servicesRouter.get(
       rankingWeight: 0,
     };
 
+    // Social proof: how many of the viewer's followed users booked this provider
+    let socialProof: { followersWhoBooked: number } | null = null;
+    const viewerId = (req as any).user?.id ?? null;
+    if (viewerId) {
+      const followedIds = (await prisma.userFollow.findMany({
+        where: { followerId: viewerId },
+        select: { followingId: true },
+      })).map((f) => f.followingId);
+
+      if (followedIds.length > 0) {
+        const followersWhoBooked = await prisma.order.count({
+          where: {
+            buyerId: { in: followedIds },
+            providerId: service.providerId,
+          },
+        });
+        socialProof = { followersWhoBooked };
+      }
+    }
+
     res.json({
       service: {
         ...signed,
         boosts: { types: boostMap.get(service.id) ?? [] },
         providerPlan,
+        socialProof,
       },
     });
   }),
@@ -718,6 +764,31 @@ servicesRouter.post(
     }
 
     const signed = await attachSignedMedia(created);
+
+    // Notify followers about new service listing
+    if (service.status === "published") {
+      const followers = await prisma.userFollow.findMany({
+        where: { followingId: req.user!.id, notifyServices: true },
+        select: { followerId: true },
+      });
+      if (followers.length > 0) {
+        const snippet = (service.title ?? "").slice(0, 120);
+        await Promise.all(
+          followers
+            .filter((f) => f.followerId !== req.user!.id)
+            .map((f) =>
+              createNotification({
+                userId: f.followerId,
+                actorId: req.user!.id,
+                type: "new_service_listed",
+                title: "New service listed",
+                body: snippet || "A provider you follow listed a new service.",
+                data: { serviceId: service.id },
+              }),
+            ),
+        );
+      }
+    }
 
     res.status(201).json({ service: signed });
   }),
@@ -890,6 +961,31 @@ servicesRouter.put(
     }
 
     const signed = await attachSignedMedia(service);
+
+    // Notify followers about service update (only if published)
+    if (service.status === "published") {
+      const followers = await prisma.userFollow.findMany({
+        where: { followingId: req.user!.id, notifyServices: true },
+        select: { followerId: true },
+      });
+      if (followers.length > 0) {
+        const snippet = (service.title ?? "").slice(0, 120);
+        await Promise.all(
+          followers
+            .filter((f) => f.followerId !== req.user!.id)
+            .map((f) =>
+              createNotification({
+                userId: f.followerId,
+                actorId: req.user!.id,
+                type: "service_updated",
+                title: "Service updated",
+                body: `${snippet} has been updated.`,
+                data: { serviceId: service.id },
+              }),
+            ),
+        );
+      }
+    }
 
     res.json({ service: signed });
   }),

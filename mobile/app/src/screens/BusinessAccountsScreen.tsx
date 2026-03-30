@@ -4,7 +4,9 @@ import {
   ActivityIndicator,
   FlatList,
   Image,
+  KeyboardAvoidingView,
   Linking,
+  Platform,
   Pressable,
   ScrollView,
   Text,
@@ -212,6 +214,7 @@ export function BusinessAccountsScreen({ onBack }: Props) {
   // ── No account selected — show list + create ───────────────────────────────
   if (!selectedId) {
     return (
+      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1 }}>
       <ScrollView contentContainerStyle={s.page}>
         <Text style={s.heading}>Business Accounts</Text>
         <Text style={s.subheading}>Manage your corporate team accounts, post job requests, and handle invoices.</Text>
@@ -233,7 +236,7 @@ export function BusinessAccountsScreen({ onBack }: Props) {
         {showCreate && (
           <View style={s.formCard}>
             <Text style={s.formLabel}>Business name *</Text>
-            <TextInput style={s.input} placeholder="Company name" placeholderTextColor="#94a3b8" value={createName} onChangeText={setCreateName} />
+            <TextInput style={s.input} placeholder="Company name" placeholderTextColor={palette.slate} value={createName} onChangeText={setCreateName} />
 
             <Text style={s.formLabel}>Industry</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false}>
@@ -256,7 +259,7 @@ export function BusinessAccountsScreen({ onBack }: Props) {
             </View>
 
             <Text style={s.formLabel}>Notes (optional)</Text>
-            <TextInput style={[s.input, s.textarea]} placeholder="Internal notes..." placeholderTextColor="#94a3b8" multiline value={createNotes} onChangeText={setCreateNotes} />
+            <TextInput style={[s.input, s.textarea]} placeholder="Internal notes..." placeholderTextColor={palette.slate} multiline value={createNotes} onChangeText={setCreateNotes} />
 
             <Pressable style={[s.primaryBtn, creating && s.btnDisabled]} disabled={creating || !createName.trim()} onPress={() => void handleCreate()}>
               {creating ? <ActivityIndicator color="#fff" /> : <Text style={s.primaryBtnText}>Create account</Text>}
@@ -267,7 +270,7 @@ export function BusinessAccountsScreen({ onBack }: Props) {
         {/* Account list */}
         {accounts.length === 0 ? (
           <View style={s.emptyCard}>
-            <Ionicons name="business-outline" size={40} color="#d1d5db" />
+            <Ionicons name="business-outline" size={40} color={palette.line} />
             <Text style={s.emptyTitle}>No business accounts</Text>
             <Text style={s.emptyBody}>Create one above to get started with team management and job posting.</Text>
           </View>
@@ -289,6 +292,7 @@ export function BusinessAccountsScreen({ onBack }: Props) {
           ))
         )}
       </ScrollView>
+      </KeyboardAvoidingView>
     );
   }
 
@@ -302,6 +306,7 @@ export function BusinessAccountsScreen({ onBack }: Props) {
   ];
 
   return (
+    <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1 }}>
     <ScrollView contentContainerStyle={s.page}>
       {/* Back to list */}
       <Pressable style={s.backRow} onPress={() => { setSelectedId(null); setTab("overview"); }}>
@@ -377,7 +382,7 @@ export function BusinessAccountsScreen({ onBack }: Props) {
               {showAddMember && (
                 <View style={s.formCard}>
                   <Text style={s.formLabel}>Email, phone, or username</Text>
-                  <TextInput style={s.input} placeholder="member@company.com" placeholderTextColor="#94a3b8" value={memberIdentifier} onChangeText={setMemberIdentifier} />
+                  <TextInput style={s.input} placeholder="member@company.com" placeholderTextColor={palette.slate} value={memberIdentifier} onChangeText={setMemberIdentifier} />
                   <Text style={s.formLabel}>Role</Text>
                   <View style={s.chipRow}>
                     {(["member", "admin"] as const).map((r) => (
@@ -399,7 +404,7 @@ export function BusinessAccountsScreen({ onBack }: Props) {
                       <Image source={{ uri: m.user.avatarUrl }} style={s.memberAvatar} />
                     ) : (
                       <View style={[s.memberAvatar, s.memberAvatarPlaceholder]}>
-                        <Ionicons name="person" size={16} color="#9ca3af" />
+                        <Ionicons name="person" size={16} color={palette.slate} />
                       </View>
                     )}
                     <View style={{ flex: 1 }}>
@@ -427,7 +432,7 @@ export function BusinessAccountsScreen({ onBack }: Props) {
               {showCreateJob && (
                 <View style={s.formCard}>
                   <Text style={s.formLabel}>Title *</Text>
-                  <TextInput style={s.input} placeholder="Job title" placeholderTextColor="#94a3b8" value={jobTitle} onChangeText={setJobTitle} />
+                  <TextInput style={s.input} placeholder="Job title" placeholderTextColor={palette.slate} value={jobTitle} onChangeText={setJobTitle} />
 
                   <Text style={s.formLabel}>Category</Text>
                   <ScrollView horizontal showsHorizontalScrollIndicator={false}>
@@ -441,10 +446,10 @@ export function BusinessAccountsScreen({ onBack }: Props) {
                   </ScrollView>
 
                   <Text style={s.formLabel}>Description *</Text>
-                  <TextInput style={[s.input, s.textarea]} placeholder="Job description..." placeholderTextColor="#94a3b8" multiline value={jobDescription} onChangeText={setJobDescription} />
+                  <TextInput style={[s.input, s.textarea]} placeholder="Job description..." placeholderTextColor={palette.slate} multiline value={jobDescription} onChangeText={setJobDescription} />
 
                   <Text style={s.formLabel}>Budget (GHS)</Text>
-                  <TextInput style={s.input} placeholder="0.00" placeholderTextColor="#94a3b8" keyboardType="numeric" value={jobBudget} onChangeText={setJobBudget} />
+                  <TextInput style={s.input} placeholder="0.00" placeholderTextColor={palette.slate} keyboardType="numeric" value={jobBudget} onChangeText={setJobBudget} />
 
                   <Pressable style={[s.primaryBtn, creatingJob && s.btnDisabled]} disabled={creatingJob || !jobTitle.trim() || !jobDescription.trim()} onPress={() => void handleCreateJob()}>
                     {creatingJob ? <ActivityIndicator color="#fff" /> : <Text style={s.primaryBtnText}>Post job</Text>}
@@ -516,6 +521,7 @@ export function BusinessAccountsScreen({ onBack }: Props) {
         </>
       )}
     </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -529,7 +535,7 @@ const useStyles = createThemedStyles((palette) => ({
   // Error
   errorCard: {
     flexDirection: "row", alignItems: "center", justifyContent: "space-between",
-    backgroundColor: "#fff1f2", borderRadius: 12, padding: 12,
+    backgroundColor: palette.dangerSoft, borderRadius: 12, padding: 12,
   },
   errorText: { color: palette.danger, fontSize: 13, fontWeight: "600", flex: 1 },
 
@@ -547,14 +553,14 @@ const useStyles = createThemedStyles((palette) => ({
   },
   formLabel: { color: palette.ink, fontSize: 13, fontWeight: "700" },
   input: {
-    backgroundColor: "#ffffff", borderColor: palette.line, borderRadius: 12,
+    backgroundColor: palette.card, borderColor: palette.line, borderRadius: 12,
     borderWidth: 1, color: palette.ink, fontSize: 14,
     paddingHorizontal: 12, paddingVertical: 10,
   },
   textarea: { minHeight: 80, textAlignVertical: "top" },
   chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
   chip: {
-    backgroundColor: "#f1f5f9", borderColor: "#e2e8f0", borderRadius: 20,
+    backgroundColor: palette.mist, borderColor: palette.line, borderRadius: 20,
     borderWidth: 1, paddingHorizontal: 12, paddingVertical: 7,
   },
   chipActive: { backgroundColor: palette.accentSoft, borderColor: palette.accent },
@@ -590,9 +596,9 @@ const useStyles = createThemedStyles((palette) => ({
 
   // Status badge
   statusBadge: {
-    backgroundColor: "#f1f5f9", borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3,
+    backgroundColor: palette.mist, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3,
   },
-  statusActive: { backgroundColor: "#ecfdf5" },
+  statusActive: { backgroundColor: palette.accentSoft },
   statusText: { color: palette.slate, fontSize: 11, fontWeight: "700", textTransform: "capitalize" },
   statusActiveText: { color: palette.accent },
 
@@ -602,7 +608,7 @@ const useStyles = createThemedStyles((palette) => ({
 
   // Tab bar
   tabBar: {
-    flexDirection: "row", backgroundColor: "#f1f5f9", borderRadius: 14,
+    flexDirection: "row", backgroundColor: palette.mist, borderRadius: 14,
     padding: 3, gap: 2,
   },
   tabBtn: {
@@ -610,8 +616,8 @@ const useStyles = createThemedStyles((palette) => ({
     gap: 4, borderRadius: 12, paddingVertical: 10,
   },
   tabBtnActive: {
-    backgroundColor: "#ffffff",
-    shadowColor: "#000", shadowOpacity: 0.06, shadowRadius: 4,
+    backgroundColor: palette.card,
+    shadowColor: palette.shadow, shadowOpacity: 0.06, shadowRadius: 4,
     shadowOffset: { width: 0, height: 2 }, elevation: 2,
   },
   tabBtnText: { color: palette.slate, fontSize: 12, fontWeight: "600" },
@@ -642,7 +648,7 @@ const useStyles = createThemedStyles((palette) => ({
     borderWidth: 1, padding: 12,
   },
   memberAvatar: { width: 40, height: 40, borderRadius: 20 },
-  memberAvatarPlaceholder: { backgroundColor: "#f3f4f6", alignItems: "center", justifyContent: "center" },
+  memberAvatarPlaceholder: { backgroundColor: palette.mist, alignItems: "center", justifyContent: "center" },
   memberName: { color: palette.ink, fontSize: 14, fontWeight: "700" },
   memberMeta: { color: palette.slate, fontSize: 12, textTransform: "capitalize" },
 

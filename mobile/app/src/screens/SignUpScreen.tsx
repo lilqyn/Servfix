@@ -1,3 +1,4 @@
+import { Ionicons } from "@expo/vector-icons";
 import { useCallback, useRef, useState } from "react";
 import { useFocusEffect } from "@react-navigation/native";
 import {
@@ -11,6 +12,7 @@ import {
   View,
 } from "react-native";
 import { useAuth } from "../providers/AuthProvider";
+import { useTheme } from "../providers/ThemeProvider";
 import { createThemedStyles } from "../theme";
 
 type Props = {
@@ -20,11 +22,14 @@ type Props = {
 
 export function SignUpScreen({ onSuccess, onOpenSignIn }: Props) {
   const styles = useStyles();
+  const { palette } = useTheme();
   const { isSigningUp, signUp } = useAuth();
   const [identifier, setIdentifier] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [role, setRole] = useState<"buyer" | "provider">("buyer");
   const [displayName, setDisplayName] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -199,40 +204,50 @@ export function SignUpScreen({ onSuccess, onOpenSignIn }: Props) {
             />
           ) : null}
 
-          <TextInput
-            autoCapitalize="none"
-            autoComplete="new-password"
-            autoCorrect={false}
-            blurOnSubmit={false}
-            editable={!isSigningUp}
-            onChangeText={setPassword}
-            onSubmitEditing={() => confirmPasswordRef.current?.focus()}
-            placeholder="Password"
-            placeholderTextColor="#94a3b8"
-            ref={passwordRef}
-            returnKeyType="next"
-            secureTextEntry
-            style={styles.input}
-            textContentType="newPassword"
-            value={password}
-          />
+          <View style={styles.passwordWrap}>
+            <TextInput
+              autoCapitalize="none"
+              autoComplete="new-password"
+              autoCorrect={false}
+              blurOnSubmit={false}
+              editable={!isSigningUp}
+              onChangeText={setPassword}
+              onSubmitEditing={() => confirmPasswordRef.current?.focus()}
+              placeholder="Password"
+              placeholderTextColor="#94a3b8"
+              ref={passwordRef}
+              returnKeyType="next"
+              secureTextEntry={!showPassword}
+              style={[styles.input, { flex: 1, borderWidth: 0 }]}
+              textContentType="newPassword"
+              value={password}
+            />
+            <Pressable onPress={() => setShowPassword((v) => !v)} style={styles.eyeBtn}>
+              <Ionicons name={showPassword ? "eye-off-outline" : "eye-outline"} size={20} color={palette.slate} />
+            </Pressable>
+          </View>
 
-          <TextInput
-            autoCapitalize="none"
-            autoComplete="new-password"
-            autoCorrect={false}
-            editable={!isSigningUp}
-            onChangeText={setConfirmPassword}
-            onSubmitEditing={() => void submit()}
-            placeholder="Confirm password"
-            placeholderTextColor="#94a3b8"
-            ref={confirmPasswordRef}
-            returnKeyType="done"
-            secureTextEntry
-            style={styles.input}
-            textContentType="newPassword"
-            value={confirmPassword}
-          />
+          <View style={styles.passwordWrap}>
+            <TextInput
+              autoCapitalize="none"
+              autoComplete="new-password"
+              autoCorrect={false}
+              editable={!isSigningUp}
+              onChangeText={setConfirmPassword}
+              onSubmitEditing={() => void submit()}
+              placeholder="Confirm password"
+              placeholderTextColor="#94a3b8"
+              ref={confirmPasswordRef}
+              returnKeyType="done"
+              secureTextEntry={!showConfirmPassword}
+              style={[styles.input, { flex: 1, borderWidth: 0 }]}
+              textContentType="newPassword"
+              value={confirmPassword}
+            />
+            <Pressable onPress={() => setShowConfirmPassword((v) => !v)} style={styles.eyeBtn}>
+              <Ionicons name={showConfirmPassword ? "eye-off-outline" : "eye-outline"} size={20} color={palette.slate} />
+            </Pressable>
+          </View>
 
           {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
@@ -339,6 +354,17 @@ const useStyles = createThemedStyles((palette) => ({
   },
   roleLabelActive: {
     color: "#ffffff",
+  },
+  passwordWrap: {
+    alignItems: "center",
+    backgroundColor: palette.canvas,
+    borderColor: palette.line,
+    borderRadius: 14,
+    borderWidth: 1,
+    flexDirection: "row",
+  },
+  eyeBtn: {
+    padding: 12,
   },
   errorText: {
     color: palette.danger,

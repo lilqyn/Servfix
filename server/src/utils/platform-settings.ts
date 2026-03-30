@@ -309,6 +309,14 @@ const NOTIFICATION_TYPES: NotificationType[] = [
   "community_post_commented",
   "community_new_post",
   "payout_update",
+  "new_service_listed",
+  "service_updated",
+  "provider_five_star_review",
+  "provider_verified",
+  "provider_milestone",
+  "provider_broadcast",
+  "provider_promotion",
+  "mention",
 ];
 
 const notificationTemplatesSchema = z.object(

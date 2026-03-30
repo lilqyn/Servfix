@@ -15,6 +15,7 @@ import {
   startForcedDisbursementJob,
   stopForcedDisbursementJob,
 } from "./jobs/forced-disbursement.js";
+import { startWeeklyFollowerSummary } from "./jobs/weekly-follower-summary.js";
 
 const server = http.createServer(app);
 initWebsocket(server);
@@ -22,6 +23,7 @@ initErrorTracking();
 startHealthMonitor();
 startOrderReviewDeadlineJob();
 startForcedDisbursementJob();
+startWeeklyFollowerSummary();
 
 server.listen(env.PORT, () => {
   logInfo("server_started", { port: env.PORT });

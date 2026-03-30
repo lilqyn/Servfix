@@ -26,12 +26,12 @@ type Props = {
   onBack: () => void;
 };
 
-const STATUS_BADGE: Record<string, { bg: string; color: string; label: string }> = {
-  open: { bg: "#dbeafe", color: "#1d4ed8", label: "Open" },
-  in_progress: { bg: "#fef3c7", color: "#b45309", label: "In Progress" },
-  resolved: { bg: "#dcfce7", color: "#15803d", label: "Resolved" },
-  closed: { bg: "#f3f4f6", color: "#6b7280", label: "Closed" },
-};
+const getStatusBadge = (p: { infoSoft: string; info: string; warnSoft: string; warnInk: string; accentSoft: string; accent: string; mist: string; slate: string }) => ({
+  open: { bg: p.infoSoft, color: p.info, label: "Open" },
+  in_progress: { bg: p.warnSoft, color: p.warnInk, label: "In Progress" },
+  resolved: { bg: p.accentSoft, color: p.accent, label: "Resolved" },
+  closed: { bg: p.mist, color: p.slate, label: "Closed" },
+} as Record<string, { bg: string; color: string; label: string }>);
 
 const CATEGORIES = [
   "General",
@@ -164,7 +164,7 @@ export function SupportScreen({ onBack }: Props) {
           </View>
         ) : tickets.length === 0 ? (
           <View style={styles.empty}>
-            <Ionicons name="help-buoy-outline" size={48} color="#d1d5db" />
+            <Ionicons name="help-buoy-outline" size={48} color={palette.line} />
             <Text style={styles.emptyText}>No support tickets yet.</Text>
             <Text style={styles.emptySubtext}>Tap "New Ticket" to get help.</Text>
           </View>
@@ -179,7 +179,7 @@ export function SupportScreen({ onBack }: Props) {
             }}
             onEndReachedThreshold={0.3}
             renderItem={({ item }) => {
-              const badge = STATUS_BADGE[item.status] ?? STATUS_BADGE.open;
+              const badge = getStatusBadge(palette)[item.status] ?? getStatusBadge(palette).open;
               return (
                 <Pressable style={styles.ticketCard} onPress={() => openTicket(item.id)}>
                   <View style={styles.ticketHeader}>
@@ -221,7 +221,7 @@ export function SupportScreen({ onBack }: Props) {
           <TextInput
             style={styles.input}
             placeholder="Brief summary of your issue"
-            placeholderTextColor="#9ca3af"
+            placeholderTextColor={palette.slate}
             value={subject}
             onChangeText={setSubject}
             maxLength={120}
@@ -246,7 +246,7 @@ export function SupportScreen({ onBack }: Props) {
           <TextInput
             style={[styles.input, styles.textArea]}
             placeholder="Describe your issue in detail..."
-            placeholderTextColor="#9ca3af"
+            placeholderTextColor={palette.slate}
             value={message}
             onChangeText={setMessage}
             multiline
@@ -291,9 +291,9 @@ export function SupportScreen({ onBack }: Props) {
             <Text style={styles.detailSubject}>{activeTicket.subject}</Text>
             <View style={styles.detailMeta}>
               <Text style={styles.ticketNumber}>#{activeTicket.ticketNumber}</Text>
-              <View style={[styles.statusBadge, { backgroundColor: (STATUS_BADGE[activeTicket.status] ?? STATUS_BADGE.open).bg }]}>
-                <Text style={[styles.statusBadgeText, { color: (STATUS_BADGE[activeTicket.status] ?? STATUS_BADGE.open).color }]}>
-                  {(STATUS_BADGE[activeTicket.status] ?? STATUS_BADGE.open).label}
+              <View style={[styles.statusBadge, { backgroundColor: (getStatusBadge(palette)[activeTicket.status] ?? getStatusBadge(palette).open).bg }]}>
+                <Text style={[styles.statusBadgeText, { color: (getStatusBadge(palette)[activeTicket.status] ?? getStatusBadge(palette).open).color }]}>
+                  {(getStatusBadge(palette)[activeTicket.status] ?? getStatusBadge(palette).open).label}
                 </Text>
               </View>
             </View>
@@ -343,7 +343,7 @@ export function SupportScreen({ onBack }: Props) {
               <TextInput
                 style={styles.replyInput}
                 placeholder="Type a reply..."
-                placeholderTextColor="#9ca3af"
+                placeholderTextColor={palette.slate}
                 value={reply}
                 onChangeText={setReply}
                 maxLength={2000}
@@ -447,7 +447,7 @@ const useStyles = createThemedStyles((palette) => ({
   messagesList: { padding: 16, gap: 10, paddingBottom: 20 },
   msgBubble: { borderRadius: 14, padding: 12, maxWidth: "85%" as const, gap: 4 },
   msgBubbleUser: { backgroundColor: palette.accentSoft, alignSelf: "flex-end" },
-  msgBubbleStaff: { backgroundColor: "#f1f5f9", alignSelf: "flex-start" },
+  msgBubbleStaff: { backgroundColor: palette.mist, alignSelf: "flex-start" },
   msgSender: { fontSize: 11, fontWeight: "700", color: palette.slate },
   msgBody: { color: palette.ink, fontSize: 14, lineHeight: 20 },
   msgTime: { color: palette.slate, fontSize: 10, alignSelf: "flex-end" },
@@ -457,7 +457,7 @@ const useStyles = createThemedStyles((palette) => ({
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
-    backgroundColor: "#f5f3ff",
+    backgroundColor: palette.isDark ? "#2e1065" : "#f5f3ff",
     borderRadius: 12,
     padding: 12,
   },
@@ -475,7 +475,7 @@ const useStyles = createThemedStyles((palette) => ({
   },
   replyInput: {
     flex: 1,
-    backgroundColor: "#f3f4f6",
+    backgroundColor: palette.mist,
     borderRadius: 20,
     paddingHorizontal: 16,
     paddingVertical: 10,

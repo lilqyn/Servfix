@@ -112,7 +112,7 @@ export default function ResetPasswordScreen({
 
       <KeyboardAvoidingView
         style={styles.flex}
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
         keyboardVerticalOffset={0}
       >
         <ScrollView
@@ -147,7 +147,7 @@ export default function ResetPasswordScreen({
               <TextInput
                 style={styles.input}
                 placeholder="Enter new password"
-                placeholderTextColor="#9ca3af"
+                placeholderTextColor={palette.slate}
                 secureTextEntry={!showPassword}
                 autoCapitalize="none"
                 autoCorrect={false}
@@ -180,7 +180,7 @@ export default function ResetPasswordScreen({
               <TextInput
                 style={styles.input}
                 placeholder="Confirm new password"
-                placeholderTextColor="#9ca3af"
+                placeholderTextColor={palette.slate}
                 secureTextEntry={!showConfirm}
                 autoCapitalize="none"
                 autoCorrect={false}
@@ -407,12 +407,12 @@ const useStyles = createThemedStyles((palette) => ({
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    backgroundColor: "#fef2f2",
+    backgroundColor: palette.dangerSoft,
     borderRadius: 10,
     padding: 12,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: "#fecaca",
+    borderColor: palette.dangerLine,
   },
   errorText: {
     flex: 1,

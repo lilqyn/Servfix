@@ -806,9 +806,26 @@ export async function requestPayout(input: {
 
 // ─── Community ────────────────────────────────────────────────────────────────
 
+export type FollowedService = {
+  id: string;
+  title: string;
+  category: string;
+  price: string | null;
+  currency: string;
+  imageUrl: string | null;
+  provider: {
+    id: string;
+    username: string | null;
+    displayName: string | null;
+    avatarUrl: string | null;
+  };
+  createdAt: string;
+};
+
 type CommunityFeedResponse = {
   posts: CommunityPost[];
   nextCursor?: string | null;
+  followedServices?: FollowedService[];
 };
 
 type CommunityCommentsResponse = {
@@ -1243,6 +1260,33 @@ export async function unfollowUser(userId: string): Promise<void> {
   await apiFetch(`/api/community/follow/${userId}`, { method: "DELETE" });
 }
 
+export async function updateFollowNotifications(
+  userId: string,
+  prefs: { notifyPosts?: boolean; notifyServices?: boolean },
+): Promise<{ notifyPosts: boolean; notifyServices: boolean }> {
+  return apiFetch(`/api/community/follow/${userId}/notifications`, {
+    method: "PATCH",
+    body: JSON.stringify(prefs),
+  });
+}
+
+export type SuggestedProvider = {
+  id: string;
+  username: string | null;
+  avatarUrl: string | null;
+  displayName: string | null;
+  ratingAvg: string | null;
+  ratingCount: number;
+  categories: string[];
+  verified: boolean;
+  followerCount: number;
+  mutualFollowers: number;
+};
+
+export async function fetchSuggestedProviders(limit = 10): Promise<{ providers: SuggestedProvider[] }> {
+  return apiFetch(`/api/community/suggested-providers?limit=${limit}`);
+}
+
 export async function shareCommunityPost(postId: string): Promise<void> {
   await apiFetch(`/api/community/posts/${postId}/share`, { method: "POST" });
 }
@@ -1255,6 +1299,46 @@ export async function updateCommunityPost(
     method: "PUT",
     body: JSON.stringify(payload),
   });
+}
+
+// ─── Username search (for @mentions) ──────────────────────────────────────────
+
+export type MentionUser = {
+  id: string;
+  username: string | null;
+  displayName: string | null;
+  avatarUrl: string | null;
+  role: string;
+};
+
+export async function searchUsernames(q: string): Promise<{ users: MentionUser[] }> {
+  return apiFetch(`/api/users/search/usernames?q=${encodeURIComponent(q)}`);
+}
+
+// ─── Broadcasts & Promotions ──────────────────────────────────────────────────
+
+export async function sendBroadcast(data: { title: string; body: string }): Promise<{ broadcast: { id: string; sentCount: number } }> {
+  return apiFetch("/api/community/broadcast", { method: "POST", body: JSON.stringify(data) });
+}
+
+export async function fetchBroadcasts(): Promise<{ broadcasts: Array<{ id: string; title: string; body: string; sentCount: number; createdAt: string }> }> {
+  return apiFetch("/api/community/broadcasts");
+}
+
+export async function createPromotion(data: {
+  serviceId?: string;
+  title: string;
+  description?: string;
+  discountPct?: number;
+  discountAmt?: number;
+  currency?: string;
+  endsAt?: string;
+}): Promise<{ promotion: { id: string } }> {
+  return apiFetch("/api/community/promotions", { method: "POST", body: JSON.stringify(data) });
+}
+
+export async function fetchPromotions(): Promise<{ promotions: Array<{ id: string; title: string; description: string | null; discountPct: number | null; discountAmt: string | null; currency: string; isActive: boolean; endsAt: string | null; createdAt: string; service: { id: string; title: string } | null }> }> {
+  return apiFetch("/api/community/promotions");
 }
 
 // ─── User full profile (with stats & viewer) ────────────────────────────────

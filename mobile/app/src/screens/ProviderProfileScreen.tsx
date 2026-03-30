@@ -6,7 +6,6 @@ import {
   Pressable,
   RefreshControl,
   ScrollView,
-  StyleSheet,
   Text,
   View,
 } from "react-native";
@@ -62,10 +61,11 @@ const formatDate = (value: string) => {
 };
 
 const StarRow = ({ rating }: { rating: number }) => {
+  const ss = useStarStyles();
   return (
-    <View style={starStyles.row}>
+    <View style={ss.row}>
       {[1, 2, 3, 4, 5].map((star) => (
-        <Text key={star} style={[starStyles.star, star <= rating && starStyles.starFilled]}>
+        <Text key={star} style={[ss.star, star <= rating && ss.starFilled]}>
           ★
         </Text>
       ))}
@@ -73,11 +73,11 @@ const StarRow = ({ rating }: { rating: number }) => {
   );
 };
 
-const starStyles = StyleSheet.create({
+const useStarStyles = createThemedStyles((palette) => ({
   row: { flexDirection: "row", gap: 2 },
-  star: { color: "#d1d5db", fontSize: 16 },
+  star: { color: palette.line, fontSize: 16 },
   starFilled: { color: "#f59e0b" },
-});
+}));
 
 type ContentTab = "posts" | "gallery";
 
@@ -679,7 +679,7 @@ const useStyles = createThemedStyles((palette) => ({
   ratingText: { color: palette.slate, fontSize: 13 },
   verifiedPill: {
     alignItems: "center",
-    backgroundColor: "#dcfce7",
+    backgroundColor: palette.accentSoft,
     borderRadius: 999,
     flexDirection: "row",
     gap: 6,
@@ -764,7 +764,7 @@ const useStyles = createThemedStyles((palette) => ({
 
   // Tab bar
   tabBar: {
-    backgroundColor: "#f1f5f9",
+    backgroundColor: palette.mist,
     borderRadius: 16,
     flexDirection: "row",
     marginHorizontal: 20,
@@ -780,9 +780,9 @@ const useStyles = createThemedStyles((palette) => ({
     paddingVertical: 10,
   },
   tabItemActive: {
-    backgroundColor: "#ffffff",
+    backgroundColor: palette.card,
     elevation: 2,
-    shadowColor: "#000",
+    shadowColor: palette.shadow,
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
     shadowRadius: 3,
@@ -873,7 +873,7 @@ const useStyles = createThemedStyles((palette) => ({
     overflow: "hidden",
     width: GALLERY_ITEM_SIZE,
     height: GALLERY_ITEM_SIZE,
-    backgroundColor: "#f3f4f6",
+    backgroundColor: palette.mist,
   },
   galleryItem: {
     height: "100%",

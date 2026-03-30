@@ -24,13 +24,13 @@ type Props = {
   onOrderCreated?: (orderId: string) => void;
 };
 
-const STATUS_CONFIG: Record<QuoteStatus, { bg: string; color: string; label: string; icon: React.ComponentProps<typeof Ionicons>["name"] }> = {
-  sent: { bg: "#dbeafe", color: "#1d4ed8", label: "Pending", icon: "time-outline" },
-  accepted: { bg: "#dcfce7", color: "#15803d", label: "Accepted", icon: "checkmark-circle" },
-  rejected: { bg: "#fee2e2", color: "#dc2626", label: "Rejected", icon: "close-circle" },
-  cancelled: { bg: "#f3f4f6", color: "#6b7280", label: "Cancelled", icon: "ban" },
-  expired: { bg: "#fef3c7", color: "#b45309", label: "Expired", icon: "alarm-outline" },
-};
+const makeStatusConfig = (p: import("../theme").Palette): Record<QuoteStatus, { bg: string; color: string; label: string; icon: React.ComponentProps<typeof Ionicons>["name"] }> => ({
+  sent: { bg: p.infoSoft, color: p.info, label: "Pending", icon: "time-outline" },
+  accepted: { bg: p.accentSoft, color: p.accent, label: "Accepted", icon: "checkmark-circle" },
+  rejected: { bg: p.dangerSoft, color: p.danger, label: "Rejected", icon: "close-circle" },
+  cancelled: { bg: p.mist, color: p.slate, label: "Cancelled", icon: "ban" },
+  expired: { bg: p.warnSoft, color: p.warnInk, label: "Expired", icon: "alarm-outline" },
+});
 
 const DEPOSIT_OPTIONS = [50, 70, 100];
 const CURRENCY_OPTIONS: ("GHS" | "USD" | "EUR")[] = ["GHS", "USD", "EUR"];
@@ -42,6 +42,7 @@ export function QuotesScreen({ threadId, userRole, onBack, onOrderCreated }: Pro
   const [loading, setLoading] = useState(true);
   const [acting, setActing] = useState<string | null>(null);
 
+  const STATUS_CONFIG = makeStatusConfig(palette);
   const isBuyer = userRole === "buyer";
   const isProvider = userRole === "provider" || userRole === "admin" || userRole === "super_admin";
 
@@ -282,7 +283,7 @@ export function QuotesScreen({ threadId, userRole, onBack, onOrderCreated }: Pro
               keyboardType="decimal-pad"
               onChangeText={(t) => { setFormAmount(t.replace(/[^0-9.]/g, "")); setFormError(null); }}
               placeholder="0.00"
-              placeholderTextColor="#94a3b8"
+              placeholderTextColor={palette.slate}
               style={styles.input}
               value={formAmount}
             />
@@ -305,7 +306,7 @@ export function QuotesScreen({ threadId, userRole, onBack, onOrderCreated }: Pro
               keyboardType="number-pad"
               onChangeText={(t) => setFormQuantity(t.replace(/[^0-9]/g, ""))}
               placeholder="1"
-              placeholderTextColor="#94a3b8"
+              placeholderTextColor={palette.slate}
               style={styles.input}
               value={formQuantity}
             />
@@ -328,7 +329,7 @@ export function QuotesScreen({ threadId, userRole, onBack, onOrderCreated }: Pro
               multiline
               onChangeText={setFormMessage}
               placeholder="Add details about this quote..."
-              placeholderTextColor="#94a3b8"
+              placeholderTextColor={palette.slate}
               style={[styles.input, styles.textarea]}
               value={formMessage}
             />
@@ -405,13 +406,13 @@ const useStyles = createThemedStyles((palette) => ({
   quoteDepositValue: { color: palette.accentDeep, fontSize: 16, fontWeight: "800" },
   quoteQty: { color: palette.ink, fontSize: 16, fontWeight: "800" },
   quoteMessage: {
-    backgroundColor: "#f8fafc",
+    backgroundColor: palette.inputBg,
     borderRadius: 10,
     padding: 12,
     marginTop: 2,
   },
   quoteMessageText: { color: palette.ink, fontSize: 13, lineHeight: 19 },
-  quoteExpiry: { color: "#b45309", fontSize: 12, fontWeight: "600" },
+  quoteExpiry: { color: palette.warnInk, fontSize: 12, fontWeight: "600" },
   quoteDate: { color: palette.slate, fontSize: 11 },
   quoteActions: { flexDirection: "row", gap: 10, marginTop: 4 },
   acceptBtn: {
@@ -427,7 +428,7 @@ const useStyles = createThemedStyles((palette) => ({
   acceptBtnText: { color: "#ffffff", fontSize: 14, fontWeight: "800" },
   rejectBtn: {
     flex: 1,
-    backgroundColor: "#fee2e2",
+    backgroundColor: palette.dangerSoft,
     borderRadius: 12,
     flexDirection: "row",
     alignItems: "center",
@@ -483,7 +484,7 @@ const useStyles = createThemedStyles((palette) => ({
     textTransform: "uppercase",
   },
   input: {
-    backgroundColor: "#f8fafc",
+    backgroundColor: palette.inputBg,
     borderColor: palette.line,
     borderRadius: 12,
     borderWidth: 1,
@@ -495,8 +496,8 @@ const useStyles = createThemedStyles((palette) => ({
   textarea: { minHeight: 80, textAlignVertical: "top" },
   chipRow: { flexDirection: "row", gap: 8 },
   chip: {
-    backgroundColor: "#f1f5f9",
-    borderColor: "#e2e8f0",
+    backgroundColor: palette.mist,
+    borderColor: palette.line,
     borderRadius: 999,
     borderWidth: 1,
     paddingHorizontal: 14,

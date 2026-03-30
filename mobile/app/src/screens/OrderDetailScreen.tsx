@@ -3,7 +3,9 @@ import { useAuth } from "../providers/AuthProvider";
 import {
   ActivityIndicator,
   Image,
+  KeyboardAvoidingView,
   Linking,
+  Platform,
   RefreshControl,
   Pressable,
   FlatList,
@@ -800,6 +802,7 @@ export function OrderDetailScreen({
   ).length;
 
   return (
+    <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1 }}>
     <ScrollView
       contentContainerStyle={styles.content}
       refreshControl={<RefreshControl onRefresh={() => void refreshOrder("refresh")} refreshing={isRefreshing} tintColor={palette.accent} />}
@@ -902,7 +905,7 @@ export function OrderDetailScreen({
                 editable={!isActioning("report_progress")}
                 onChangeText={setProgressTitle}
                 placeholder="Enter progress milestone"
-                placeholderTextColor="#94a3b8"
+                placeholderTextColor={palette.slate}
                 style={styles.textInput}
                 value={progressTitle}
               />
@@ -912,7 +915,7 @@ export function OrderDetailScreen({
                 multiline
                 onChangeText={setProgressBody}
                 placeholder="Add details for the buyer"
-                placeholderTextColor="#94a3b8"
+                placeholderTextColor={palette.slate}
                 style={[styles.textInput, styles.textArea]}
                 value={progressBody}
               />
@@ -922,7 +925,7 @@ export function OrderDetailScreen({
                 keyboardType="number-pad"
                 onChangeText={(value) => setProgressPercent(value.replace(/[^0-9]/g, ""))}
                 placeholder="1-100"
-                placeholderTextColor="#94a3b8"
+                placeholderTextColor={palette.slate}
                 style={styles.textInput}
                 value={progressPercent}
               />
@@ -1008,7 +1011,7 @@ export function OrderDetailScreen({
               multiline
               onChangeText={setMessageDraft}
               placeholder="Send a quick update..."
-              placeholderTextColor="#94a3b8"
+              placeholderTextColor={palette.slate}
               style={[styles.textInput, styles.messageInput]}
               value={messageDraft}
             />
@@ -1127,7 +1130,7 @@ export function OrderDetailScreen({
                 editable={!isActioning("dispute")}
                 onChangeText={setDisputeReason}
                 placeholder="Why are you opening a dispute?"
-                placeholderTextColor="#94a3b8"
+                placeholderTextColor={palette.slate}
                 style={styles.textInput}
                 value={disputeReason}
               />
@@ -1137,7 +1140,7 @@ export function OrderDetailScreen({
                 multiline
                 onChangeText={setDisputeDetails}
                 placeholder="Provide additional context"
-                placeholderTextColor="#94a3b8"
+                placeholderTextColor={palette.slate}
                 style={[styles.textInput, styles.textArea]}
                 value={disputeDetails}
               />
@@ -1280,6 +1283,7 @@ export function OrderDetailScreen({
 
       {isLoading ? <Text style={styles.loadingText}>Refreshing...</Text> : null}
     </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -1382,8 +1386,8 @@ const useStyles = createThemedStyles((palette) => ({
     fontWeight: "700",
   },
   errorCard: {
-    backgroundColor: "#fff1f2",
-    borderColor: "#fecdd3",
+    backgroundColor: palette.dangerSoft,
+    borderColor: palette.dangerLine,
     borderRadius: 18,
     borderWidth: 1,
     gap: 8,
@@ -1395,13 +1399,13 @@ const useStyles = createThemedStyles((palette) => ({
     fontWeight: "700",
   },
   errorBody: {
-    color: "#7f1d1d",
+    color: palette.dangerInk,
     fontSize: 13,
     lineHeight: 19,
   },
   messageList: {
-    backgroundColor: "#f8fafc",
-    borderColor: "#e2e8f0",
+    backgroundColor: palette.inputBg,
+    borderColor: palette.line,
     borderRadius: 12,
     borderWidth: 1,
     marginTop: 8,
@@ -1426,8 +1430,8 @@ const useStyles = createThemedStyles((palette) => ({
   },
   messagePeer: {
     alignSelf: "flex-start",
-    backgroundColor: "#ffffff",
-    borderColor: "#e2e8f0",
+    backgroundColor: palette.card,
+    borderColor: palette.line,
     borderWidth: 1,
   },
   messageMineText: {
@@ -1439,7 +1443,7 @@ const useStyles = createThemedStyles((palette) => ({
     fontSize: 13,
   },
   messageMeta: {
-    color: "#94a3b8",
+    color: palette.slate,
     fontSize: 10,
   },
   messageErrorCard: {
@@ -1483,8 +1487,8 @@ const useStyles = createThemedStyles((palette) => ({
     paddingVertical: 10,
   },
   actionSecondary: {
-    backgroundColor: "#e2e8f0",
-    borderColor: "#cbd5e1",
+    backgroundColor: palette.line,
+    borderColor: palette.line,
     borderWidth: 1,
   },
   actionDanger: {
@@ -1508,8 +1512,8 @@ const useStyles = createThemedStyles((palette) => ({
     marginTop: 8,
   },
   reportItem: {
-    backgroundColor: "#f8fafc",
-    borderColor: "#e2e8f0",
+    backgroundColor: palette.inputBg,
+    borderColor: palette.line,
     borderRadius: 12,
     borderWidth: 1,
     gap: 6,
@@ -1546,8 +1550,8 @@ const useStyles = createThemedStyles((palette) => ({
     fontWeight: "700",
   },
   textInput: {
-    backgroundColor: "#ffffff",
-    borderColor: "#cbd5e1",
+    backgroundColor: palette.card,
+    borderColor: palette.line,
     borderRadius: 12,
     borderWidth: 1,
     color: palette.ink,
@@ -1590,8 +1594,8 @@ const useStyles = createThemedStyles((palette) => ({
     fontSize: 13,
   },
   releaseRequestItem: {
-    backgroundColor: "#f8fafc",
-    borderColor: "#e2e8f0",
+    backgroundColor: palette.inputBg,
+    borderColor: palette.line,
     borderRadius: 12,
     borderWidth: 1,
     gap: 6,
@@ -1610,7 +1614,7 @@ const useStyles = createThemedStyles((palette) => ({
     fontWeight: "700",
   },
   releaseStatusBadge: {
-    backgroundColor: "#fef3c7",
+    backgroundColor: palette.warnSoft,
     borderRadius: 8,
     paddingHorizontal: 8,
     paddingVertical: 3,
@@ -1619,10 +1623,10 @@ const useStyles = createThemedStyles((palette) => ({
     backgroundColor: palette.accentSoft,
   },
   releaseStatusRejected: {
-    backgroundColor: "#fff1f2",
+    backgroundColor: palette.dangerSoft,
   },
   releaseStatusText: {
-    color: "#92400e",
+    color: palette.warnInk,
     fontSize: 11,
     fontWeight: "700",
     textTransform: "capitalize",
@@ -1654,8 +1658,8 @@ const useStyles = createThemedStyles((palette) => ({
   },
   releaseRejectButton: {
     alignItems: "center",
-    backgroundColor: "#fff1f2",
-    borderColor: "#fecdd3",
+    backgroundColor: palette.dangerSoft,
+    borderColor: palette.dangerLine,
     borderRadius: 10,
     borderWidth: 1,
     flexDirection: "row",
@@ -1708,8 +1712,8 @@ const useStyles = createThemedStyles((palette) => ({
   },
   disputeImageAdd: {
     alignItems: "center",
-    backgroundColor: "#f1f5f9",
-    borderColor: "#cbd5e1",
+    backgroundColor: palette.mist,
+    borderColor: palette.line,
     borderRadius: 10,
     borderStyle: "dashed",
     borderWidth: 1,

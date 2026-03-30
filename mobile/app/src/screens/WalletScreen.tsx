@@ -27,17 +27,18 @@ const formatDate = (value: string) => {
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 };
 
-const STATUS_COLORS: Record<string, { bg: string; text: string }> = {
-  requested: { bg: "#fef9c3", text: "#713f12" },
-  processing: { bg: "#e0f2fe", text: "#0c4a6e" },
-  paid: { bg: "#dcfce7", text: "#166534" },
-  failed: { bg: "#fee2e2", text: "#991b1b" },
-  cancelled: { bg: "#f3f4f6", text: "#4b5563" },
-};
+const makeStatusColors = (p: import("../theme").Palette): Record<string, { bg: string; text: string }> => ({
+  requested: { bg: p.warnSoft, text: p.warnInk },
+  processing: { bg: p.infoSoft, text: p.info },
+  paid: { bg: p.accentSoft, text: p.accentDeep },
+  failed: { bg: p.dangerSoft, text: p.dangerInk },
+  cancelled: { bg: p.mist, text: p.slate },
+});
 
 export function WalletScreen({ onBack }: Props) {
   const styles = useStyles();
   const { palette } = useTheme();
+  const STATUS_COLORS = makeStatusColors(palette);
   const [wallet, setWallet] = useState<WalletData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -181,7 +182,7 @@ export function WalletScreen({ onBack }: Props) {
                 setWithdrawError(null);
               }}
               placeholder={`Amount in ${currency}`}
-              placeholderTextColor="#94a3b8"
+              placeholderTextColor={palette.slate}
               style={styles.withdrawInput}
               value={withdrawAmount}
             />
@@ -255,8 +256,8 @@ const useStyles = createThemedStyles((palette) => ({
   backButtonText: { color: palette.accentDeep, fontSize: 15, fontWeight: "700" },
   topTitle: { color: palette.ink, fontSize: 20, fontWeight: "800" },
   errorCard: {
-    backgroundColor: "#fff1f2",
-    borderColor: "#fecdd3",
+    backgroundColor: palette.dangerSoft,
+    borderColor: palette.dangerLine,
     borderRadius: 14,
     borderWidth: 1,
     gap: 8,
@@ -265,7 +266,7 @@ const useStyles = createThemedStyles((palette) => ({
   errorText: { color: palette.danger, fontSize: 13 },
   retryButton: {
     alignSelf: "flex-start",
-    backgroundColor: "#ffffff",
+    backgroundColor: palette.card,
     borderRadius: 10,
     paddingHorizontal: 10,
     paddingVertical: 7,
@@ -295,7 +296,7 @@ const useStyles = createThemedStyles((palette) => ({
   sectionHint: { color: palette.slate, fontSize: 13, lineHeight: 19 },
   withdrawRow: { flexDirection: "row", gap: 10 },
   withdrawInput: {
-    backgroundColor: "#f8fafc",
+    backgroundColor: palette.inputBg,
     borderColor: palette.line,
     borderRadius: 12,
     borderWidth: 1,

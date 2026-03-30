@@ -133,7 +133,7 @@ export function ReportScreen({ targetType, targetId, targetLabel, onBack, onDone
         <TextInput
           style={styles.textArea}
           placeholder="Provide more context to help our review team..."
-          placeholderTextColor="#9ca3af"
+          placeholderTextColor={palette.slate}
           value={details}
           onChangeText={setDetails}
           multiline
@@ -162,7 +162,7 @@ const useStyles = createThemedStyles((palette) => ({
   container: { flex: 1, backgroundColor: palette.canvas },
   form: { padding: 20, gap: 12, paddingBottom: 40 },
   infoCard: {
-    backgroundColor: "#fef2f2",
+    backgroundColor: palette.dangerSoft,
     borderRadius: 14,
     flexDirection: "row",
     alignItems: "center",

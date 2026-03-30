@@ -11,6 +11,7 @@ import {
 } from "react-native";
 import { requestPasswordReset } from "../lib/api";
 import { createThemedStyles } from "../theme";
+import { useTheme } from "../providers/ThemeProvider";
 
 type Props = {
   onBack: () => void;
@@ -18,6 +19,7 @@ type Props = {
 
 export function ForgotPasswordScreen({ onBack }: Props) {
   const styles = useStyles();
+  const { palette } = useTheme();
   const [identifier, setIdentifier] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -85,7 +87,7 @@ export function ForgotPasswordScreen({ onBack }: Props) {
                   setError(null);
                 }}
                 placeholder="you@example.com or +233..."
-                placeholderTextColor="#94a3b8"
+                placeholderTextColor={palette.slate}
                 style={styles.input}
                 value={identifier}
               />
@@ -157,7 +159,7 @@ const useStyles = createThemedStyles((palette) => ({
     textTransform: "uppercase",
   },
   input: {
-    backgroundColor: "#ffffff",
+    backgroundColor: palette.inputBg,
     borderColor: palette.line,
     borderRadius: 14,
     borderWidth: 1,
@@ -187,8 +189,8 @@ const useStyles = createThemedStyles((palette) => ({
     opacity: 0.55,
   },
   successCard: {
-    backgroundColor: "#f0fdf4",
-    borderColor: "#86efac",
+    backgroundColor: palette.accentSoft,
+    borderColor: palette.accent,
     borderRadius: 20,
     borderWidth: 1,
     gap: 12,
@@ -200,7 +202,7 @@ const useStyles = createThemedStyles((palette) => ({
     fontWeight: "800",
   },
   successBody: {
-    color: "#166534",
+    color: palette.accentDeep,
     fontSize: 14,
     lineHeight: 21,
   },

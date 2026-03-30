@@ -93,6 +93,18 @@ const getNotificationHref = (notification: { type: string; data: Prisma.JsonValu
       return postId ? `/community?post=${postId}` : "/community";
     case "payout_update":
       return "/dashboard/payouts";
+    case "new_service_listed":
+    case "service_updated":
+      return serviceId ? `/service/${serviceId}` : "/browse";
+    case "provider_five_star_review":
+    case "provider_verified":
+    case "provider_milestone":
+    case "provider_broadcast":
+      return followerId ? `/profile/${followerId}` : "/browse";
+    case "provider_promotion":
+      return serviceId ? `/service/${serviceId}` : followerId ? `/profile/${followerId}` : "/browse";
+    case "mention":
+      return postId ? `/community?post=${postId}` : "/community";
     default:
       return "/notifications";
   }

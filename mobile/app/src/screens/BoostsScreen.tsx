@@ -32,18 +32,18 @@ const BOOST_ICONS: Record<BoostType, React.ComponentProps<typeof Ionicons>["name
   category_top: "trophy",
 };
 
-const BOOST_COLORS: Record<BoostType, { bg: string; tone: string }> = {
-  featured: { bg: "#fef3c7", tone: "#b45309" },
-  feed_boost: { bg: "#dbeafe", tone: "#1d4ed8" },
+const getBoostColors = (p: { warnSoft: string; warnInk: string; infoSoft: string; info: string }) => ({
+  featured: { bg: p.warnSoft, tone: p.warnInk },
+  feed_boost: { bg: p.infoSoft, tone: p.info },
   category_top: { bg: "#fce7f3", tone: "#be185d" },
-};
+} as Record<BoostType, { bg: string; tone: string }>);
 
-const STATUS_BADGE: Record<string, { bg: string; color: string; label: string }> = {
-  active: { bg: "#dcfce7", color: "#15803d", label: "Active" },
-  scheduled: { bg: "#dbeafe", color: "#1d4ed8", label: "Scheduled" },
-  ended: { bg: "#f3f4f6", color: "#6b7280", label: "Ended" },
-  cancelled: { bg: "#fee2e2", color: "#dc2626", label: "Cancelled" },
-};
+const getBoostStatusBadge = (p: { accentSoft: string; accent: string; infoSoft: string; info: string; mist: string; slate: string; dangerSoft: string; danger: string }) => ({
+  active: { bg: p.accentSoft, color: p.accent, label: "Active" },
+  scheduled: { bg: p.infoSoft, color: p.info, label: "Scheduled" },
+  ended: { bg: p.mist, color: p.slate, label: "Ended" },
+  cancelled: { bg: p.dangerSoft, color: p.danger, label: "Cancelled" },
+} as Record<string, { bg: string; color: string; label: string }>);
 
 export function BoostsScreen({ onBack }: Props) {
   const styles = useStyles();
@@ -137,7 +137,7 @@ export function BoostsScreen({ onBack }: Props) {
   };
 
   const renderOption = ({ item }: { item: BoostOption }) => {
-    const colors = BOOST_COLORS[item.type] ?? BOOST_COLORS.featured;
+    const colors = getBoostColors(palette)[item.type] ?? getBoostColors(palette).featured;
     const icon = BOOST_ICONS[item.type] ?? "star";
     return (
       <View style={[styles.optionCard, { borderColor: colors.tone + "30" }]}>
@@ -175,8 +175,8 @@ export function BoostsScreen({ onBack }: Props) {
   };
 
   const renderPurchase = ({ item }: { item: BoostPurchase }) => {
-    const colors = BOOST_COLORS[item.type] ?? BOOST_COLORS.featured;
-    const badge = STATUS_BADGE[item.status] ?? STATUS_BADGE.ended;
+    const colors = getBoostColors(palette)[item.type] ?? getBoostColors(palette).featured;
+    const badge = getBoostStatusBadge(palette)[item.status] ?? getBoostStatusBadge(palette).ended;
     return (
       <View style={styles.purchaseCard}>
         <View style={styles.purchaseRow}>
@@ -261,7 +261,7 @@ export function BoostsScreen({ onBack }: Props) {
       {tab === "options" ? (
         options.length === 0 ? (
           <View style={styles.empty}>
-            <Ionicons name="rocket-outline" size={48} color="#d1d5db" />
+            <Ionicons name="rocket-outline" size={48} color={palette.line} />
             <Text style={styles.emptyText}>No boost options available right now.</Text>
           </View>
         ) : (
@@ -275,7 +275,7 @@ export function BoostsScreen({ onBack }: Props) {
         )
       ) : purchases.length === 0 ? (
         <View style={styles.empty}>
-          <Ionicons name="time-outline" size={48} color="#d1d5db" />
+          <Ionicons name="time-outline" size={48} color={palette.line} />
           <Text style={styles.emptyText}>No boosts purchased yet.</Text>
         </View>
       ) : (
@@ -320,12 +320,12 @@ const useStyles = createThemedStyles((palette) => ({
     flexDirection: "row",
     marginHorizontal: 16,
     marginTop: 12,
-    backgroundColor: "#f1f5f9",
+    backgroundColor: palette.mist,
     borderRadius: 12,
     padding: 3,
   },
   tabBtn: { flex: 1, alignItems: "center", paddingVertical: 10, borderRadius: 10 },
-  tabBtnActive: { backgroundColor: "#ffffff", shadowColor: "#000", shadowOpacity: 0.06, shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, elevation: 2 },
+  tabBtnActive: { backgroundColor: palette.card, shadowColor: palette.shadow, shadowOpacity: 0.06, shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, elevation: 2 },
   tabBtnText: { color: palette.slate, fontSize: 13, fontWeight: "700" },
   tabBtnTextActive: { color: palette.ink },
   optionCard: {

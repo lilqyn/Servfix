@@ -320,11 +320,11 @@ function ShellScreen({
     badge?: number;
   };
   const leftTabs: TabDef[] = [
-    { key: "community", label: "Community", tone: "#0369a1", activeBg: "#e0f2fe", icon: "people-outline", iconActive: "people" },
+    { key: "community", label: "Feed", tone: "#0369a1", activeBg: "#e0f2fe", icon: "people-outline", iconActive: "people" },
     { key: "orders", label: "Orders", tone: "#ea580c", activeBg: "#fff7ed", icon: "receipt-outline", iconActive: "receipt", badge: orderBadge },
   ];
   const rightTabs: TabDef[] = [
-    { key: "messages", label: "Messages", tone: "#7c3aed", activeBg: "#f5f3ff", icon: "chatbubble-outline", iconActive: "chatbubble", badge: unreadMessages },
+    { key: "messages", label: "Chat", tone: "#7c3aed", activeBg: "#f5f3ff", icon: "chatbubble-outline", iconActive: "chatbubble", badge: unreadMessages },
     { key: "account", label: "Account", tone: palette.ink, activeBg: palette.mist, icon: "person-outline", iconActive: "person", badge: unreadNotifications },
   ];
 

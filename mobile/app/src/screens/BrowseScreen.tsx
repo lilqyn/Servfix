@@ -4,7 +4,9 @@ import {
   ActivityIndicator,
   FlatList,
   Image,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -197,6 +199,7 @@ export function BrowseScreen({ initialCategory, onOpenService }: Props) {
   }
 
   return (
+    <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1 }}>
     <View style={styles.container}>
       {/* Search bar + controls */}
       <View style={styles.searchSection}>
@@ -535,6 +538,7 @@ export function BrowseScreen({ initialCategory, onOpenService }: Props) {
         </Pressable>
       </Modal>
     </View>
+    </KeyboardAvoidingView>
   );
 }
 

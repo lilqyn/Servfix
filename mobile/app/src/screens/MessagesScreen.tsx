@@ -221,8 +221,8 @@ const useStyles = createThemedStyles((palette) => ({
   },
   primaryButtonText: { color: "#ffffff", fontSize: 13, fontWeight: "700" },
   errorCard: {
-    backgroundColor: "#fff1f2",
-    borderColor: "#fecdd3",
+    backgroundColor: palette.dangerSoft,
+    borderColor: palette.dangerLine,
     borderRadius: 16,
     borderWidth: 1,
     gap: 6,
@@ -230,10 +230,10 @@ const useStyles = createThemedStyles((palette) => ({
     padding: 14,
   },
   errorTitle: { color: palette.danger, fontSize: 14, fontWeight: "700" },
-  errorBody: { color: "#7f1d1d", fontSize: 13 },
+  errorBody: { color: palette.dangerInk, fontSize: 13 },
   retryButton: {
     alignSelf: "flex-start",
-    backgroundColor: "#ffffff",
+    backgroundColor: palette.card,
     borderRadius: 10,
     paddingHorizontal: 10,
     paddingVertical: 8,
@@ -247,7 +247,7 @@ const useStyles = createThemedStyles((palette) => ({
     paddingHorizontal: 20,
     paddingVertical: 14,
   },
-  threadCardUnread: { backgroundColor: "#f0fdf4" },
+  threadCardUnread: { backgroundColor: palette.accentSoft },
   threadAvatar: { position: "relative" },
   avatarImage: { borderRadius: 26, height: 52, width: 52 },
   avatarFallback: {
@@ -262,7 +262,7 @@ const useStyles = createThemedStyles((palette) => ({
   unreadDot: {
     alignItems: "center",
     backgroundColor: palette.accent,
-    borderColor: "#ffffff",
+    borderColor: palette.card,
     borderRadius: 10,
     borderWidth: 2,
     bottom: -2,

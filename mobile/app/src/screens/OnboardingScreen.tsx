@@ -10,6 +10,7 @@ import {
   type ViewToken,
 } from "react-native";
 import { createThemedStyles } from "../theme";
+import { useTheme } from "../providers/ThemeProvider";
 
 const logoSource = require("../../assets/splash.png");
 
@@ -71,6 +72,7 @@ type Props = {
 
 export function OnboardingScreen({ onDone }: Props) {
   const styles = useStyles();
+  const { palette } = useTheme();
   const [activeIndex, setActiveIndex] = useState(0);
   const [selectedRole, setSelectedRole] = useState<"buyer" | "provider" | null>(null);
   const listRef = useRef<FlatList<Slide>>(null);
@@ -187,7 +189,7 @@ export function OnboardingScreen({ onDone }: Props) {
 
 const useStyles = createThemedStyles((palette) => ({
   root: {
-    backgroundColor: "#ffffff",
+    backgroundColor: palette.card,
     flex: 1,
   },
   slide: {
@@ -223,7 +225,7 @@ const useStyles = createThemedStyles((palette) => ({
     textAlign: "center",
   },
   slideSubtitle: {
-    color: "#374151",
+    color: palette.ink,
     fontSize: 16,
     lineHeight: 24,
     textAlign: "center",
@@ -235,7 +237,7 @@ const useStyles = createThemedStyles((palette) => ({
     paddingVertical: 16,
   },
   dot: {
-    backgroundColor: "#d1d5db",
+    backgroundColor: palette.line,
     borderRadius: 4,
     height: 8,
     width: 8,
@@ -261,8 +263,8 @@ const useStyles = createThemedStyles((palette) => ({
     gap: 12,
   },
   roleCard: {
-    backgroundColor: "#f8fafc",
-    borderColor: "#e2e8f0",
+    backgroundColor: palette.inputBg,
+    borderColor: palette.line,
     borderRadius: 16,
     borderWidth: 2,
     flex: 1,
@@ -270,7 +272,7 @@ const useStyles = createThemedStyles((palette) => ({
     padding: 16,
   },
   roleCardActive: {
-    backgroundColor: "#f0fdf4",
+    backgroundColor: palette.accentSoft,
     borderColor: palette.accentDeep,
   },
   roleTitle: {

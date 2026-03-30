@@ -1,3 +1,4 @@
+import { Ionicons } from "@expo/vector-icons";
 import { useCallback, useRef, useState } from "react";
 import { useFocusEffect } from "@react-navigation/native";
 import {
@@ -11,6 +12,7 @@ import {
   View,
 } from "react-native";
 import { useAuth } from "../providers/AuthProvider";
+import { useTheme } from "../providers/ThemeProvider";
 import { createThemedStyles } from "../theme";
 
 type Props = {
@@ -21,9 +23,11 @@ type Props = {
 
 export function SignInScreen({ onSuccess, onOpenSignUp, onOpenForgotPassword }: Props) {
   const styles = useStyles();
+  const { palette } = useTheme();
   const { isSigningIn, signIn } = useAuth();
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const passwordRef = useRef<TextInput>(null);
   const canSubmit = Boolean(identifier.trim() && password.trim() && !isSigningIn);
@@ -83,22 +87,27 @@ export function SignInScreen({ onSuccess, onOpenSignUp, onOpenForgotPassword }: 
             value={identifier}
           />
 
-          <TextInput
-            autoCapitalize="none"
-            autoComplete="password"
-            autoCorrect={false}
-            editable={!isSigningIn}
-            onChangeText={setPassword}
-            onSubmitEditing={() => void submit()}
-            placeholder="Password"
-            placeholderTextColor="#94a3b8"
-            ref={passwordRef}
-            returnKeyType="done"
-            secureTextEntry
-            style={styles.input}
-            textContentType="password"
-            value={password}
-          />
+          <View style={styles.passwordWrap}>
+            <TextInput
+              autoCapitalize="none"
+              autoComplete="password"
+              autoCorrect={false}
+              editable={!isSigningIn}
+              onChangeText={setPassword}
+              onSubmitEditing={() => void submit()}
+              placeholder="Password"
+              placeholderTextColor="#94a3b8"
+              ref={passwordRef}
+              returnKeyType="done"
+              secureTextEntry={!showPassword}
+              style={[styles.input, { flex: 1, borderWidth: 0 }]}
+              textContentType="password"
+              value={password}
+            />
+            <Pressable onPress={() => setShowPassword((v) => !v)} style={styles.eyeBtn}>
+              <Ionicons name={showPassword ? "eye-off-outline" : "eye-outline"} size={20} color={palette.slate} />
+            </Pressable>
+          </View>
 
           {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
@@ -186,6 +195,17 @@ const useStyles = createThemedStyles((palette) => ({
     fontSize: 15,
     paddingHorizontal: 14,
     paddingVertical: 12,
+  },
+  passwordWrap: {
+    alignItems: "center",
+    backgroundColor: palette.canvas,
+    borderColor: palette.line,
+    borderRadius: 14,
+    borderWidth: 1,
+    flexDirection: "row",
+  },
+  eyeBtn: {
+    padding: 12,
   },
   errorText: {
     color: palette.danger,

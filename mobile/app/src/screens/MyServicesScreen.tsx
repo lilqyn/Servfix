@@ -19,11 +19,11 @@ type Props = {
   onBack: () => void;
 };
 
-const STATUS_COLORS: Record<string, { bg: string; text: string }> = {
-  published: { bg: "#dcfce7", text: "#166534" },
-  draft: { bg: "#f3f4f6", text: "#4b5563" },
-  suspended: { bg: "#fee2e2", text: "#991b1b" },
-};
+const getStatusColors = (p: { accentSoft: string; accentDeep: string; mist: string; slate: string; dangerSoft: string; dangerInk: string }) => ({
+  published: { bg: p.accentSoft, text: p.accentDeep },
+  draft: { bg: p.mist, text: p.slate },
+  suspended: { bg: p.dangerSoft, text: p.dangerInk },
+} as Record<string, { bg: string; text: string }>);
 
 const toNumber = (v: string | number) => {
   const n = typeof v === "number" ? v : parseFloat(v);
@@ -116,7 +116,8 @@ export function MyServicesScreen({ onOpenCreateService, onOpenEditService, onBac
           />
         }
         renderItem={({ item }) => {
-          const statusColor = STATUS_COLORS[item.status ?? "draft"] ?? STATUS_COLORS.draft;
+          const sc = getStatusColors(palette);
+          const statusColor = sc[item.status ?? "draft"] ?? sc.draft;
           const lowestPrice = item.tiers.reduce<number | null>((acc, t) => {
             const p = toNumber(t.price);
             return acc === null || p < acc ? p : acc;
@@ -214,8 +215,8 @@ const useStyles = createThemedStyles((palette) => ({
   },
   createButtonText: { color: "#ffffff", fontSize: 13, fontWeight: "800" },
   errorCard: {
-    backgroundColor: "#fff1f2",
-    borderColor: "#fecdd3",
+    backgroundColor: palette.dangerSoft,
+    borderColor: palette.dangerLine,
     borderRadius: 14,
     borderWidth: 1,
     gap: 6,
@@ -226,7 +227,7 @@ const useStyles = createThemedStyles((palette) => ({
   errorText: { color: palette.danger, fontSize: 13 },
   retryButton: {
     alignSelf: "flex-start",
-    backgroundColor: "#ffffff",
+    backgroundColor: palette.card,
     borderRadius: 10,
     paddingHorizontal: 10,
     paddingVertical: 7,
@@ -255,8 +256,8 @@ const useStyles = createThemedStyles((palette) => ({
   serviceTiers: { color: palette.slate, fontSize: 12 },
   serviceActions: { flexDirection: "row", gap: 8, marginTop: 4 },
   editButton: {
-    backgroundColor: "#f1f5f9",
-    borderColor: "#cbd5e1",
+    backgroundColor: palette.mist,
+    borderColor: palette.line,
     borderRadius: 10,
     borderWidth: 1,
     paddingHorizontal: 14,
@@ -271,7 +272,7 @@ const useStyles = createThemedStyles((palette) => ({
     paddingVertical: 8,
   },
   toggleButtonPublish: { backgroundColor: palette.accentDeep },
-  toggleButtonUnpublish: { backgroundColor: "#9ca3af" },
+  toggleButtonUnpublish: { backgroundColor: palette.slate },
   toggleButtonText: { color: "#ffffff", fontSize: 13, fontWeight: "700" },
   buttonDisabled: { opacity: 0.55 },
   emptyCard: {

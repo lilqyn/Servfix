@@ -375,6 +375,26 @@ ordersRouter.post(
       }),
     ]);
 
+    // Track follower conversion: did a follower book this provider?
+    const followRelation = await prisma.userFollow.findUnique({
+      where: {
+        followerId_followingId: {
+          followerId: req.user!.id,
+          followingId: tier.service.providerId,
+        },
+      },
+      select: { id: true },
+    });
+    if (followRelation) {
+      await prisma.orderEvent.create({
+        data: {
+          orderId: order.id,
+          type: "follower_conversion",
+          payload: { followId: followRelation.id, buyerId: req.user!.id, providerId: tier.service.providerId },
+        },
+      });
+    }
+
     res.status(201).json({ order });
   }),
 );
@@ -451,6 +471,35 @@ ordersRouter.patch(
         body: `Delivery was submitted for ${serviceTitle}. Please review before ${reviewDeadlineAt.toISOString()}.`,
         data: { orderId: order.id, serviceId: order.serviceId },
       });
+
+      // Check provider milestones and notify followers
+      const providerId = req.user!.id;
+      const completedCount = await prisma.order.count({
+        where: { providerId, status: { in: ["delivery_submitted", "delivered", "release_approved", "approved", "released", "disbursed"] } },
+      });
+      const milestones = [10, 25, 50, 100, 250, 500, 1000];
+      if (milestones.includes(completedCount)) {
+        const followers = await prisma.userFollow.findMany({
+          where: { followingId: providerId },
+          select: { followerId: true },
+        });
+        if (followers.length > 0) {
+          await Promise.all(
+            followers
+              .filter((f) => f.followerId !== providerId)
+              .map((f) =>
+                createNotification({
+                  userId: f.followerId,
+                  actorId: providerId,
+                  type: "provider_milestone",
+                  title: "Provider milestone",
+                  body: `A provider you follow just completed ${completedCount} jobs on SERVFIX!`,
+                  data: { followerId: providerId },
+                }),
+              ),
+          );
+        }
+      }
 
       return res.json({ order: updated });
     }

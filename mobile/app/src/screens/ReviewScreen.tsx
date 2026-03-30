@@ -5,13 +5,13 @@ import {
   Platform,
   Pressable,
   ScrollView,
-  StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
 import { submitServiceReview } from "../lib/api";
 import { createThemedStyles } from "../theme";
+import { useTheme } from "../providers/ThemeProvider";
 
 type Props = {
   serviceId: string;
@@ -27,22 +27,25 @@ const StarPicker = ({
 }: {
   value: number;
   onChange: (v: number) => void;
-}) => (
-  <View style={starStyles.row}>
-    {[1, 2, 3, 4, 5].map((star) => (
-      <Pressable key={star} onPress={() => onChange(star)} style={starStyles.starButton}>
-        <Text style={[starStyles.star, star <= value && starStyles.starFilled]}>★</Text>
-      </Pressable>
-    ))}
-  </View>
-);
+}) => {
+  const ss = useStarStyles();
+  return (
+    <View style={ss.row}>
+      {[1, 2, 3, 4, 5].map((star) => (
+        <Pressable key={star} onPress={() => onChange(star)} style={ss.starButton}>
+          <Text style={[ss.star, star <= value && ss.starFilled]}>★</Text>
+        </Pressable>
+      ))}
+    </View>
+  );
+};
 
-const starStyles = StyleSheet.create({
+const useStarStyles = createThemedStyles((palette) => ({
   row: { flexDirection: "row", gap: 8 },
   starButton: { padding: 4 },
-  star: { color: "#d1d5db", fontSize: 36 },
+  star: { color: palette.line, fontSize: 36 },
   starFilled: { color: "#f59e0b" },
-});
+}));
 
 const RATING_LABELS: Record<number, string> = {
   1: "Poor",
@@ -54,6 +57,7 @@ const RATING_LABELS: Record<number, string> = {
 
 export function ReviewScreen({ serviceId, serviceTitle, orderId, onDone, onBack }: Props) {
   const styles = useStyles();
+  const { palette } = useTheme();
   const [rating, setRating] = useState(0);
   const [comment, setComment] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -129,7 +133,7 @@ export function ReviewScreen({ serviceId, serviceTitle, orderId, onDone, onBack 
               setError(null);
             }}
             placeholder="Share your experience in detail. What went well? What could be better? (min 20 characters)"
-            placeholderTextColor="#94a3b8"
+            placeholderTextColor={palette.slate}
             style={styles.textarea}
             value={comment}
           />
@@ -199,7 +203,7 @@ const useStyles = createThemedStyles((palette) => ({
   ratingLabel: { color: "#f59e0b", fontSize: 16, fontWeight: "800" },
   ratingHint: { color: palette.slate, fontSize: 14 },
   textarea: {
-    backgroundColor: "#f8fafc",
+    backgroundColor: palette.inputBg,
     borderColor: palette.line,
     borderRadius: 14,
     borderWidth: 1,
@@ -214,8 +218,8 @@ const useStyles = createThemedStyles((palette) => ({
   charCount: { color: palette.slate, fontSize: 11, textAlign: "right" },
   charCountWarn: { color: "#f59e0b" },
   errorCard: {
-    backgroundColor: "#fff1f2",
-    borderColor: "#fecdd3",
+    backgroundColor: palette.dangerSoft,
+    borderColor: palette.dangerLine,
     borderRadius: 14,
     borderWidth: 1,
     padding: 14,
@@ -233,7 +237,7 @@ const useStyles = createThemedStyles((palette) => ({
   hintText: { color: palette.slate, fontSize: 13, textAlign: "center" },
   successCard: {
     alignItems: "center",
-    backgroundColor: "#f0fdf4",
+    backgroundColor: palette.accentSoft,
     borderColor: "#86efac",
     borderRadius: 24,
     borderWidth: 1,
@@ -243,5 +247,5 @@ const useStyles = createThemedStyles((palette) => ({
   },
   successIcon: { color: "#f59e0b", fontSize: 48 },
   successTitle: { color: palette.accentDeep, fontSize: 22, fontWeight: "900" },
-  successBody: { color: "#166534", fontSize: 14, lineHeight: 21, textAlign: "center" },
+  successBody: { color: palette.accentDeep, fontSize: 14, lineHeight: 21, textAlign: "center" },
 }));

@@ -146,7 +146,7 @@ export function SubscriptionsScreen({ onBack }: Props) {
       {/* Plans */}
       {plans.length === 0 ? (
         <View style={styles.empty}>
-          <Ionicons name="card-outline" size={48} color="#d1d5db" />
+          <Ionicons name="card-outline" size={48} color={palette.line} />
           <Text style={styles.emptyText}>No subscription plans available.</Text>
         </View>
       ) : (
@@ -212,7 +212,7 @@ const useStyles = createThemedStyles((palette) => ({
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
   list: { padding: 16, gap: 14, paddingBottom: 40 },
   currentCard: {
-    backgroundColor: "#dcfce7",
+    backgroundColor: palette.accentSoft,
     borderRadius: 16,
     margin: 16,
     marginBottom: 0,
@@ -221,7 +221,7 @@ const useStyles = createThemedStyles((palette) => ({
   },
   currentHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 4 },
   currentBadge: { flexDirection: "row", alignItems: "center", gap: 6 },
-  currentBadgeText: { color: "#15803d", fontSize: 13, fontWeight: "700" },
+  currentBadgeText: { color: palette.accent, fontSize: 13, fontWeight: "700" },
   cancelText: { color: palette.danger, fontSize: 13, fontWeight: "700" },
   currentPlanName: { color: palette.ink, fontSize: 20, fontWeight: "800" },
   currentPrice: { color: palette.accentDeep, fontSize: 15, fontWeight: "700" },

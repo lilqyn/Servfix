@@ -23,6 +23,7 @@
     "android": {
       "package": "com.servfix.app",
       "versionCode": 1,
+      "softwareKeyboardLayoutMode": "adjustResize",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"

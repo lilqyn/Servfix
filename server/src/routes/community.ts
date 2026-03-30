@@ -13,6 +13,46 @@ export const communityRouter = Router();
 
 type CommunityRequest = Request & { platformSettings?: PlatformSettings };
 
+// Extract @usernames from text content
+const extractMentions = (text: string): string[] => {
+  const matches = text.match(/@([a-zA-Z0-9_]+)/g);
+  if (!matches) return [];
+  return [...new Set(matches.map((m) => m.slice(1).toLowerCase()))];
+};
+
+// Resolve usernames to user IDs, excluding a given user
+const resolveMentionedUsers = async (usernames: string[], excludeId?: string) => {
+  if (usernames.length === 0) return [];
+  const users = await prisma.user.findMany({
+    where: {
+      username: { in: usernames, mode: "insensitive" },
+      ...(excludeId ? { id: { not: excludeId } } : {}),
+    },
+    select: { id: true, username: true },
+  });
+  return users;
+};
+
+const notifyMentionedUsers = async (
+  users: Array<{ id: string; username: string | null }>,
+  actorId: string,
+  context: { type: "post" | "comment"; postId: string; snippet: string },
+) => {
+  if (users.length === 0) return;
+  await Promise.all(
+    users.map((u) =>
+      createNotification({
+        userId: u.id,
+        actorId,
+        type: "mention",
+        title: context.type === "post" ? "You were mentioned in a post" : "You were mentioned in a comment",
+        body: context.snippet.slice(0, 160),
+        data: { postId: context.postId },
+      }),
+    ),
+  );
+};
+
 const getClientSettings = async (req: CommunityRequest) => {
   if (req.platformSettings) return req.platformSettings;
   const { settings } = await getPlatformSettings();
@@ -321,7 +361,64 @@ communityRouter.get(
       };
     });
 
-    res.json({ posts: response, nextCursor });
+    // When scope=following and first page, include recent services from followed providers
+    let followedServices: unknown[] = [];
+    if (scope === "following" && viewerId && !query.cursor) {
+      const rawServices = await prisma.service.findMany({
+        where: {
+          status: "published",
+          provider: {
+            followers: { some: { followerId: viewerId } },
+          },
+        },
+        take: 6,
+        orderBy: { createdAt: "desc" },
+        select: {
+          id: true,
+          title: true,
+          category: true,
+          createdAt: true,
+          tiers: { take: 1, orderBy: { price: "asc" }, select: { price: true, currency: true } },
+          media: { take: 1, orderBy: { sortOrder: "asc" }, select: { url: true } },
+          provider: {
+            select: {
+              id: true,
+              username: true,
+              avatarKey: true,
+              providerProfile: { select: { displayName: true } },
+            },
+          },
+        },
+      });
+      followedServices = await Promise.all(
+        rawServices.map(async (s) => ({
+          id: s.id,
+          title: s.title,
+          category: s.category,
+          price: s.tiers[0]?.price?.toString() ?? null,
+          currency: s.tiers[0]?.currency ?? "GHS",
+          imageUrl: s.media[0]?.url ? await resolveMediaUrl(s.media[0].url) : null,
+          provider: {
+            id: s.provider.id,
+            username: s.provider.username,
+            displayName: s.provider.providerProfile?.displayName ?? null,
+            avatarUrl: await resolveMediaUrl(s.provider.avatarKey),
+          },
+          createdAt: s.createdAt,
+        })),
+      );
+    }
+
+    // In "all" (For You) scope, boost posts from followed providers to the top
+    const sortedResponse =
+      scope === "all" && viewerId
+        ? [
+            ...response.filter((p) => p.viewer?.following),
+            ...response.filter((p) => !p.viewer?.following),
+          ]
+        : response;
+
+    res.json({ posts: sortedResponse, nextCursor, followedServices });
   }),
 );
 
@@ -381,7 +478,7 @@ communityRouter.post(
     });
 
     const followers = await prisma.userFollow.findMany({
-      where: { followingId: req.user!.id },
+      where: { followingId: req.user!.id, notifyPosts: true },
       select: { followerId: true },
     });
 
@@ -402,6 +499,15 @@ communityRouter.post(
           ),
       );
     }
+
+    // Handle @mentions in post content
+    const mentionUsernames = extractMentions(post.content ?? "");
+    const mentionedUsers = await resolveMentionedUsers(mentionUsernames, req.user!.id);
+    await notifyMentionedUsers(mentionedUsers, req.user!.id, {
+      type: "post",
+      postId: post.id,
+      snippet: post.content ?? "",
+    });
 
     const signed = await attachSignedPostMedia(post);
 
@@ -825,6 +931,19 @@ communityRouter.post(
         data: { postId: params.id, commentId: comment.id },
       });
     }
+
+    // Handle @mentions in comment
+    if (identity.userId) {
+      const mentionUsernames = extractMentions(data.content);
+      const mentionedUsers = await resolveMentionedUsers(mentionUsernames, identity.userId);
+      // Exclude the post author (already notified above)
+      const filtered = mentionedUsers.filter((u) => u.id !== comment.post.authorId);
+      await notifyMentionedUsers(filtered, identity.userId, {
+        type: "comment",
+        postId: params.id,
+        snippet: data.content.trim(),
+      });
+    }
     res.status(201).json({
       comment: {
         ...commentRest,
@@ -895,5 +1014,275 @@ communityRouter.delete(
     });
 
     res.status(204).send();
+  }),
+);
+
+// Toggle notification preferences for a followed provider
+communityRouter.patch(
+  "/follow/:userId/notifications",
+  authRequired,
+  asyncHandler(async (req, res) => {
+    const params = userIdSchema.parse(req.params);
+    const data = z.object({
+      notifyPosts: z.boolean().optional(),
+      notifyServices: z.boolean().optional(),
+    }).parse(req.body);
+
+    const follow = await prisma.userFollow.findUnique({
+      where: {
+        followerId_followingId: {
+          followerId: req.user!.id,
+          followingId: params.userId,
+        },
+      },
+    });
+
+    if (!follow) {
+      return res.status(404).json({ error: "You are not following this user" });
+    }
+
+    const updated = await prisma.userFollow.update({
+      where: { id: follow.id },
+      data: {
+        ...(data.notifyPosts !== undefined ? { notifyPosts: data.notifyPosts } : {}),
+        ...(data.notifyServices !== undefined ? { notifyServices: data.notifyServices } : {}),
+      },
+    });
+
+    res.json({ notifyPosts: updated.notifyPosts, notifyServices: updated.notifyServices });
+  }),
+);
+
+// Suggested providers to follow
+communityRouter.get(
+  "/suggested-providers",
+  optionalAuth,
+  asyncHandler(async (req, res) => {
+    const identity = (req as any).user;
+    const userId = identity?.id ?? null;
+    const limit = Math.min(Number(req.query.limit) || 10, 20);
+
+    // Get IDs the user already follows
+    const followedIds = userId
+      ? (await prisma.userFollow.findMany({
+          where: { followerId: userId },
+          select: { followingId: true },
+        })).map((f) => f.followingId)
+      : [];
+
+    const excludeIds = userId ? [...followedIds, userId] : [];
+
+    // Find providers followed by people the user follows ("mutual" signal)
+    let mutualMap = new Map<string, number>();
+    if (userId && followedIds.length > 0) {
+      const mutuals = await prisma.userFollow.groupBy({
+        by: ["followingId"],
+        where: {
+          followerId: { in: followedIds },
+          followingId: { notIn: excludeIds },
+          following: { role: "provider", providerProfile: { isNot: null } },
+        },
+        _count: { followerId: true },
+        orderBy: { _count: { followerId: "desc" } },
+        take: limit,
+      });
+      mutualMap = new Map(mutuals.map((m) => [m.followingId, m._count.followerId]));
+    }
+
+    // Get top-rated providers excluding already followed
+    const providers = await prisma.user.findMany({
+      where: {
+        role: "provider",
+        providerProfile: { isNot: null },
+        ...(excludeIds.length > 0 ? { id: { notIn: excludeIds } } : {}),
+      },
+      take: limit * 2,
+      orderBy: { providerProfile: { ratingAvg: "desc" } },
+      include: {
+        providerProfile: {
+          select: {
+            displayName: true,
+            ratingAvg: true,
+            ratingCount: true,
+            categories: true,
+            verificationStatus: true,
+          },
+        },
+        _count: { select: { followers: true } },
+      },
+    });
+
+    const result = await Promise.all(
+      providers.map(async (p) => ({
+        id: p.id,
+        username: p.username,
+        avatarUrl: await resolveMediaUrl(p.avatarKey),
+        displayName: p.providerProfile?.displayName ?? null,
+        ratingAvg: p.providerProfile?.ratingAvg?.toString() ?? null,
+        ratingCount: p.providerProfile?.ratingCount ?? 0,
+        categories: p.providerProfile?.categories ?? [],
+        verified: p.providerProfile?.verificationStatus === "verified",
+        followerCount: p._count.followers,
+        mutualFollowers: mutualMap.get(p.id) ?? 0,
+      })),
+    );
+
+    // Sort: mutual followers first, then by rating
+    result.sort((a, b) => b.mutualFollowers - a.mutualFollowers || (parseFloat(b.ratingAvg ?? "0") - parseFloat(a.ratingAvg ?? "0")));
+
+    res.json({ providers: result.slice(0, limit) });
+  }),
+);
+
+// Provider broadcast to all followers
+communityRouter.post(
+  "/broadcast",
+  authRequired,
+  asyncHandler(async (req, res) => {
+    if (!["provider", "admin", "super_admin"].includes(req.user!.role)) {
+      return res.status(403).json({ error: "Only providers can send broadcasts" });
+    }
+
+    const data = z.object({
+      title: z.string().trim().min(1).max(100),
+      body: z.string().trim().min(1).max(500),
+    }).parse(req.body);
+
+    const followers = await prisma.userFollow.findMany({
+      where: { followingId: req.user!.id },
+      select: { followerId: true },
+    });
+
+    const broadcast = await prisma.providerBroadcast.create({
+      data: {
+        providerId: req.user!.id,
+        title: data.title,
+        body: data.body,
+        sentCount: followers.length,
+      },
+    });
+
+    if (followers.length > 0) {
+      await Promise.all(
+        followers.map((f) =>
+          createNotification({
+            userId: f.followerId,
+            actorId: req.user!.id,
+            type: "provider_broadcast",
+            title: data.title,
+            body: data.body,
+            data: { followerId: req.user!.id, broadcastId: broadcast.id },
+          }),
+        ),
+      );
+    }
+
+    res.status(201).json({ broadcast: { id: broadcast.id, sentCount: followers.length } });
+  }),
+);
+
+// Provider broadcasts history
+communityRouter.get(
+  "/broadcasts",
+  authRequired,
+  asyncHandler(async (req, res) => {
+    const broadcasts = await prisma.providerBroadcast.findMany({
+      where: { providerId: req.user!.id },
+      orderBy: { createdAt: "desc" },
+      take: 20,
+    });
+    res.json({ broadcasts });
+  }),
+);
+
+// Create promotion
+communityRouter.post(
+  "/promotions",
+  authRequired,
+  asyncHandler(async (req, res) => {
+    if (!["provider", "admin", "super_admin"].includes(req.user!.role)) {
+      return res.status(403).json({ error: "Only providers can create promotions" });
+    }
+
+    const data = z.object({
+      serviceId: z.string().uuid().optional(),
+      title: z.string().trim().min(1).max(100),
+      description: z.string().trim().max(500).optional(),
+      discountPct: z.number().int().min(1).max(100).optional(),
+      discountAmt: z.number().min(0).optional(),
+      currency: z.string().default("GHS"),
+      endsAt: z.string().datetime().optional(),
+    }).parse(req.body);
+
+    // Verify service belongs to provider
+    if (data.serviceId) {
+      const service = await prisma.service.findUnique({
+        where: { id: data.serviceId },
+        select: { providerId: true },
+      });
+      if (!service || service.providerId !== req.user!.id) {
+        return res.status(403).json({ error: "Service not found or not yours" });
+      }
+    }
+
+    const promotion = await prisma.promotion.create({
+      data: {
+        providerId: req.user!.id,
+        serviceId: data.serviceId ?? null,
+        title: data.title,
+        description: data.description ?? null,
+        discountPct: data.discountPct ?? null,
+        discountAmt: data.discountAmt != null ? new Prisma.Decimal(data.discountAmt) : null,
+        currency: data.currency,
+        endsAt: data.endsAt ? new Date(data.endsAt) : null,
+      },
+    });
+
+    // Notify followers
+    const followers = await prisma.userFollow.findMany({
+      where: { followingId: req.user!.id },
+      select: { followerId: true },
+    });
+
+    if (followers.length > 0) {
+      const discountText = data.discountPct
+        ? `${data.discountPct}% off`
+        : data.discountAmt
+          ? `${data.currency} ${data.discountAmt} off`
+          : "";
+      const snippet = discountText ? `${data.title} — ${discountText}` : data.title;
+
+      await Promise.all(
+        followers.map((f) =>
+          createNotification({
+            userId: f.followerId,
+            actorId: req.user!.id,
+            type: "provider_promotion",
+            title: "New promotion",
+            body: snippet,
+            data: { followerId: req.user!.id, serviceId: data.serviceId ?? null, promotionId: promotion.id },
+          }),
+        ),
+      );
+    }
+
+    res.status(201).json({ promotion });
+  }),
+);
+
+// List provider promotions
+communityRouter.get(
+  "/promotions",
+  authRequired,
+  asyncHandler(async (req, res) => {
+    const promotions = await prisma.promotion.findMany({
+      where: { providerId: req.user!.id },
+      orderBy: { createdAt: "desc" },
+      take: 20,
+      include: {
+        service: { select: { id: true, title: true } },
+      },
+    });
+    res.json({ promotions });
   }),
 );

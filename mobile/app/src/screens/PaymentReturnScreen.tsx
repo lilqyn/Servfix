@@ -338,7 +338,7 @@ const useStyles = createThemedStyles((palette) => ({
   },
   secondaryButton: {
     alignItems: "center",
-    backgroundColor: "#ffffff",
+    backgroundColor: palette.card,
     borderColor: palette.line,
     borderRadius: 12,
     borderWidth: 1,

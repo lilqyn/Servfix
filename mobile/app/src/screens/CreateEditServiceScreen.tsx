@@ -449,7 +449,7 @@ export function CreateEditServiceScreen({ existingService, onDone, onBack }: Pro
             editable={!isLoading}
             onChangeText={(t) => { setTitle(t); setError(null); }}
             placeholder="e.g. Professional House Cleaning"
-            placeholderTextColor="#94a3b8"
+            placeholderTextColor={palette.slate}
             style={styles.input}
             value={title}
           />
@@ -461,7 +461,7 @@ export function CreateEditServiceScreen({ existingService, onDone, onBack }: Pro
             multiline
             onChangeText={(t) => { setDescription(t); setError(null); }}
             placeholder="Tell buyers what makes your service great..."
-            placeholderTextColor="#94a3b8"
+            placeholderTextColor={palette.slate}
             style={[styles.input, styles.textarea]}
             value={description}
           />
@@ -492,7 +492,7 @@ export function CreateEditServiceScreen({ existingService, onDone, onBack }: Pro
               onChangeText={setTagInput}
               onSubmitEditing={addTag}
               placeholder="e.g. deep cleaning, office"
-              placeholderTextColor="#94a3b8"
+              placeholderTextColor={palette.slate}
               style={[styles.input, { flex: 1 }]}
               value={tagInput}
             />
@@ -523,7 +523,7 @@ export function CreateEditServiceScreen({ existingService, onDone, onBack }: Pro
             editable={!isLoading}
             onChangeText={setCity}
             placeholder="e.g. Accra, East Legon"
-            placeholderTextColor="#94a3b8"
+            placeholderTextColor={palette.slate}
             style={styles.input}
             value={city}
           />
@@ -545,8 +545,8 @@ export function CreateEditServiceScreen({ existingService, onDone, onBack }: Pro
           </View>
           <Switch
             onValueChange={setIsRemote}
-            thumbColor={isRemote ? palette.accentDeep : "#f4f3f4"}
-            trackColor={{ false: "#d1d5db", true: palette.accentSoft }}
+            thumbColor={isRemote ? palette.accentDeep : palette.mist}
+            trackColor={{ false: palette.line, true: palette.accentSoft }}
             value={isRemote}
           />
         </View>
@@ -648,7 +648,7 @@ export function CreateEditServiceScreen({ existingService, onDone, onBack }: Pro
               editable={!isLoading}
               onChangeText={(t) => updateTier(ti, { description: t })}
               placeholder={`e.g. Perfect for ${tier.name === "basic" ? "small" : tier.name === "standard" ? "medium" : "large"} projects`}
-              placeholderTextColor="#94a3b8"
+              placeholderTextColor={palette.slate}
               style={styles.input}
               value={tier.description}
             />
@@ -680,7 +680,7 @@ export function CreateEditServiceScreen({ existingService, onDone, onBack }: Pro
                   keyboardType="decimal-pad"
                   onChangeText={(t) => { updateTier(ti, { price: t.replace(/[^0-9.]/g, "") }); setError(null); }}
                   placeholder="0.00"
-                  placeholderTextColor="#94a3b8"
+                  placeholderTextColor={palette.slate}
                   style={styles.input}
                   value={tier.price}
                 />
@@ -694,7 +694,7 @@ export function CreateEditServiceScreen({ existingService, onDone, onBack }: Pro
                     keyboardType="decimal-pad"
                     onChangeText={(t) => updateTier(ti, { priceMax: t.replace(/[^0-9.]/g, "") })}
                     placeholder="0.00"
-                    placeholderTextColor="#94a3b8"
+                    placeholderTextColor={palette.slate}
                     style={styles.input}
                     value={tier.priceMax}
                   />
@@ -709,7 +709,7 @@ export function CreateEditServiceScreen({ existingService, onDone, onBack }: Pro
                 editable={!isLoading}
                 onChangeText={(t) => updateTier(ti, { priceNote: t })}
                 placeholder="e.g. Depends on project scope"
-                placeholderTextColor="#94a3b8"
+                placeholderTextColor={palette.slate}
                 style={styles.input}
                 value={tier.priceNote}
               />
@@ -740,7 +740,7 @@ export function CreateEditServiceScreen({ existingService, onDone, onBack }: Pro
                 editable={!isLoading}
                 onChangeText={(t) => updateTier(ti, { unitLabel: t })}
                 placeholder="e.g. plate"
-                placeholderTextColor="#94a3b8"
+                placeholderTextColor={palette.slate}
                 style={styles.input}
                 value={tier.unitLabel}
               />
@@ -756,7 +756,7 @@ export function CreateEditServiceScreen({ existingService, onDone, onBack }: Pro
                   keyboardType="number-pad"
                   onChangeText={(t) => updateTier(ti, { deliveryDays: t.replace(/[^0-9]/g, "") })}
                   placeholder="1"
-                  placeholderTextColor="#94a3b8"
+                  placeholderTextColor={palette.slate}
                   style={styles.input}
                   value={tier.deliveryDays}
                 />
@@ -769,7 +769,7 @@ export function CreateEditServiceScreen({ existingService, onDone, onBack }: Pro
                   keyboardType="number-pad"
                   onChangeText={(t) => updateTier(ti, { revisionCount: t.replace(/[^0-9]/g, "") })}
                   placeholder="1"
-                  placeholderTextColor="#94a3b8"
+                  placeholderTextColor={palette.slate}
                   style={styles.input}
                   value={tier.revisionCount}
                 />
@@ -785,7 +785,7 @@ export function CreateEditServiceScreen({ existingService, onDone, onBack }: Pro
                   editable={!isLoading}
                   onChangeText={(t) => updateFeature(ti, fi, t)}
                   placeholder={`Feature ${fi + 1}`}
-                  placeholderTextColor="#94a3b8"
+                  placeholderTextColor={palette.slate}
                   style={[styles.input, { flex: 1 }]}
                   value={feat}
                 />
@@ -852,7 +852,7 @@ export function CreateEditServiceScreen({ existingService, onDone, onBack }: Pro
                 editable={!isLoading}
                 onChangeText={setStartTime}
                 placeholder="09:00"
-                placeholderTextColor="#94a3b8"
+                placeholderTextColor={palette.slate}
                 style={styles.input}
                 value={startTime}
               />
@@ -864,7 +864,7 @@ export function CreateEditServiceScreen({ existingService, onDone, onBack }: Pro
                 editable={!isLoading}
                 onChangeText={setEndTime}
                 placeholder="18:00"
-                placeholderTextColor="#94a3b8"
+                placeholderTextColor={palette.slate}
                 style={styles.input}
                 value={endTime}
               />
@@ -883,7 +883,7 @@ export function CreateEditServiceScreen({ existingService, onDone, onBack }: Pro
                 keyboardType="number-pad"
                 onChangeText={(t) => setAdvanceBooking(t.replace(/[^0-9]/g, ""))}
                 placeholder="3"
-                placeholderTextColor="#94a3b8"
+                placeholderTextColor={palette.slate}
                 style={styles.input}
                 value={advanceBooking}
               />
@@ -896,7 +896,7 @@ export function CreateEditServiceScreen({ existingService, onDone, onBack }: Pro
                 keyboardType="number-pad"
                 onChangeText={(t) => setMaxBookings(t.replace(/[^0-9]/g, ""))}
                 placeholder="2"
-                placeholderTextColor="#94a3b8"
+                placeholderTextColor={palette.slate}
                 style={styles.input}
                 value={maxBookings}
               />
@@ -971,8 +971,8 @@ export function CreateEditServiceScreen({ existingService, onDone, onBack }: Pro
             </View>
             <Switch
               onValueChange={setPublishNow}
-              thumbColor={publishNow ? palette.accentDeep : "#f4f3f4"}
-              trackColor={{ false: "#d1d5db", true: palette.accentSoft }}
+              thumbColor={publishNow ? palette.accentDeep : palette.mist}
+              trackColor={{ false: palette.line, true: palette.accentSoft }}
               value={publishNow}
             />
           </View>
@@ -1019,7 +1019,7 @@ const useStyles = createThemedStyles((palette) => ({
   },
   backButton: {
     alignItems: "center",
-    backgroundColor: "#f1f5f9",
+    backgroundColor: palette.mist,
     borderRadius: 12,
     height: 36,
     justifyContent: "center",
@@ -1083,7 +1083,7 @@ const useStyles = createThemedStyles((palette) => ({
   sectionTitle: { color: palette.ink, fontSize: 16, fontWeight: "800" },
   sectionHint: { color: palette.slate, fontSize: 13, marginTop: -8 },
   input: {
-    backgroundColor: "#f8fafc",
+    backgroundColor: palette.inputBg,
     borderColor: palette.line,
     borderRadius: 12,
     borderWidth: 1,
@@ -1096,8 +1096,8 @@ const useStyles = createThemedStyles((palette) => ({
   chipScroll: { marginHorizontal: -2 },
   chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, paddingVertical: 2 },
   chip: {
-    backgroundColor: "#f1f5f9",
-    borderColor: "#e2e8f0",
+    backgroundColor: palette.mist,
+    borderColor: palette.line,
     borderRadius: 999,
     borderWidth: 1,
     paddingHorizontal: 14,
@@ -1110,8 +1110,8 @@ const useStyles = createThemedStyles((palette) => ({
   chipText: { color: palette.slate, fontSize: 13, fontWeight: "600" },
   chipTextActive: { color: palette.accentDeep, fontWeight: "800" },
   chipSmall: {
-    backgroundColor: "#f1f5f9",
-    borderColor: "#e2e8f0",
+    backgroundColor: palette.mist,
+    borderColor: palette.line,
     borderRadius: 10,
     borderWidth: 1,
     paddingHorizontal: 12,
@@ -1130,7 +1130,7 @@ const useStyles = createThemedStyles((palette) => ({
   tagList: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 4 },
   tagBadge: {
     alignItems: "center",
-    backgroundColor: "#f1f5f9",
+    backgroundColor: palette.mist,
     borderRadius: 999,
     flexDirection: "row",
     gap: 4,
@@ -1177,7 +1177,7 @@ const useStyles = createThemedStyles((palette) => ({
   },
   imageAddButton: {
     alignItems: "center",
-    backgroundColor: "#f8fafc",
+    backgroundColor: palette.inputBg,
     borderColor: palette.accentDeep,
     borderRadius: 14,
     borderStyle: "dashed",
@@ -1196,14 +1196,14 @@ const useStyles = createThemedStyles((palette) => ({
   },
   popularBadge: {
     alignItems: "center",
-    backgroundColor: "#fef3c7",
+    backgroundColor: palette.warnSoft,
     borderRadius: 999,
     flexDirection: "row",
     gap: 4,
     paddingHorizontal: 10,
     paddingVertical: 4,
   },
-  popularBadgeText: { color: "#92400e", fontSize: 12, fontWeight: "700" },
+  popularBadgeText: { color: palette.warnInk, fontSize: 12, fontWeight: "700" },
   setPopularText: { color: palette.accentDeep, fontSize: 12, fontWeight: "700" },
   // Features
   featureRow: {
@@ -1225,7 +1225,7 @@ const useStyles = createThemedStyles((palette) => ({
   },
   dayChip: {
     alignItems: "center",
-    backgroundColor: "#f1f5f9",
+    backgroundColor: palette.mist,
     borderRadius: 12,
     flex: 1,
     paddingVertical: 12,
@@ -1250,7 +1250,7 @@ const useStyles = createThemedStyles((palette) => ({
   presetText: { color: palette.accentDeep, fontSize: 13, fontWeight: "600" },
   presetDot: { color: palette.slate },
   tipsSection: {
-    backgroundColor: "#f8fafc",
+    backgroundColor: palette.inputBg,
   },
   tipText: { color: palette.slate, fontSize: 13, lineHeight: 20 },
   // Footer
@@ -1260,8 +1260,8 @@ const useStyles = createThemedStyles((palette) => ({
     paddingTop: 8,
   },
   errorCard: {
-    backgroundColor: "#fff1f2",
-    borderColor: "#fecdd3",
+    backgroundColor: palette.dangerSoft,
+    borderColor: palette.dangerLine,
     borderRadius: 14,
     borderWidth: 1,
     padding: 14,

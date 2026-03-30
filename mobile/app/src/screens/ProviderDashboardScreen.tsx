@@ -3,6 +3,8 @@ import { Component, useCallback, useEffect, useState } from "react";
 import type { ErrorInfo, ReactNode } from "react";
 import {
   ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -154,7 +156,7 @@ function ReviewCard({
           <TextInput
             style={styles.replyInput}
             placeholder="Write your reply..."
-            placeholderTextColor="#94a3b8"
+            placeholderTextColor={palette.slate}
             value={replyText}
             onChangeText={setReplyText}
             multiline
@@ -201,7 +203,7 @@ const ebStyles = StyleSheet.create({
   },
   retryButton: {
     alignSelf: "flex-start",
-    backgroundColor: "#ffffff",
+    backgroundColor: palette.card,
     borderRadius: 10,
     paddingHorizontal: 10,
     paddingVertical: 7,
@@ -381,6 +383,7 @@ function ProviderDashboardInner({
   const recentPayouts = payouts.slice(0, 5);
 
   return (
+    <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1 }}>
     <ScrollView
       contentContainerStyle={styles.content}
       refreshControl={
@@ -458,7 +461,7 @@ function ProviderDashboardInner({
               <Ionicons
                 name="checkmark-circle-outline"
                 size={22}
-                color="#16a34a"
+                color={palette.accent}
               />
               <Text style={styles.earningsAmount}>
                 {formatCurrency(availableBalance, walletCurrency)}
@@ -500,7 +503,7 @@ function ProviderDashboardInner({
           {recentPayouts.map((p) => {
             const statusColor =
               p.status === "paid"
-                ? "#16a34a"
+                ? palette.accent
                 : p.status === "processing"
                   ? "#f59e0b"
                   : p.status === "failed"
@@ -647,7 +650,7 @@ function ProviderDashboardInner({
           </Pressable>
           <Pressable onPress={onOpenWallet} style={styles.actionCard}>
             <Ionicons name="wallet-outline" size={22} color={palette.accentDeep} />
-            <Text style={styles.actionCardTitle}>Wallet</Text>
+            <Text style={styles.actionCardTitle}>Earnings</Text>
             <Text style={styles.actionCardHint}>Withdraw funds</Text>
           </Pressable>
           {onOpenBoosts && (
@@ -698,6 +701,7 @@ function ProviderDashboardInner({
         </View>
       ) : null}
     </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -713,7 +717,7 @@ const useStyles = createThemedStyles((palette) => ({
   loadingText: { color: palette.slate, fontSize: 14 },
   content: { gap: 16, padding: 20, paddingBottom: 100 },
   greetCard: {
-    backgroundColor: palette.ink,
+    backgroundColor: palette.isDark ? "#0f2f1a" : "#111111",
     borderRadius: 24,
     gap: 6,
     padding: 22,
@@ -727,8 +731,8 @@ const useStyles = createThemedStyles((palette) => ({
   greetTitle: { color: "#ffffff", fontSize: 22, fontWeight: "800" },
   greetRating: { color: "#d1fae5", fontSize: 14 },
   errorCard: {
-    backgroundColor: "#fff1f2",
-    borderColor: "#fecdd3",
+    backgroundColor: palette.isDark ? "#450a0a" : "#fff1f2",
+    borderColor: palette.isDark ? "#7f1d1d" : "#fecdd3",
     borderRadius: 16,
     borderWidth: 1,
     gap: 8,
@@ -737,7 +741,7 @@ const useStyles = createThemedStyles((palette) => ({
   errorText: { color: palette.danger, fontSize: 13 },
   retryButton: {
     alignSelf: "flex-start",
-    backgroundColor: "#ffffff",
+    backgroundColor: palette.card,
     borderRadius: 10,
     paddingHorizontal: 10,
     paddingVertical: 7,
@@ -755,10 +759,10 @@ const useStyles = createThemedStyles((palette) => ({
     padding: 16,
     flex: 1,
   },
-  statCardGreen: { backgroundColor: "#dcfce7" },
-  statCardBlue: { backgroundColor: "#e0f2fe" },
-  statCardOrange: { backgroundColor: "#ffedd5" },
-  statCardPurple: { backgroundColor: "#faf5ff" },
+  statCardGreen: { backgroundColor: palette.isDark ? "#064e3b" : "#dcfce7" },
+  statCardBlue: { backgroundColor: palette.isDark ? "#0c4a6e" : "#e0f2fe" },
+  statCardOrange: { backgroundColor: palette.isDark ? "#7c2d12" : "#ffedd5" },
+  statCardPurple: { backgroundColor: palette.isDark ? "#581c87" : "#faf5ff" },
   statValue: { color: palette.ink, fontSize: 20, fontWeight: "900" },
   statLabel: {
     color: palette.slate,
@@ -860,7 +864,7 @@ const useStyles = createThemedStyles((palette) => ({
     textAlign: "right",
   },
   ratingBarTrack: {
-    backgroundColor: "#e2e8f0",
+    backgroundColor: palette.isDark ? "#334155" : "#e2e8f0",
     borderRadius: 4,
     flex: 1,
     height: 8,
@@ -899,7 +903,7 @@ const useStyles = createThemedStyles((palette) => ({
   reviewDate: { color: palette.slate, fontSize: 11 },
   reviewComment: { color: palette.ink, fontSize: 13, lineHeight: 19 },
   replyBubble: {
-    backgroundColor: "#e0f2fe",
+    backgroundColor: palette.isDark ? "#0c4a6e" : "#e0f2fe",
     borderRadius: 10,
     gap: 4,
     padding: 10,

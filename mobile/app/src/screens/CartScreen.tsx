@@ -5,6 +5,7 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  KeyboardAvoidingView,
   Linking,
   Platform,
   Pressable,
@@ -487,7 +488,7 @@ export function CartScreen({ onOpenBrowse, onBack, onOpenSignIn }: Props) {
             <TextInput
               style={styles.textInput}
               placeholder="e.g. 2026-04-15"
-              placeholderTextColor="#94a3b8"
+              placeholderTextColor={palette.slate}
               value={item.eventDate ?? ""}
               onChangeText={(v) => handleUpdateItemField(item.id, "eventDate", v)}
               keyboardType={Platform.OS === "ios" ? "default" : "default"}
@@ -499,7 +500,7 @@ export function CartScreen({ onOpenBrowse, onBack, onOpenSignIn }: Props) {
             <TextInput
               style={[styles.textInput, styles.textArea]}
               placeholder="Any special requirements or notes for the provider..."
-              placeholderTextColor="#94a3b8"
+              placeholderTextColor={palette.slate}
               value={item.notes ?? ""}
               onChangeText={(v) => handleUpdateItemField(item.id, "notes", v)}
               multiline
@@ -629,6 +630,7 @@ export function CartScreen({ onOpenBrowse, onBack, onOpenSignIn }: Props) {
   // ─── Main render ─────────────────────────────────────────────────────────
 
   return (
+    <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1 }}>
     <View style={styles.page}>
       {/* Header */}
       <View style={styles.header}>
@@ -701,6 +703,7 @@ export function CartScreen({ onOpenBrowse, onBack, onOpenSignIn }: Props) {
         )}
       </View>
     </View>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -951,7 +954,7 @@ const useStyles = createThemedStyles((palette) => ({
   },
   removeButton: {
     alignItems: "center",
-    backgroundColor: "#fff1f2",
+    backgroundColor: palette.dangerSoft,
     borderRadius: 10,
     height: 34,
     justifyContent: "center",
@@ -1269,8 +1272,8 @@ const useStyles = createThemedStyles((palette) => ({
 
   // Error card
   errorCard: {
-    backgroundColor: "#fff1f2",
-    borderColor: "#fecdd3",
+    backgroundColor: palette.dangerSoft,
+    borderColor: palette.dangerLine,
     borderRadius: 16,
     borderWidth: 1,
     gap: 8,
@@ -1282,13 +1285,13 @@ const useStyles = createThemedStyles((palette) => ({
     fontWeight: "700",
   },
   errorBody: {
-    color: "#7f1d1d",
+    color: palette.dangerInk,
     fontSize: 13,
     lineHeight: 18,
   },
   dismissButton: {
     alignSelf: "flex-start",
-    backgroundColor: "#ffffff",
+    backgroundColor: palette.card,
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 8,
