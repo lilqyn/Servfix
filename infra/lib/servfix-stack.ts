@@ -124,6 +124,13 @@ export class ServfixStack extends Stack {
       enforceSSL: true,
       autoDeleteObjects: !config.retainData,
       removalPolicy: config.retainData ? RemovalPolicy.RETAIN : RemovalPolicy.DESTROY,
+      intelligentTieringConfigurations: [
+        {
+          name: "MoveToInfrequentAccess",
+          archiveAccessTierTime: Duration.days(90),
+          deepArchiveAccessTierTime: Duration.days(180),
+        },
+      ],
       cors: [
         {
           allowedHeaders: ["*"],
@@ -158,9 +165,10 @@ export class ServfixStack extends Stack {
     const dbPort = db.instanceEndpoint.port.toString();
     const dbUrl = `postgresql://${dbUser}:${dbPassword}@${dbHost}:${dbPort}/${config.dbName}?schema=public`;
 
-    const dbUrlSecret = new secretsmanager.Secret(this, "DatabaseUrlSecret", {
-      secretStringValue: SecretValue.unsafePlainText(dbUrl),
-      removalPolicy: config.retainData ? RemovalPolicy.RETAIN : RemovalPolicy.DESTROY,
+    const dbUrlParam = new ssm.StringParameter(this, "DatabaseUrlParam", {
+      parameterName: `/${config.stackName}/DATABASE_URL`,
+      stringValue: dbUrl,
+      tier: ssm.ParameterTier.STANDARD,
     });
 
     const jwtSecret = new secretsmanager.Secret(this, "JwtSecret", {
@@ -184,8 +192,13 @@ export class ServfixStack extends Stack {
       },
     });
 
+    const logRetention =
+      config.logRetentionDays === 7
+        ? logs.RetentionDays.ONE_WEEK
+        : logs.RetentionDays.ONE_MONTH;
+
     const logGroup = new logs.LogGroup(this, "AppLogs", {
-      retention: logs.RetentionDays.ONE_MONTH,
+      retention: logRetention,
       removalPolicy: config.retainData ? RemovalPolicy.RETAIN : RemovalPolicy.DESTROY,
     });
 
@@ -286,7 +299,13 @@ export class ServfixStack extends Stack {
       }),
       environment: containerEnv,
       secrets: {
-        DATABASE_URL: ecs.Secret.fromSecretsManager(dbUrlSecret),
+        DATABASE_URL: ecs.Secret.fromSsmParameter(
+          ssm.StringParameter.fromStringParameterName(
+            this,
+            "DbUrlParamRef",
+            dbUrlParam.parameterName,
+          ),
+        ),
         JWT_SECRET: ecs.Secret.fromSecretsManager(jwtSecret),
       },
     });
@@ -438,8 +457,8 @@ export class ServfixStack extends Stack {
     });
     new CfnOutput(this, "DatabaseEndpoint", { value: dbHost });
     new CfnOutput(this, "UploadsBucketName", { value: bucket.bucketName });
-    new CfnOutput(this, "DatabaseUrlSecretArn", {
-      value: dbUrlSecret.secretArn,
+    new CfnOutput(this, "DatabaseUrlParamName", {
+      value: dbUrlParam.parameterName,
     });
     new CfnOutput(this, "JwtSecretArn", { value: jwtSecret.secretArn });
     if (fisExperimentRole) {

@@ -18,6 +18,7 @@
   backupRetentionDays: number;
   retainData: boolean;
   enableDeletionProtection: boolean;
+  logRetentionDays: number;
   allowedCorsOrigins?: string[];
   s3BucketName?: string;
   ssmSecrets?: Record<string, string>;
@@ -47,13 +48,14 @@ export const environments = {
     desiredCount: 1,
     minCapacity: 1,
     maxCapacity: 2,
-    dbInstanceType: "t3.small",
+    dbInstanceType: "t3.micro",
     dbAllocatedStorage: 20,
     dbMaxAllocatedStorage: 100,
     dbName: "servfix",
     backupRetentionDays: 7,
     retainData: true,
     enableDeletionProtection: true,
+    logRetentionDays: 30,
     allowedCorsOrigins: ["https://www.servfixgh.com", "https://servfixgh.com"],
     ssmSecrets: resolveFlutterwaveSecrets("prod"),
   } satisfies EnvironmentConfig,
@@ -62,7 +64,7 @@ export const environments = {
     stackName: "ServfixStaging",
     domainName: "servfixgh.com",
     subdomain: "staging",
-    enableFaultInjection: true,
+    enableFaultInjection: false,
     hostedZoneId: "Z0771344MQYC6EHVNUOI",
     vpcCidr: "10.30.0.0/16",
     taskCpu: 256,
@@ -77,6 +79,7 @@ export const environments = {
     backupRetentionDays: 1,
     retainData: false,
     enableDeletionProtection: false,
+    logRetentionDays: 7,
     allowedCorsOrigins: ["https://staging.servfixgh.com"],
     ssmSecrets: resolveFlutterwaveSecrets("staging"),
   } satisfies EnvironmentConfig,
