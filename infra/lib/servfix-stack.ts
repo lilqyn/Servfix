@@ -300,10 +300,13 @@ export class ServfixStack extends Stack {
       environment: containerEnv,
       secrets: {
         DATABASE_URL: ecs.Secret.fromSsmParameter(
-          ssm.StringParameter.fromStringParameterName(
+          ssm.StringParameter.fromStringParameterAttributes(
             this,
             "DbUrlParamRef",
-            dbUrlParam.parameterName,
+            {
+              parameterName: dbUrlParam.parameterName,
+              simpleName: false,
+            },
           ),
         ),
         JWT_SECRET: ecs.Secret.fromSecretsManager(jwtSecret),
