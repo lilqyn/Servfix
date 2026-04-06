@@ -2,7 +2,7 @@
   "id": "./",
   "name": "SERVFIX Ghana",
   "short_name": "SERVFIX",
-  "description": "Find trusted service providers in Ghana and book with escrow protection.",
+  "description": "Find trusted service providers in Ghana and book with secure payment protection.",
   "start_url": "./#/",
   "scope": "./",
   "display_override": ["standalone", "minimal-ui"],

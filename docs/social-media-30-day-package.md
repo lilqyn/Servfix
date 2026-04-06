@@ -45,16 +45,16 @@ Need a plumber, electrician, or tailor in Accra? Stop asking around on WhatsApp 
 ## DAY 2 — The Problem We Solve
 
 **Instagram/Facebook Caption:**
-Raise your hand if you've ever been scammed by someone who claimed to be a "professional" 🙋‍♂️🙋‍♀️ You paid upfront, they disappeared. Or the person came, did a bad job, and you couldn't do anything about it. In Ghana, finding a reliable service person has always been a struggle — either you rely on word-of-mouth, or you just cross your fingers and hope for the best. 😤 SERVFIX was built specifically to fix this broken system. Every provider on our platform is verified. Every payment is protected by escrow — meaning your money stays safe until the job is done. No more losses, no more stress. 🔒 Download SERVFIX on Google Play and experience service hiring the way it should be!
+Raise your hand if you've ever been scammed by someone who claimed to be a "professional" 🙋‍♂️🙋‍♀️ You paid upfront, they disappeared. Or the person came, did a bad job, and you couldn't do anything about it. In Ghana, finding a reliable service person has always been a struggle — either you rely on word-of-mouth, or you just cross your fingers and hope for the best. 😤 SERVFIX was built specifically to fix this broken system. Every provider on our platform is verified. Every payment is protected by secure payment — meaning your money stays safe until the job is done. No more losses, no more stress. 🔒 Download SERVFIX on Google Play and experience service hiring the way it should be!
 
 **TikTok/YouTube Shorts Caption:**
-You paid. They disappeared. 😤 Sound familiar? SERVFIX protects every single payment with escrow. Your money is SAFE until the job is done. Download now 🔒
+You paid. They disappeared. 😤 Sound familiar? SERVFIX protects every single payment with secure payment. Your money is SAFE until the job is done. Download now 🔒
 
 **Twitter/X Post:**
-Tired of paying service people upfront and getting ghosted? 😤 SERVFIX holds your money in escrow until the job is DONE. No more losses. Download on Google Play 👇 #SERVFIX #EscrowPayment #GhanaProblems #SafePayment
+Tired of paying service people upfront and getting ghosted? 😤 SERVFIX holds your money securely until the job is DONE. No more losses. Download on Google Play 👇 #SERVFIX #Payment ProtectionPayment #GhanaProblems #SafePayment
 
 **Pin Comment:**
-#SERVFIX #GhanaProblems #ServiceScam #EscrowProtection #TrustYourPro #GhanaApp #AccraBusiness #SafeHire #VerifiedPros #GhanaServices — 💬 Tell us: have you ever been let down by a service person? Drop your story below 👇
+#SERVFIX #GhanaProblems #ServiceScam #Payment ProtectionProtection #TrustYourPro #GhanaApp #AccraBusiness #SafeHire #VerifiedPros #GhanaServices — 💬 Tell us: have you ever been let down by a service person? Drop your story below 👇
 
 **Engagement Hook:**
 Poll idea: "Have you ever been scammed by a service person in Ghana? YES 😡 / Thankfully NO 🙏"
@@ -64,7 +64,7 @@ Poll idea: "Have you ever been scammed by a service person in Ghana? YES 😡 / 
 ## DAY 3 — How It Works (Buyer)
 
 **Instagram/Facebook Caption:**
-Finding help has never been this simple, we promise! 😊 Here's how SERVFIX works if you're a buyer: Step 1️⃣ — Download SERVFIX on Google Play and create your free account. Step 2️⃣ — Browse or search for the service you need (plumbing, cleaning, catering, hairstyling — you name it). Step 3️⃣ — Check reviews, compare providers, and book the one you trust. Step 4️⃣ — Pay securely using Mobile Money or your card — your funds go into escrow. Step 5️⃣ — Job done? Release payment and leave a review. That's it! Simple, fast, and 100% safe. 🔐 Try it today — download SERVFIX on Google Play! 📲
+Finding help has never been this simple, we promise! 😊 Here's how SERVFIX works if you're a buyer: Step 1️⃣ — Download SERVFIX on Google Play and create your free account. Step 2️⃣ — Browse or search for the service you need (plumbing, cleaning, catering, hairstyling — you name it). Step 3️⃣ — Check reviews, compare providers, and book the one you trust. Step 4️⃣ — Pay securely using Mobile Money or your card — your funds go into secure payment. Step 5️⃣ — Job done? Release payment and leave a review. That's it! Simple, fast, and 100% safe. 🔐 Try it today — download SERVFIX on Google Play! 📲
 
 **TikTok/YouTube Shorts Caption:**
 Search → Book → Pay securely → Done ✅ Finding a home service pro in Ghana just got a whole lot easier. SERVFIX. Download on Google Play 📲
@@ -102,16 +102,16 @@ Skilled pro in Accra or Kumasi? List your services on SERVFIX and start getting 
 ## DAY 5 — Trust & Safety
 
 **Instagram/Facebook Caption:**
-We know trust is EVERYTHING when it comes to inviting someone into your home. 🏠 That's why SERVFIX has built multiple layers of protection for both buyers AND providers. ✅ Every provider goes through a verification process before they appear on the platform. ✅ Our escrow payment system holds your funds safely until the job is completed to your satisfaction. ✅ A real ratings and reviews system ensures accountability — bad actors don't last long here. ✅ In-app messaging keeps all communication safe and on record. ✅ Our dispute resolution team steps in if anything goes wrong. We take your safety seriously — because this is Ghana, and your trust means everything to us. 🙏 Download SERVFIX on Google Play and hire with confidence!
+We know trust is EVERYTHING when it comes to inviting someone into your home. 🏠 That's why SERVFIX has built multiple layers of protection for both buyers AND providers. ✅ Every provider goes through a verification process before they appear on the platform. ✅ Our secure payment payment system holds your funds safely until the job is completed to your satisfaction. ✅ A real ratings and reviews system ensures accountability — bad actors don't last long here. ✅ In-app messaging keeps all communication safe and on record. ✅ Our dispute resolution team steps in if anything goes wrong. We take your safety seriously — because this is Ghana, and your trust means everything to us. 🙏 Download SERVFIX on Google Play and hire with confidence!
 
 **TikTok/YouTube Shorts Caption:**
-Verified providers. Escrow payments. Real reviews. 🛡️ Your safety is SERVFIX's #1 priority. Hire with confidence — download now 📲
+Verified providers. Payment Protection payments. Real reviews. 🛡️ Your safety is SERVFIX's #1 priority. Hire with confidence — download now 📲
 
 **Twitter/X Post:**
-Verified providers ✅ Escrow payments 🔒 Real reviews ⭐ Dispute resolution 🛡️ SERVFIX is built on TRUST. Download on Google Play 👇 #SERVFIX #TrustAndSafety #VerifiedPros #GhanaApp
+Verified providers ✅ Payment Protection payments 🔒 Real reviews ⭐ Dispute resolution 🛡️ SERVFIX is built on TRUST. Download on Google Play 👇 #SERVFIX #TrustAndSafety #VerifiedPros #GhanaApp
 
 **Pin Comment:**
-#SERVFIX #TrustAndSafety #VerifiedProviders #EscrowPayment #SafeHire #GhanaApp #SecurePayment #AccraLife #HomeServices #GhanaServices — 💬 What's the most important thing you check before hiring a service person? Safety, reviews, or price? 👇
+#SERVFIX #TrustAndSafety #VerifiedProviders #Payment ProtectionPayment #SafeHire #GhanaApp #SecurePayment #AccraLife #HomeServices #GhanaServices — 💬 What's the most important thing you check before hiring a service person? Safety, reviews, or price? 👇
 
 **Engagement Hook:**
 Poll: "What matters most when hiring a service pro? 🔒 Safety & Verification / ⭐ Reviews & Ratings / 💰 Price"
@@ -146,7 +146,7 @@ Okay, real talk — how many times this week have you needed a service and didn'
 One app. Every home service. Verified pros. Secure MoMo payments. 🇬🇭 Download SERVFIX FREE on Google Play — link in bio! 📲
 
 **Twitter/X Post:**
-SERVFIX is FREE on Google Play. Verified pros, MoMo payments, escrow protection — all in one app. 🇬🇭 Download today and get your first booking sorted! 👇 #SERVFIX #DownloadNow #GhanaApp #GooglePlay
+SERVFIX is FREE on Google Play. Verified pros, MoMo payments, payment protection — all in one app. 🇬🇭 Download today and get your first booking sorted! 👇 #SERVFIX #DownloadNow #GhanaApp #GooglePlay
 
 **Pin Comment:**
 #SERVFIX #DownloadNow #GooglePlay #GhanaApp #FreeDownload #AccraLife #KumasiVibes #GhanaServices #HomeFix #ServiceMarketplace — 💬 Have you downloaded SERVFIX yet? Drop a ✅ if you have or a 👀 if you're about to!
@@ -197,19 +197,19 @@ Chat with your provider without sharing your personal number. 📩 SERVFIX's in-
 ## DAY 10 — Secure Payments
 
 **Instagram/Facebook Caption:**
-Let's talk money — because this is where SERVFIX is really different. 💰 When you book a service on SERVFIX, you don't pay the provider directly. Instead, your payment (via Mobile Money or card) goes into a secure escrow account. It stays there until the job is DONE and you're satisfied. Only then is the money released to the provider. This means no more paying upfront and getting ghosted. No more "I'll finish tomorrow" and never showing up. The provider gets paid when the job is done — period. 🔒 Whether you're paying GH₵50 for cleaning or GH₵500 for electrical work — your cedis are protected every single time. Download SERVFIX on Google Play and pay smarter! 📲
+Let's talk money — because this is where SERVFIX is really different. 💰 When you book a service on SERVFIX, you don't pay the provider directly. Instead, your payment (via Mobile Money or card) goes into a secure secure payment account. It stays there until the job is DONE and you're satisfied. Only then is the money released to the provider. This means no more paying upfront and getting ghosted. No more "I'll finish tomorrow" and never showing up. The provider gets paid when the job is done — period. 🔒 Whether you're paying GH₵50 for cleaning or GH₵500 for electrical work — your cedis are protected every single time. Download SERVFIX on Google Play and pay smarter! 📲
 
 **TikTok/YouTube Shorts Caption:**
-Pay with MoMo. Money goes into ESCROW. 🔒 Only released when the job is DONE. Your cedis are SAFE with SERVFIX. Download now 📲
+Pay with MoMo. Money is PROTECTED. 🔒 Only released when the job is DONE. Your cedis are SAFE with SERVFIX. Download now 📲
 
 **Twitter/X Post:**
-Pay with Mobile Money or card. Funds go into escrow. Released only when the job is done. 🔒 Your money is ALWAYS protected on SERVFIX. Download on Google Play 👇 #SERVFIX #EscrowPayment #MobileMoney #SecurePayment #GhanaApp
+Pay with Mobile Money or card. Funds go into secure payment. Released only when the job is done. 🔒 Your money is ALWAYS protected on SERVFIX. Download on Google Play 👇 #SERVFIX #Payment ProtectionPayment #MobileMoney #SecurePayment #GhanaApp
 
 **Pin Comment:**
-#SERVFIX #SecurePayment #EscrowProtection #MobileMoney #MoMoPayment #GhanaApp #PaySmart #ProtectYourMoney #AccraLife #GhanaFintech — 💬 Have you ever lost money paying for a service upfront? Drop a 😤 in the comments if YES!
+#SERVFIX #SecurePayment #Payment ProtectionProtection #MobileMoney #MoMoPayment #GhanaApp #PaySmart #ProtectYourMoney #AccraLife #GhanaFintech — 💬 Have you ever lost money paying for a service upfront? Drop a 😤 in the comments if YES!
 
 **Engagement Hook:**
-Poll: "Would you feel more confident booking services if your payment was held in escrow until the job is done? ABSOLUTELY ✅ / Already doing that on SERVFIX 🚀"
+Poll: "Would you feel more confident booking services if your payment was held securely until the job is done? ABSOLUTELY ✅ / Already doing that on SERVFIX 🚀"
 
 ---
 
@@ -520,19 +520,19 @@ The numbers are growing daily. 📊 More providers. More bookings. More happy cu
 ## DAY 27 — Dispute Resolution
 
 **Instagram/Facebook Caption:**
-We get it — sometimes things don't go perfectly. A job doesn't meet expectations. A timeline gets missed. A miscommunication happens. That's life. But here's what's different about SERVFIX: we have a real dispute resolution system to handle exactly these situations. 🛡️ If you're unhappy with a service, you can raise a dispute directly in the app before the payment is released from escrow. Our team reviews the situation fairly — for both the buyer and the provider. We don't just build tools — we stand behind them. You are protected. Always. 💪 Because trust isn't built with words — it's built with action. Download SERVFIX on Google Play and hire with total confidence! 📲
+We get it — sometimes things don't go perfectly. A job doesn't meet expectations. A timeline gets missed. A miscommunication happens. That's life. But here's what's different about SERVFIX: we have a real dispute resolution system to handle exactly these situations. 🛡️ If you're unhappy with a service, you can raise a dispute directly in the app before the payment is released from secure payment. Our team reviews the situation fairly — for both the buyer and the provider. We don't just build tools — we stand behind them. You are protected. Always. 💪 Because trust isn't built with words — it's built with action. Download SERVFIX on Google Play and hire with total confidence! 📲
 
 **TikTok/YouTube Shorts Caption:**
 Job didn't go as planned? 😤 Raise a dispute IN the app BEFORE payment is released. SERVFIX has your back — always. 🛡️ Download now 📲
 
 **Twitter/X Post:**
-Not happy with a job? Raise a dispute before payment is released from escrow. 🛡️ SERVFIX reviews every case fairly — for buyers AND providers. Your protection is our priority. 💪 #SERVFIX #DisputeResolution #EscrowProtection #GhanaApp #SafeHire
+Not happy with a job? Raise a dispute before payment is released from secure payment. 🛡️ SERVFIX reviews every case fairly — for buyers AND providers. Your protection is our priority. 💪 #SERVFIX #DisputeResolution #Payment ProtectionProtection #GhanaApp #SafeHire
 
 **Pin Comment:**
-#SERVFIX #DisputeResolution #EscrowProtection #SafeHire #GhanaApp #BuyerProtection #ProviderProtection #FairPlatform #TrustAndSafety #GhanaServices — 💬 Have you ever had to dispute a service in Ghana? How did it go? Share your experience — we're listening. 👇
+#SERVFIX #DisputeResolution #Payment ProtectionProtection #SafeHire #GhanaApp #BuyerProtection #ProviderProtection #FairPlatform #TrustAndSafety #GhanaServices — 💬 Have you ever had to dispute a service in Ghana? How did it go? Share your experience — we're listening. 👇
 
 **Engagement Hook:**
-"What's the most important protection feature for you when booking a service? 🔒 Escrow payment / 🛡️ Dispute resolution / ⭐ Reviews / ✅ Verification — vote!"
+"What's the most important protection feature for you when booking a service? 🔒 Payment Protection payment / 🛡️ Dispute resolution / ⭐ Reviews / ✅ Verification — vote!"
 
 ---
 
@@ -646,12 +646,12 @@ New features. New cities. New possibilities. 🚀 SERVFIX is only getting starte
 ```
 #MobileMoney
 #MoMoPayment
-#EscrowPayment
+#Payment ProtectionPayment
 #SecurePayment
 #SafeHire
 #TrustAndSafety
 #ProtectYourMoney
-#EscrowProtection
+#Payment ProtectionProtection
 #PaySmart
 ```
 
@@ -692,7 +692,7 @@ New features. New cities. New possibilities. 🚀 SERVFIX is only getting starte
 **Core set to rotate:**
 ```
 #SERVFIX #ServfixGhana #GhanaApp #AccraLife #KumasiVibes #HomeServices #GhanaServices
-#ServiceMarketplace #MobileMoney #EscrowPayment #VerifiedPros #EarnInGhana
+#ServiceMarketplace #MobileMoney #Payment ProtectionPayment #VerifiedPros #EarnInGhana
 #GhanaStartup #MadeInGhana #GhanaEntrepreneur #SkillsPayBills #GhanaJobs
 #BookAPro #HireWithConfidence #SafeHire #GhanaLife #GhanaWins #AccraBusiness
 #ProviderLife #GhanaFreelance #TrustYourPro #RealReviews #CommunityFirst
@@ -712,14 +712,14 @@ New features. New cities. New possibilities. 🚀 SERVFIX is only getting starte
 Brand: #SERVFIX #GhanaApp #ServfixGhana
 Provider: #EarnInGhana #GhanaJobs #SkillsPayBills #ProviderLife
 Buyer: #AccraLife #HomeServices #BookAPro #SafeHire
-Payment: #MobileMoney #EscrowPayment #SecurePayment
+Payment: #MobileMoney #Payment ProtectionPayment #SecurePayment
 Community: #GhanaWins #MadeInGhana #GhanaStartup
 ```
 
 ## Facebook Set (10–15 hashtags — moderate use)
 ```
 #SERVFIX #ServfixGhana #GhanaApp #AccraLife #KumasiVibes #HomeServices
-#GhanaServices #MobileMoney #EscrowPayment #EarnInGhana #GhanaStartup
+#GhanaServices #MobileMoney #Payment ProtectionPayment #EarnInGhana #GhanaStartup
 #VerifiedPros #BookAPro #GhanaLife #MadeInGhana
 ```
 
@@ -738,7 +738,7 @@ Community: #GhanaWins #MadeInGhana #GhanaStartup
 | 7 | Download CTA | Sun 6:00 PM | All platforms | Download-push post |
 | 8 | Reviews & Ratings | Mon 8:00 AM | Instagram + Facebook | Social proof graphic |
 | 9 | In-App Messaging | Tue 7:00 PM | TikTok + Instagram | Feature demo clip |
-| 10 | Secure Payments | Wed 12:00 PM | Facebook + Twitter | MoMo + escrow explainer |
+| 10 | Secure Payments | Wed 12:00 PM | Facebook + Twitter | MoMo + secure payment explainer |
 | 11 | Voice Calls | Thu 7:00 PM | TikTok + Instagram | Quick feature highlight |
 | 12 | Community Feed | Fri 9:00 AM | Instagram + Facebook | Community feature post |
 | 13 | Follow Your Favorites | Sat 11:00 AM | Instagram + TikTok | Feature walkthrough |
@@ -822,11 +822,11 @@ Options: Ask on WhatsApp / Google / Ask family & friends / SERVFIX
 Post a trust-building story:
 - Slide 1: "Would you feel comfortable hiring a stranger from an app?" + Yes/No poll
 - Slide 2: "Here's what SERVFIX does to make it safe 🔒" — list 3 safety features
-- Slide 3: Quiz: "Which SERVFIX feature protects your payment?" (Escrow / Reviews / Chat)
+- Slide 3: Quiz: "Which SERVFIX feature protects your payment?" (Payment Protection / Reviews / Chat)
 - Slide 4: CTA — "Download and experience it yourself 📲"
 
 **Poll Text:** "Which SERVFIX safety feature matters MOST to you?"
-Options: Verified Providers ✅ / Escrow Payments 🔒 / Real Reviews ⭐ / Dispute Resolution 🛡️
+Options: Verified Providers ✅ / Payment Protection Payments 🔒 / Real Reviews ⭐ / Dispute Resolution 🛡️
 
 ---
 

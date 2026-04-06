@@ -659,7 +659,7 @@ export function ServiceDetailScreen({
             {orderError ? <Text style={styles.errorText}>{orderError}</Text> : null}
 
             <Text style={styles.sectionBodySmall}>
-              Pay via a trusted provider. Your payment is held in escrow until the job is done.
+              Pay via a trusted provider. Your payment is protected until the job is done.
             </Text>
 
             {isQuoteOnly ? (
@@ -764,7 +764,7 @@ export function ServiceDetailScreen({
       <View style={styles.trustRow}>
         <View style={styles.trustBadge}>
           <Ionicons name="shield-checkmark" size={20} color={palette.accent} />
-          <Text style={styles.trustLabel}>Escrow</Text>
+          <Text style={styles.trustLabel}>Protected</Text>
           <Text style={styles.trustHint}>Secure</Text>
         </View>
         <View style={styles.trustBadge}>

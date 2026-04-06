@@ -376,7 +376,7 @@ const EarningsOverview = () => {
           <div className="p-4 rounded-lg bg-muted/50 border border-border">
             <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
               <Lock className="h-4 w-4" />
-              In Escrow
+              Held Securely
             </div>
             <p className="text-2xl font-bold">
               {formatCurrency(pendingReleaseAmount, displayCurrency)}
@@ -418,12 +418,12 @@ const EarningsOverview = () => {
       {/* Pending Payments */}
       <Card className="lg:col-span-3 border-border/50">
         <CardHeader>
-          <CardTitle className="text-lg font-semibold">Pending Escrow Payments</CardTitle>
+          <CardTitle className="text-lg font-semibold">Pending Protected Payments</CardTitle>
         </CardHeader>
         <CardContent>
           {derived.pendingPayments.length === 0 ? (
             <div className="text-center text-sm text-muted-foreground py-8">
-              No pending escrow payments.
+              No pending protected payments.
             </div>
           ) : (
             <div className="space-y-3">

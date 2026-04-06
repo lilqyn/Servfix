@@ -428,7 +428,7 @@ paymentsRouter.post(
             },
             customizations: {
               title: "SERVFIX",
-              description: "Escrow payment for your service order.",
+              description: "Secure payment for your service order.",
             },
           }),
         });
@@ -565,7 +565,7 @@ paymentsRouter.post(
             ...customer,
             phonenumber: expresspayPhone!,
           },
-          orderDesc: "Escrow payment for your service order.",
+          orderDesc: "Secure payment for your service order.",
         });
 
         await prisma.paymentIntent.update({
@@ -615,7 +615,7 @@ paymentsRouter.post(
           mobileNumber: hubtelPhone!,
           amount: Number(result.total.toFixed(2)),
           title: "SERVFIX",
-          description: "Escrow payment for your service order.",
+          description: "Secure payment for your service order.",
           clientReference: result.paymentIntent.id,
           callbackUrl,
           returnUrl,
@@ -883,7 +883,7 @@ paymentsRouter.post(
             },
             customizations: {
               title: "SERVFIX",
-              description: "Escrow payment for your service order.",
+              description: "Secure payment for your service order.",
             },
           }),
         });

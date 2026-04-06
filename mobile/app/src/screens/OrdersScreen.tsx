@@ -509,7 +509,7 @@ export function OrdersScreen({
         <View style={styles.signInCard}>
           <Text style={styles.title}>Orders</Text>
           <Text style={styles.supportingText}>
-            Sign in as a buyer or provider to load your active jobs, escrow milestones, and order
+            Sign in as a buyer or provider to load your active jobs, payment milestones, and order
             history.
           </Text>
           <Pressable onPress={onOpenSignIn} style={styles.primaryButton}>

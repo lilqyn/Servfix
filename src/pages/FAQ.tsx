@@ -78,7 +78,7 @@ const faqData: FAQCategory[] = [
   },
   {
     id: "payments",
-    title: "Payments & Escrow",
+    title: "Payments & Protection",
     icon: "wallet",
     questions: [
       {
@@ -87,7 +87,7 @@ const faqData: FAQCategory[] = [
       },
       {
         q: "Is my payment safe?",
-        a: "Yes. Your payment is held in escrow — meaning it's stored securely by a licensed payment partner, not given directly to the provider. You only release payment when you confirm the job is done to your satisfaction.",
+        a: "Yes. Your payment is protected — it's stored securely by a licensed payment partner, not given directly to the provider. You only release payment when you confirm the job is done to your satisfaction.",
       },
       {
         q: "When does the provider get paid?",

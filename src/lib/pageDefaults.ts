@@ -6,7 +6,7 @@ export const DEFAULT_PAGES: AdminPagesPayload = {
     title: "About SERVFIX",
     body:
       "SERVFIX helps Ghanaians find trusted service providers and book with confidence. " +
-      "We verify providers, protect payments with escrow, and support both buyers and providers through every step.",
+      "We verify providers, protect your payments, and support both buyers and providers through every step.",
     aboutConfig: {
       introLabel: "About Me",
       heroImageUrl: "/hero-ghana-marketplace.png",

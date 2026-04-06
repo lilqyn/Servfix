@@ -420,21 +420,21 @@ const AdminHomeContent = () => {
               />
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium">Escrow Card Title</label>
+              <label className="text-sm font-medium">Protection Card Title</label>
               <Input
                 value={draft.hero.floatingCards.escrowTitle}
                 onChange={(e) => updateFloating({ escrowTitle: e.target.value })}
               />
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium">Escrow Card Subtitle</label>
+              <label className="text-sm font-medium">Protection Card Subtitle</label>
               <Input
                 value={draft.hero.floatingCards.escrowSubtitle}
                 onChange={(e) => updateFloating({ escrowSubtitle: e.target.value })}
               />
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium">Escrow Card Icon</label>
+              <label className="text-sm font-medium">Protection Card Icon</label>
               <Select
                 value={draft.hero.floatingCards.escrowIcon ?? "Shield"}
                 onValueChange={(value) => updateFloating({ escrowIcon: value })}

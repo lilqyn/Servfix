@@ -1373,7 +1373,7 @@ const AdminSettings = () => {
         <Card className="border-border/60" id="settings-order-rules">
         <CardContent className="p-6 space-y-6">
           <div>
-            <h3 className="text-lg font-semibold text-foreground">Order & escrow rules</h3>
+            <h3 className="text-lg font-semibold text-foreground">Order & payment rules</h3>
             <p className="text-sm text-muted-foreground">
               Set automated release and refund windows for orders.
             </p>

@@ -342,7 +342,7 @@ export function CartScreen({ onOpenBrowse, onBack, onOpenSignIn }: Props) {
       <View style={styles.escrowNotice}>
         <Ionicons name="shield-checkmark-outline" size={16} color={palette.accent} />
         <Text style={styles.escrowText}>
-          Funds held in escrow until work is completed and approved.
+          Funds held securely until work is completed and approved.
         </Text>
       </View>
     </View>
@@ -605,10 +605,10 @@ export function CartScreen({ onOpenBrowse, onBack, onOpenSignIn }: Props) {
         <View style={styles.escrowCard}>
           <View style={styles.escrowCardHeader}>
             <Ionicons name="shield-checkmark" size={22} color={palette.accent} />
-            <Text style={styles.escrowCardTitle}>Escrow protection</Text>
+            <Text style={styles.escrowCardTitle}>Payment Protection</Text>
           </View>
           <Text style={styles.escrowCardBody}>
-            Your payment is held securely in escrow. Funds are only released to the provider
+            Your payment is held securely. Funds are only released to the provider
             after you approve the completed work. If there is a dispute, our team will review
             and mediate.
           </Text>

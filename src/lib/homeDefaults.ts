@@ -21,7 +21,7 @@ export const defaultHomeContent: HomeContentPayload = {
     trustIndicators: [
       {
         icon: "Shield",
-        title: "Secure Escrow",
+        title: "Payment Protection",
         subtitle: "Pay when satisfied",
       },
       {
@@ -163,7 +163,7 @@ export const defaultHomeContent: HomeContentPayload = {
         icon: "Shield",
         title: "Secure Payment",
         description:
-          "Pay through our escrow system. Your money is held safely until the service is completed to your satisfaction.",
+          "Your money is held safely until the service is completed to your satisfaction. Pay with confidence.",
         color: "bg-accent/10 text-accent",
         number: "03",
       },

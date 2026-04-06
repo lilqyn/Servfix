@@ -97,8 +97,8 @@ const PaymentVerify = () => {
           const label = count > 1 ? "orders" : "order";
           setMessage(
             count > 0
-              ? `Payment confirmed. Your ${count} ${label} ${count > 1 ? "are" : "is"} now in escrow.`
-              : "Payment confirmed. Your orders are now in escrow.",
+              ? `Payment confirmed. Your ${count} ${label} ${count > 1 ? "are" : "is"} now protected.`
+              : "Payment confirmed. Your orders are now protected.",
           );
         }
       })

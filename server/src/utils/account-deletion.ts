@@ -93,7 +93,7 @@ export const evaluateBuyerDeletionEligibility = async (
     reasons.push("You still have active buyer orders.");
   }
   if (depositOrders > 0) {
-    reasons.push("You still have orders with active deposits or escrowed funds.");
+    reasons.push("You still have orders with active deposits or secured funds.");
   }
 
   return {

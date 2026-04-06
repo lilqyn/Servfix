@@ -123,7 +123,7 @@ export const DEFAULT_PROVIDER_RESOURCES_CONTENT: ProviderResourcesContent = {
           heading: "Step 3: Understand payments",
           items: [
             "Buyer pays through SERVFIX.",
-            "Payment is held securely in escrow.",
+            "Payment is held securely until the job is done.",
             "You complete the job and report progress.",
             "Buyer confirms or dispute flow applies.",
             "Funds are released based on order state and platform rules.",
@@ -294,7 +294,7 @@ export const DEFAULT_PAGES: Record<StaticPageKey, StaticPageContent> = {
     title: "About SERVFIX",
     body:
       "SERVFIX helps Ghanaians find trusted service providers and book with confidence. " +
-      "We verify providers, protect payments with escrow, and support both buyers and providers through every step.",
+      "We verify providers, protect your payments, and support both buyers and providers through every step.",
     aboutConfig: {
       introLabel: "About Me",
       heroImageUrl: "/hero-ghana-marketplace.png",
@@ -363,9 +363,9 @@ export const DEFAULT_PAGES: Record<StaticPageKey, StaticPageContent> = {
         publishedAt: "2026-03-21",
       },
       {
-        title: "Understanding Payments & Escrow",
-        summary: "How SERVFIX protects your money with escrow, wallet withdrawals, and transparent transaction tracking.",
-        body: "How SERVFIX protects your money with escrow, wallet withdrawals, and transparent transaction tracking.",
+        title: "Understanding Payments & Protection",
+        summary: "How SERVFIX protects your money with secure payment holds, wallet withdrawals, and transparent transaction tracking.",
+        body: "How SERVFIX protects your money with secure payment holds, wallet withdrawals, and transparent transaction tracking.",
         imageUrl: null,
         videoUrl: "https://youtu.be/UUcOlzhVs_o",
         publishedAt: "2026-03-21",

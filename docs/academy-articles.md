@@ -70,7 +70,7 @@ Most providers offer different tiers (Basic, Standard, Premium) with different s
 Tap "Add to Cart" and proceed to checkout. You can add notes about your specific requirements, preferred dates, or location details.
 
 **Step 4: Pay securely**
-Choose your payment method — Mobile Money (MTN, Vodafone, AirtelTigo), debit/credit card, or bank transfer. Your payment is held in escrow until the job is done.
+Choose your payment method — Mobile Money (MTN, Vodafone, AirtelTigo), debit/credit card, or bank transfer. Your payment is protected until the job is done.
 
 **Step 5: Wait for acceptance**
 The provider will be notified and can accept your order. You'll receive a notification once they accept.
@@ -80,20 +80,20 @@ After the provider completes the work and submits delivery, review the results. 
 
 ---
 
-### Article 4: How Payments and Escrow Work
+### Article 4: How Payments and Protection Work
 
-**Summary:** Understand how SERVFIX keeps your money safe with escrow protection, and when funds are released to providers.
+**Summary:** Understand how SERVFIX keeps your money safe with secure payment protection, and when funds are released to providers.
 
 **Body:**
 
 Your money is always protected on SERVFIX.
 
-**What is escrow?**
-Escrow means your payment is held by a secure, licensed payment partner — not given directly to the provider. Think of it as a safe that holds your money until the job is done.
+**What is Payment Protection?**
+Payment Protection means your payment is held by a secure, licensed payment partner — not given directly to the provider. Think of it as a safe that holds your money until the job is done.
 
 **How the flow works:**
 1. You pay at checkout via Mobile Money, card, or bank transfer
-2. Your money is held securely in escrow
+2. Your money is held securely until the job is done
 3. The provider completes the work
 4. You review the delivery and approve
 5. Payment is released to the provider
@@ -174,7 +174,7 @@ Chat with your provider before booking to align on scope, timeline, and expectat
 Sometimes plans change. Here's how cancellation works on SERVFIX.
 
 **When can I cancel?**
-You can cancel an order any time before the provider starts work. If the order status is "Created" or "Paid to Escrow" and the provider hasn't accepted yet, cancellation is straightforward.
+You can cancel an order any time before the provider starts work. If the order status is "Created" or "Payment Secured" and the provider hasn't accepted yet, cancellation is straightforward.
 
 **How to cancel:**
 1. Go to Orders

@@ -37,11 +37,11 @@ const faqData: FAQCategory[] = [
   },
   {
     id: "payments",
-    title: "Payments & Escrow",
+    title: "Payments & Protection",
     icon: "wallet-outline",
     questions: [
       { q: "How do I pay for a service?", a: "SERVFIX accepts Mobile Money (MTN, Vodafone, AirtelTigo), debit/credit cards, and bank transfers. All payments are processed securely through our licensed payment partners." },
-      { q: "Is my payment safe?", a: "Yes. Your payment is held in escrow \u2014 meaning it's stored securely by a licensed payment partner, not given directly to the provider. You only release payment when you confirm the job is done to your satisfaction." },
+      { q: "Is my payment safe?", a: "Yes. Your payment is protected \u2014 it's stored securely by a licensed payment partner, not given directly to the provider. You only release payment when you confirm the job is done to your satisfaction." },
       { q: "When does the provider get paid?", a: "The provider receives payment after you approve the completed work. If you don't respond within the review window (24\u201372 hours depending on order amount), funds are automatically released." },
       { q: "Can I get a refund?", a: "Yes. If you cancel before the service starts, you receive a full refund. If the service was unsatisfactory, you can open a dispute and our team will review both sides. Refunds are processed back to your original payment method." },
       { q: "What is the platform fee?", a: "SERVFIX charges a 10% commission on each completed transaction. This fee is deducted from the provider's earnings, not charged to you as a buyer." },

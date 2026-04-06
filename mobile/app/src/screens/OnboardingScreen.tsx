@@ -39,7 +39,7 @@ const SLIDES: Slide[] = [
   },
   {
     key: "pay",
-    title: "Pay securely\nin escrow",
+    title: "Pay securely\nwith protection",
     subtitle:
       "Your payment is held safely until you're satisfied. Providers get paid only after you approve.",
     accent: "#0369a1",

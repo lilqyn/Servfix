@@ -478,7 +478,7 @@ function OrderDetail({
               </div>
               <div className="pt-2 border-t border-border/50 flex items-center gap-2">
                 <Shield className="h-4 w-4 text-primary" />
-                <span className="text-xs text-muted-foreground">Protected by Servfix Escrow</span>
+                <span className="text-xs text-muted-foreground">Protected by SERVFIX Payment Protection</span>
               </div>
             </CardContent>
           </Card>

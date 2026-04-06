@@ -245,7 +245,7 @@ const ServicePricing = ({
         <div className="mt-6 pt-6 border-t border-border/50">
           <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground mb-4">
             <Shield className="w-4 h-4 text-secondary" />
-            <span>Secure escrow payment protection</span>
+            <span>Secure payment protection</span>
           </div>
           
           <div className="grid grid-cols-3 gap-4 text-center">

@@ -119,7 +119,7 @@ function describeSuccess(result: PaymentVerifyResponse, purpose: PaymentPurpose)
   }
   const count = result.orders?.length ?? 0;
   if (count > 0) {
-    return `Payment confirmed. ${count} ${count === 1 ? "order is" : "orders are"} now in escrow.`;
+    return `Payment confirmed. ${count} ${count === 1 ? "order is" : "orders are"} now protected.`;
   }
   return "Payment confirmed.";
 }

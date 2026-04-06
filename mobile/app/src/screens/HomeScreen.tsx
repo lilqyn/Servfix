@@ -49,7 +49,7 @@ const HOW_IT_WORKS_STEPS: {
     number: 3,
     icon: "shield-checkmark-outline",
     title: "Pay safely",
-    description: "Your payment is held in escrow until the job is done",
+    description: "Your payment is protected until the job is done",
   },
 ];
 

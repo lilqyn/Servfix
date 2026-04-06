@@ -39,7 +39,7 @@ export const providerResourceSections: ProviderResourceSection[] = [
         heading: "Step 3: Understand payments",
         items: [
           "Buyer pays through SERVFIX.",
-          "Payment is held securely in escrow.",
+          "Payment is held securely until the job is done.",
           "You complete the job and report progress.",
           "Buyer confirms or dispute flow applies.",
           "Funds are released based on order state and platform rules.",

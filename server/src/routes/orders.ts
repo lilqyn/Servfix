@@ -1053,7 +1053,7 @@ ordersRouter.post(
     }
 
       if (order.amountPaidNet.lte(0)) {
-        return res.status(400).json({ error: "Escrow payment has not been received yet." });
+        return res.status(400).json({ error: "Payment has not been received yet." });
       }
 
       const released = await prisma.orderReleaseRequest.aggregate({
@@ -1065,7 +1065,7 @@ ordersRouter.post(
       const remaining = order.amountPaidNet.sub(releasedNet);
 
       if (remaining.lte(0)) {
-        return res.status(400).json({ error: "No remaining escrow funds are available to release." });
+        return res.status(400).json({ error: "No remaining funds are available to release." });
       }
 
       const requested = await prisma.orderReleaseRequest.aggregate({
@@ -1081,7 +1081,7 @@ ordersRouter.post(
 
       const requestAmount = order.amountPaidNet.mul(data.percent).div(100);
       if (requestAmount.greaterThan(remaining)) {
-        return res.status(400).json({ error: "Requested release exceeds remaining escrow amount." });
+        return res.status(400).json({ error: "Requested release exceeds remaining secured amount." });
       }
 
       if (requestedNet.add(requestAmount).greaterThan(maxCap)) {

@@ -215,7 +215,7 @@ const OrdersList = () => {
   const getEscrowBadge = (status: Order["escrowStatus"]) => {
     switch (status) {
       case "held":
-        return <Badge variant="secondary" className="text-xs">In Escrow</Badge>;
+        return <Badge variant="secondary" className="text-xs">Protected</Badge>;
       case "released":
         return <Badge className="bg-secondary/20 text-secondary text-xs">Released</Badge>;
       case "pending":
@@ -460,14 +460,14 @@ const OrdersList = () => {
             <DialogHeaderUi>
               <DialogTitle>Request earnings release</DialogTitle>
               <DialogDescription>
-                Request up to 20% total of the escrow for this order. Admin will review the request.
+                Request up to 20% total of the secured funds for this order. Admin will review the request.
               </DialogDescription>
             </DialogHeaderUi>
             <div className="space-y-4">
               {releaseOrder && (
                 <div className="rounded-md border border-border/60 bg-muted/40 p-3 text-xs text-muted-foreground space-y-1">
                   <div className="flex items-center justify-between">
-                    <span>Paid to escrow</span>
+                    <span>Payment secured</span>
                     <span className="font-semibold text-foreground">
                       {formatCurrency(releaseOrder.amountPaidNet, releaseOrder.currency)}
                     </span>
@@ -479,7 +479,7 @@ const OrdersList = () => {
                     </span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span>Remaining escrow</span>
+                    <span>Remaining balance</span>
                     <span className="font-semibold text-foreground">
                       {formatCurrency(
                         Math.max(0, releaseOrder.amountPaidNet - releaseOrder.amountReleasedNet),

@@ -197,12 +197,12 @@ const Cart = () => {
                 Order Placed Successfully!
               </h1>
               <p className="text-muted-foreground mb-6 max-w-md mx-auto">
-                Your payment is now held in escrow. The service provider has been notified and will contact you shortly.
+                Your payment is protected until the job is done. The service provider has been notified and will contact you shortly.
               </p>
               <div className="bg-muted/50 rounded-xl p-4 mb-8 max-w-sm mx-auto">
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <Shield className="w-4 h-4 text-secondary" />
-                  <span>Payment secured in escrow until service completion</span>
+                  <span>Payment protected until service completion</span>
                 </div>
               </div>
               <div className="flex flex-col sm:flex-row gap-3 justify-center">
@@ -672,7 +672,7 @@ const Cart = () => {
                           <Shield className="w-5 h-5 text-secondary shrink-0 mt-0.5" />
                           <div>
                             <p className="font-medium text-secondary">
-                              Escrow Payment Protection
+                              Secure Payment Protection
                             </p>
                             <p className="text-sm text-muted-foreground mt-1">
                               Your payment will be held securely until the service is completed
@@ -737,7 +737,7 @@ const Cart = () => {
                         <span className="font-medium text-foreground">
                           {formatCartTotal(getEscrowAmount())}
                         </span>{" "}
-                        held in escrow
+                        held securely
                       </span>
                     </div>
                   </div>
@@ -790,7 +790,7 @@ const Cart = () => {
                   <div className="mt-6 pt-4 border-t border-border/50">
                     <div className="flex items-center gap-2 text-xs text-muted-foreground">
                       <Shield className="w-4 h-4 text-secondary" />
-                      <span>Secure escrow payment</span>
+                      <span>Secure payment protection</span>
                     </div>
                     <div className="flex items-center gap-2 text-xs text-muted-foreground mt-2">
                       <AlertCircle className="w-4 h-4 text-primary" />
