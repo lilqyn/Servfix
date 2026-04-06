@@ -51,6 +51,7 @@ import { WishlistScreen } from "../screens/WishlistScreen";
 import { CartScreen } from "../screens/CartScreen";
 import BlogScreen from "../screens/BlogScreen";
 import AcademyScreen from "../screens/AcademyScreen";
+import FAQScreen from "../screens/FAQScreen";
 import LegalScreen from "../screens/LegalScreen";
 import ProviderResourcesScreen from "../screens/ProviderResourcesScreen";
 import { BusinessAccountsScreen } from "../screens/BusinessAccountsScreen";
@@ -91,6 +92,7 @@ type RootStackParamList = {
   Cart: undefined;
   Blog: undefined;
   Academy: undefined;
+  FAQ: undefined;
   Legal: { slug: "privacy" | "terms" | "cookies" | "providerAddendum" | "about" };
   ProviderResources: undefined;
   ResetPassword: { token: string };
@@ -784,6 +786,14 @@ export function AppNavigator() {
         <Stack.Screen name="Academy" options={{ title: "Academy" }}>
           {({ navigation }) => (
             <AcademyScreen onBack={() => navigation.goBack()} />
+          )}
+        </Stack.Screen>
+        <Stack.Screen name="FAQ" options={{ title: "FAQ" }}>
+          {({ navigation }) => (
+            <FAQScreen
+              onBack={() => navigation.goBack()}
+              onNavigateSupport={() => navigation.navigate("Support" as any)}
+            />
           )}
         </Stack.Screen>
         <Stack.Screen name="Legal" options={{ title: "" }}>

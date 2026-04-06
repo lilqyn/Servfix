@@ -62,6 +62,7 @@ const ProviderResources = lazy(() => import("./pages/ProviderResources"));
 const About = lazy(() => import("./pages/About"));
 const Blog = lazy(() => import("./pages/Blog"));
 const Academy = lazy(() => import("./pages/Academy"));
+const FAQ = lazy(() => import("./pages/FAQ"));
 
 const queryClient = new QueryClient();
 
@@ -91,6 +92,7 @@ const App = () => (
                       <Route path="/about" element={<About />} />
                       <Route path="/blog" element={<Blog />} />
                       <Route path="/academy" element={<Academy />} />
+                      <Route path="/faq" element={<FAQ />} />
                       <Route
                         path="/provider-resources"
                         element={

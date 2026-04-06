@@ -119,6 +119,7 @@ const Footer = () => {
               )}
               <li><Link to="/about" className="hover:text-primary transition-colors">About Us</Link></li>
               <li><Link to="/academy" className="hover:text-primary transition-colors">Academy</Link></li>
+              <li><Link to="/faq" className="hover:text-primary transition-colors">FAQ</Link></li>
               <li>
                 <Link to="/support" className="hover:text-primary transition-colors">
                   Contact
@@ -187,7 +188,7 @@ const Footer = () => {
 
         {/* Bottom */}
         <div className="mt-12 pt-8 border-t border-background/10 flex flex-col md:flex-row justify-between items-center gap-4 text-sm text-background/50">
-          <p>© 2024 SERVFIX. All rights reserved.</p>
+          <p>ï¿½ 2024 SERVFIX. All rights reserved.</p>
           <div className="flex flex-wrap items-center gap-4">
             <Link to="/privacy" className="hover:text-background transition-colors">Privacy Policy</Link>
             <Link to="/terms" className="hover:text-background transition-colors">Terms of Service</Link>
