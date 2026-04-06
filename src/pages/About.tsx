@@ -1,50 +1,19 @@
 import { useQuery } from "@tanstack/react-query";
-import { Check } from "lucide-react";
+import {
+  Shield,
+  Users,
+  Star,
+  MapPin,
+  CheckCircle,
+  Target,
+  Eye,
+  Heart,
+} from "lucide-react";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { type AboutFontOption, fetchStaticPage } from "@/lib/api";
+import { fetchStaticPage } from "@/lib/api";
 import { DEFAULT_PAGES } from "@/lib/pageDefaults";
-
-const fontFamilyMap: Record<AboutFontOption, string> = {
-  space_grotesk: '"Space Grotesk", system-ui, sans-serif',
-  plus_jakarta_sans: '"Plus Jakarta Sans", system-ui, sans-serif',
-  georgia_serif: 'Georgia, Cambria, "Times New Roman", serif',
-  times_serif: '"Times New Roman", Times, serif',
-  system_sans:
-    '"Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "Liberation Sans", sans-serif',
-  mono: '"Courier New", Courier, ui-monospace, SFMono-Regular, Menlo, monospace',
-};
-
-const fallbackConfig = DEFAULT_PAGES.about.aboutConfig ?? {
-  introLabel: "About Me",
-  heroImageUrl: "/hero-ghana-marketplace.png",
-  missionTitle: "Our Mission",
-  missionBody:
-    "To empower every Ghanaian by making the hiring of skilled professionals safe, secure, and trustworthy.",
-  missionBullets: ["To offer transparent access to professionals across Ghana."],
-  whatWeDoTitle: "What We Do",
-  whatWeDoLeft: [
-    "Trusted, seamless, and reliable services.",
-    "Veteran professionals providing quality service.",
-    "Verified professionals ensuring quality access across Ghana.",
-    "Qualified processes.",
-    "Offer reliable access and an easy-rated skill platform.",
-  ],
-  whatWeDoRight: [
-    "Transparent payments.",
-    "User-friendly technology empowering residents in and around Ghana.",
-  ],
-  visionTitle: "Our SERVFIX",
-  visionLeft:
-    "To be Ghana's premier digital bridge, open and mindful of community participation and payment security.",
-  visionRight: [
-    "To be secure with service experience, fair opportunities and exposure.",
-    "To be a valuable pivot, implementing experience designed for trustworthiness, accessibility, and innovation.",
-  ],
-  headingFont: "space_grotesk" as AboutFontOption,
-  bodyFont: "plus_jakarta_sans" as AboutFontOption,
-};
 
 const About = () => {
   const { data } = useQuery({
@@ -53,14 +22,11 @@ const About = () => {
   });
 
   const staff = data?.staff ?? [];
-  const aboutConfig = data?.aboutConfig ?? fallbackConfig;
+  const aboutConfig = data?.aboutConfig ?? DEFAULT_PAGES.about.aboutConfig!;
   const heroImage =
     aboutConfig.heroImageSignedUrl ??
     aboutConfig.heroImageUrl ??
     "/hero-ghana-marketplace.png";
-  const headingFontFamily = fontFamilyMap[aboutConfig.headingFont] ?? fontFamilyMap.space_grotesk;
-  const bodyFontFamily =
-    fontFamilyMap[aboutConfig.bodyFont] ?? fontFamilyMap.plus_jakarta_sans;
 
   const getInitials = (name: string) =>
     name
@@ -72,115 +38,227 @@ const About = () => {
       .toUpperCase();
 
   return (
-    <div className="min-h-screen bg-[#f5ede0] text-[#3f2a1e]" style={{ fontFamily: bodyFontFamily }}>
+    <div className="min-h-screen bg-background text-foreground">
       <Header />
-      <main className="mx-auto w-full max-w-6xl px-4 py-10 md:py-14">
-        <section className="rounded-2xl border border-[#e8dccb] bg-[#f8f2e8] px-5 py-9 shadow-[0_12px_28px_rgba(79,55,33,0.08)] md:px-10 md:py-12">
-          <div className="mx-auto max-w-4xl text-center">
-            <p className="text-xl font-medium text-[#c7922e]">{aboutConfig.introLabel}</p>
-          </div>
 
-          <div className="mt-10 border-[14px] border-[#bec49e] bg-[#bec49e]">
-            <img
-              src={heroImage}
-              alt="Servfix community members greeting one another"
-              className="h-72 w-full object-cover md:h-[430px]"
-              loading="lazy"
-            />
-          </div>
+      <main>
+        {/* Hero */}
+        <section className="relative overflow-hidden bg-gradient-to-b from-primary/5 to-background">
+          <div className="mx-auto max-w-6xl px-4 pb-16 pt-12 md:pb-24 md:pt-16">
+            <div className="grid items-center gap-10 md:grid-cols-2 md:gap-14">
+              <div>
+                <p className="mb-3 text-xs font-semibold uppercase tracking-[0.2em] text-primary">
+                  {aboutConfig.introLabel ?? "About SERVFIX"}
+                </p>
+                <h1 className="text-3xl font-bold leading-tight tracking-tight sm:text-4xl lg:text-5xl">
+                  Ghana's Trusted{" "}
+                  <span className="text-primary">Service Marketplace</span>
+                </h1>
+                <p className="mt-4 max-w-lg text-lg leading-relaxed text-muted-foreground">
+                  {aboutConfig.missionBody ??
+                    "To empower every Ghanaian by making the hiring of skilled professionals safe, secure, and trustworthy."}
+                </p>
+                <div className="mt-8 flex flex-wrap gap-6">
+                  {[
+                    { icon: Users, label: "2,000+", sub: "Providers" },
+                    { icon: Star, label: "4.9/5", sub: "Rating" },
+                    { icon: MapPin, label: "10+", sub: "Cities" },
+                  ].map((stat) => (
+                    <div key={stat.sub} className="flex items-center gap-3">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
+                        <stat.icon className="h-5 w-5 text-primary" />
+                      </div>
+                      <div>
+                        <p className="text-lg font-bold leading-none">{stat.label}</p>
+                        <p className="text-xs text-muted-foreground">{stat.sub}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
 
-          <section className="mt-12 grid gap-8 md:grid-cols-2 md:gap-12">
-            <div className="space-y-5">
-              <h2 className="text-5xl font-bold text-[#3d281d]" style={{ fontFamily: headingFontFamily }}>
-                {aboutConfig.missionTitle}
-              </h2>
-              <p className="max-w-md text-2xl leading-relaxed text-[#453124]">
-                {aboutConfig.missionBody}
+              <div className="overflow-hidden rounded-2xl shadow-xl ring-1 ring-border/40">
+                <img
+                  src={heroImage}
+                  alt="SERVFIX community"
+                  className="h-64 w-full object-cover md:h-[380px]"
+                  loading="lazy"
+                />
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* Mission & Values */}
+        <section className="border-t border-border/40 bg-muted/30">
+          <div className="mx-auto max-w-6xl px-4 py-16 md:py-20">
+            <div className="mb-12 text-center">
+              <p className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-primary">
+                Why SERVFIX
               </p>
-
-              <h3
-                className="pt-2 text-4xl font-semibold text-[#3d281d]"
-                style={{ fontFamily: headingFontFamily }}
-              >
-                {aboutConfig.whatWeDoTitle}
-              </h3>
-              <div className="space-y-3 pt-1">
-                {aboutConfig.whatWeDoLeft.map((item) => (
-                  <div key={item} className="flex items-start gap-3">
-                    <Check className="mt-1 h-7 w-7 flex-shrink-0 text-[#c7922e]" />
-                    <p className="text-xl leading-relaxed text-[#453124]">{item}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="space-y-8 md:pt-20">
-              <div className="space-y-3">
-                {aboutConfig.missionBullets.map((item) => (
-                  <div key={item} className="flex items-start gap-3">
-                    <Check className="mt-1 h-7 w-7 flex-shrink-0 text-[#c7922e]" />
-                    <p className="text-[1.9rem] leading-tight text-[#453124]">{item}</p>
-                  </div>
-                ))}
-              </div>
-
-              <div className="space-y-3 pt-5">
-                {aboutConfig.whatWeDoRight.map((item) => (
-                  <div key={item} className="flex items-start gap-3">
-                    <Check className="mt-1 h-7 w-7 flex-shrink-0 text-[#c7922e]" />
-                    <p className="text-xl leading-relaxed text-[#453124]">{item}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </section>
-
-          <section className="mt-12 border border-[#e2d8c8] bg-[#e8e3d6] p-6 md:p-10">
-            <h2 className="text-5xl font-bold text-[#3d281d]" style={{ fontFamily: headingFontFamily }}>
-              {aboutConfig.visionTitle}
-            </h2>
-            <div className="mt-8 grid gap-8 md:grid-cols-2 md:gap-10">
-              <p className="text-3xl leading-relaxed text-[#453124]">{aboutConfig.visionLeft}</p>
-              <div className="space-y-6">
-                {aboutConfig.visionRight.map((item) => (
-                  <p key={item} className="text-2xl leading-relaxed text-[#453124]">
-                    {item}
-                  </p>
-                ))}
-              </div>
-            </div>
-          </section>
-
-          {staff.length > 0 ? (
-            <section className="mt-12">
-              <h2
-                className="text-center text-4xl font-semibold text-[#3d281d]"
-                style={{ fontFamily: headingFontFamily }}
-              >
-                Team
+              <h2 className="text-2xl font-bold sm:text-3xl">
+                {aboutConfig.missionTitle ?? "Our Mission"}
               </h2>
-              <div className="mt-6 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+            </div>
+
+            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+              {[
+                {
+                  icon: Target,
+                  title: "Our Mission",
+                  body: aboutConfig.missionBody ??
+                    "To empower every Ghanaian by making the hiring of skilled professionals safe, secure, and trustworthy.",
+                },
+                {
+                  icon: Eye,
+                  title: "Our Vision",
+                  body: aboutConfig.visionLeft ??
+                    "To be Ghana's premier digital bridge for service delivery.",
+                },
+                {
+                  icon: Heart,
+                  title: "Our Values",
+                  body: "Trust, transparency, and fairness in every interaction. We put both buyers and providers first.",
+                },
+              ].map((card) => (
+                <div
+                  key={card.title}
+                  className="rounded-xl border border-border/50 bg-card p-6 shadow-sm transition-shadow hover:shadow-md"
+                >
+                  <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-lg bg-primary/10">
+                    <card.icon className="h-5 w-5 text-primary" />
+                  </div>
+                  <h3 className="mb-2 text-lg font-semibold">{card.title}</h3>
+                  <p className="text-sm leading-relaxed text-muted-foreground">
+                    {card.body}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* What We Do */}
+        <section className="border-t border-border/40">
+          <div className="mx-auto max-w-6xl px-4 py-16 md:py-20">
+            <div className="grid items-start gap-10 md:grid-cols-2 md:gap-16">
+              <div>
+                <p className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-primary">
+                  What we do
+                </p>
+                <h2 className="text-2xl font-bold sm:text-3xl">
+                  {aboutConfig.whatWeDoTitle ?? "What We Do"}
+                </h2>
+                <p className="mt-3 text-muted-foreground">
+                  SERVFIX connects buyers with verified service providers across Ghana.
+                  We handle the trust, payments, and communication — so both sides can
+                  focus on what matters.
+                </p>
+              </div>
+
+              <div className="space-y-3">
+                {[
+                  ...aboutConfig.whatWeDoLeft,
+                  ...aboutConfig.whatWeDoRight,
+                ].map((item) => (
+                  <div
+                    key={item}
+                    className="flex items-start gap-3 rounded-lg border border-border/40 bg-card p-3.5 shadow-sm"
+                  >
+                    <CheckCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-primary" />
+                    <p className="text-sm leading-relaxed">{item}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* Trust & Safety */}
+        <section className="border-t border-border/40 bg-muted/30">
+          <div className="mx-auto max-w-6xl px-4 py-16 md:py-20">
+            <div className="mb-10 text-center">
+              <p className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-primary">
+                Built for trust
+              </p>
+              <h2 className="text-2xl font-bold sm:text-3xl">
+                How We Protect You
+              </h2>
+            </div>
+
+            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+              {[
+                {
+                  icon: Shield,
+                  title: "Payment Protection",
+                  desc: "Your payment is held securely until the job is done and you're satisfied.",
+                },
+                {
+                  icon: Users,
+                  title: "Verified Providers",
+                  desc: "Every provider completes identity verification before they can receive payouts.",
+                },
+                {
+                  icon: Star,
+                  title: "Real Reviews",
+                  desc: "All ratings come from verified completed orders. No fake reviews.",
+                },
+                {
+                  icon: CheckCircle,
+                  title: "Dispute Resolution",
+                  desc: "If something goes wrong, our team reviews both sides and mediates fairly.",
+                },
+              ].map((item) => (
+                <div
+                  key={item.title}
+                  className="rounded-xl border border-border/50 bg-card p-5 text-center shadow-sm"
+                >
+                  <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-primary/10">
+                    <item.icon className="h-5 w-5 text-primary" />
+                  </div>
+                  <h3 className="mb-1.5 text-sm font-semibold">{item.title}</h3>
+                  <p className="text-xs leading-relaxed text-muted-foreground">
+                    {item.desc}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* Team */}
+        {staff.length > 0 && (
+          <section className="border-t border-border/40">
+            <div className="mx-auto max-w-6xl px-4 py-16 md:py-20">
+              <div className="mb-10 text-center">
+                <p className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-primary">
+                  The people behind SERVFIX
+                </p>
+                <h2 className="text-2xl font-bold sm:text-3xl">Our Team</h2>
+              </div>
+
+              <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
                 {staff.map((member, index) => {
                   const photo = member.photoSignedUrl ?? member.photoUrl ?? "";
                   return (
                     <article
                       key={`${member.name}-${index}`}
-                      className="rounded-xl border border-[#dfd1bf] bg-[#f4ecdf] p-5 text-center shadow-sm"
+                      className="rounded-xl border border-border/50 bg-card p-6 text-center shadow-sm transition-shadow hover:shadow-md"
                     >
-                      <div className="mx-auto flex h-24 w-24 items-center justify-center rounded-full bg-[#f8f2e8] ring-4 ring-[#ece2d2]">
-                        <Avatar className="h-20 w-20">
-                          {photo ? <AvatarImage src={photo} alt={member.name} /> : null}
-                          <AvatarFallback className="bg-[#e8dcc6] text-[#5d4537] font-semibold">
-                            {getInitials(member.name)}
-                          </AvatarFallback>
-                        </Avatar>
-                      </div>
-                      <p className="mt-4 text-lg font-semibold text-[#3d281d]">{member.name}</p>
-                      <p className="text-xs uppercase tracking-[0.2em] text-[#7d6554]">
+                      <Avatar className="mx-auto h-20 w-20 ring-2 ring-border/60">
+                        {photo ? (
+                          <AvatarImage src={photo} alt={member.name} />
+                        ) : null}
+                        <AvatarFallback className="bg-primary/10 text-primary font-semibold text-lg">
+                          {getInitials(member.name)}
+                        </AvatarFallback>
+                      </Avatar>
+                      <p className="mt-4 font-semibold">{member.name}</p>
+                      <p className="text-xs uppercase tracking-[0.15em] text-muted-foreground">
                         {member.role}
                       </p>
                       {member.bio ? (
-                        <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-[#5a4537]">
+                        <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">
                           {member.bio}
                         </p>
                       ) : null}
@@ -188,10 +266,38 @@ const About = () => {
                   );
                 })}
               </div>
-            </section>
-          ) : null}
+            </div>
+          </section>
+        )}
+
+        {/* CTA */}
+        <section className="border-t border-border/40 bg-primary/5">
+          <div className="mx-auto max-w-3xl px-4 py-16 text-center md:py-20">
+            <h2 className="text-2xl font-bold sm:text-3xl">
+              Ready to Get Started?
+            </h2>
+            <p className="mx-auto mt-3 max-w-md text-muted-foreground">
+              Whether you need a service or offer one — SERVFIX is for you.
+              Join Ghana's fastest-growing service marketplace.
+            </p>
+            <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
+              <a
+                href="/#/browse"
+                className="inline-flex items-center justify-center rounded-lg bg-primary px-6 py-2.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+              >
+                Browse Services
+              </a>
+              <a
+                href="/#/sign-up"
+                className="inline-flex items-center justify-center rounded-lg border border-border bg-card px-6 py-2.5 text-sm font-medium transition-colors hover:bg-muted"
+              >
+                Become a Provider
+              </a>
+            </div>
+          </div>
         </section>
       </main>
+
       <Footer />
     </div>
   );
