@@ -58,6 +58,7 @@ const Cookies = lazy(() => import("./pages/Cookies"));
 const Privacy = lazy(() => import("./pages/Privacy"));
 const Terms = lazy(() => import("./pages/Terms"));
 const ProviderAddendum = lazy(() => import("./pages/ProviderAddendum"));
+const RefundPolicy = lazy(() => import("./pages/RefundPolicy"));
 const ProviderResources = lazy(() => import("./pages/ProviderResources"));
 const About = lazy(() => import("./pages/About"));
 const Blog = lazy(() => import("./pages/Blog"));
@@ -245,6 +246,7 @@ const App = () => (
                       <Route path="/privacy" element={<Privacy />} />
                       <Route path="/terms" element={<Terms />} />
                       <Route path="/provider-addendum" element={<ProviderAddendum />} />
+                      <Route path="/refund-policy" element={<RefundPolicy />} />
                       <Route path="*" element={<NotFound />} />
                     </Routes>
                   </Suspense>
